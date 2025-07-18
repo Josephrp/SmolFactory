@@ -107,6 +107,11 @@ class SmolLM3Dataset:
                             {"role": "user", "content": example["prompt"]},
                             {"role": "assistant", "content": example["completion"]}
                         ]
+                    elif "prompt" in example and "accepted_completion" in example:
+                        messages = [
+                            {"role": "user", "content": example["prompt"]},
+                            {"role": "assistant", "content": example["accepted_completion"]}
+                        ]
                     else:
                         # Fallback: treat as plain text
                         return {"text": str(example)}
