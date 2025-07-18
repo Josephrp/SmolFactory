@@ -74,6 +74,17 @@ class SmolLM3Dataset:
         try:
             dataset = load_dataset(self.data_path)
             logger.info(f"Loaded Hugging Face dataset: {self.data_path}")
+            # If only 'train' split exists, create validation and test splits
+            if ("train" in dataset) and ("validation" not in dataset or "test" not in dataset):
+                logger.info("Automatically splitting train into train/validation/test (98/1/1)")
+                split_dataset = dataset["train"].train_test_split(test_size=0.02, seed=42)
+                # Now split test into validation and test (1% each)
+                val_test_split = split_dataset["test"].train_test_split(test_size=0.5, seed=42)
+                dataset = {
+                    "train": split_dataset["train"],
+                    "validation": val_test_split["train"],
+                    "test": val_test_split["test"]
+                }
             return dataset
         except Exception as e:
             logger.error(f"Failed to load dataset: {e}")
