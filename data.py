@@ -190,26 +190,56 @@ class SmolLM3Dataset:
                 "length": input_length,
             }
         
-        # Process the dataset
-        processed_dataset = self.dataset.map(
-            format_chat_template,
-            remove_columns=self.dataset["train"].column_names,
-            desc="Formatting dataset"
-        )
+        # Process the dataset - handle both single dataset and dictionary of splits
+        if isinstance(self.dataset, dict):
+            # Process each split individually
+            processed_dataset = {}
+            for split_name, split_dataset in self.dataset.items():
+                logger.info(f"Processing {split_name} split...")
+                
+                # Format the split
+                processed_split = split_dataset.map(
+                    format_chat_template,
+                    remove_columns=split_dataset.column_names,
+                    desc=f"Formatting {split_name} dataset"
+                )
+                
+                # Tokenize the split
+                tokenized_split = processed_split.map(
+                    tokenize_function,
+                    remove_columns=processed_split.column_names,
+                    desc=f"Tokenizing {split_name} dataset",
+                    batched=True,
+                )
+                
+                processed_dataset[split_name] = tokenized_split
+        else:
+            # Single dataset
+            processed_dataset = self.dataset.map(
+                format_chat_template,
+                remove_columns=self.dataset.column_names,
+                desc="Formatting dataset"
+            )
+            
+            # Tokenize the dataset
+            processed_dataset = processed_dataset.map(
+                tokenize_function,
+                remove_columns=processed_dataset.column_names,
+                desc="Tokenizing dataset",
+                batched=True,
+            )
         
-        # Tokenize the dataset
-        tokenized_dataset = processed_dataset.map(
-            tokenize_function,
-            remove_columns=processed_dataset["train"].column_names,
-            desc="Tokenizing dataset",
-            batched=True,
-        )
+        # Log processing results
+        if isinstance(processed_dataset, dict):
+            logger.info(f"Dataset processed. Train samples: {len(processed_dataset['train'])}")
+            if "validation" in processed_dataset:
+                logger.info(f"Validation samples: {len(processed_dataset['validation'])}")
+            if "test" in processed_dataset:
+                logger.info(f"Test samples: {len(processed_dataset['test'])}")
+        else:
+            logger.info(f"Dataset processed. Samples: {len(processed_dataset)}")
         
-        logger.info(f"Dataset processed. Train samples: {len(tokenized_dataset['train'])}")
-        if "validation" in tokenized_dataset:
-            logger.info(f"Validation samples: {len(tokenized_dataset['validation'])}")
-        
-        return tokenized_dataset
+        return processed_dataset
     
     def get_train_dataset(self) -> Dataset:
         """Get training dataset"""
