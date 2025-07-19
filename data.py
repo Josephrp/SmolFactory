@@ -263,7 +263,6 @@ class SmolLM3Dataset:
             mlm=False,  # We're doing causal LM, not masked LM
             pad_to_multiple_of=8,  # Pad to multiple of 8 for efficiency
             return_tensors="pt",  # Ensure we return PyTorch tensors
-            padding=True,  # Enable padding
         )
 
 def create_sample_dataset(output_path: str = "my_dataset"):
