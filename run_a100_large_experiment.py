@@ -40,11 +40,13 @@ def main():
     )
     parser.add_argument(
         "--trackio-url",
+        "--trackio_url",
         type=str,
         help="Trackio URL for experiment tracking"
     )
     parser.add_argument(
         "--trackio-token",
+        "--trackio_token",
         type=str,
         help="Trackio token for authentication"
     )
