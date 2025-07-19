@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""
+Script to run A100 large-scale experiments on OpenHermes-FR dataset
+Supports multiple configurations for different training scenarios
+"""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+def main():
+    parser = argparse.ArgumentParser(description="Run A100 large-scale experiments")
+    parser.add_argument(
+        "--config", 
+        type=str, 
+        default="config/train_smollm3_openhermes_fr_a100_large.py",
+        help="Configuration file to use"
+    )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        help="Custom experiment name for tracking"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="./outputs",
+        help="Output directory for checkpoints and logs"
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        help="Resume training from checkpoint"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print configuration without starting training"
+    )
+    
+    args = parser.parse_args()
+    
+    # Add the current directory to Python path
+    sys.path.insert(0, str(Path(__file__).parent))
+    
+    # Import the configuration
+    try:
+        from config.train_smollm3_openhermes_fr_a100_large import get_config as get_large_config
+        from config.train_smollm3_openhermes_fr_a100_multiple_passes import get_config as get_multiple_passes_config
+        
+        # Map config files to their respective functions
+        config_map = {
+            "config/train_smollm3_openhermes_fr_a100_large.py": get_large_config,
+            "config/train_smollm3_openhermes_fr_a100_multiple_passes.py": get_multiple_passes_config,
+        }
+        
+        if args.config in config_map:
+            config = config_map[args.config](args.config)
+        else:
+            # Try to load from the specified config file
+            config = get_large_config(args.config)
+            
+    except ImportError as e:
+        print(f"Error importing configuration: {e}")
+        print("Available configurations:")
+        print("  - config/train_smollm3_openhermes_fr_a100_large.py (Large batch, 1.3 passes)")
+        print("  - config/train_smollm3_openhermes_fr_a100_multiple_passes.py (Multiple passes, 4 epochs)")
+        return 1
+    
+    # Override experiment name if provided
+    if args.experiment_name:
+        config.experiment_name = args.experiment_name
+    
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Print configuration summary
+    print(f"\n{'='*60}")
+    print(f"EXPERIMENT CONFIGURATION")
+    print(f"{'='*60}")
+    print(f"Config file: {args.config}")
+    print(f"Experiment name: {config.experiment_name}")
+    print(f"Output directory: {args.output_dir}")
+    print(f"Model: {config.model_name}")
+    print(f"Batch size: {config.batch_size}")
+    print(f"Gradient accumulation: {config.gradient_accumulation_steps}")
+    print(f"Effective batch size: {config.batch_size * config.gradient_accumulation_steps}")
+    print(f"Learning rate: {config.learning_rate}")
+    print(f"Max iterations: {config.max_iters}")
+    print(f"Max sequence length: {config.max_seq_length}")
+    print(f"Mixed precision: {'bf16' if config.bf16 else 'fp16'}")
+    print(f"Dataset: {config.dataset_name}")
+    print(f"{'='*60}\n")
+    
+    if args.dry_run:
+        print("DRY RUN - Configuration printed above. Use without --dry-run to start training.")
+        return 0
+    
+    # Import and run training
+    try:
+        from train import main as train_main
+        
+        # Set up training arguments
+        train_args = [
+            "--config", args.config,
+            "--output-dir", args.output_dir,
+        ]
+        
+        if args.resume:
+            train_args.extend(["--resume", args.resume])
+        
+        # Override sys.argv for the training script
+        original_argv = sys.argv
+        sys.argv = ["train.py"] + train_args
+        
+        # Run training
+        train_main()
+        
+        # Restore original argv
+        sys.argv = original_argv
+        
+    except ImportError as e:
+        print(f"Error importing training module: {e}")
+        print("Make sure train.py is available in the current directory.")
+        return 1
+    except Exception as e:
+        print(f"Error during training: {e}")
+        return 1
+    
+    return 0
+
+if __name__ == "__main__":
+    exit(main()) 

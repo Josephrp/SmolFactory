@@ -11,6 +11,9 @@ from transformers import Trainer, TrainingArguments
 from trl import SFTTrainer
 import json
 
+# Import monitoring
+from monitoring import create_monitor_from_config
+
 logger = logging.getLogger(__name__)
 
 class SmolLM3Trainer:
@@ -31,6 +34,9 @@ class SmolLM3Trainer:
         self.output_dir = output_dir
         self.init_from = init_from
         self.use_sft_trainer = use_sft_trainer
+        
+        # Initialize monitoring
+        self.monitor = create_monitor_from_config(config)
         
         # Setup trainer
         self.trainer = self._setup_trainer()
@@ -55,6 +61,13 @@ class SmolLM3Trainer:
         # Get data collator
         data_collator = self.dataset.get_data_collator()
         
+        # Add monitoring callback
+        callbacks = []
+        if self.monitor and self.monitor.enable_tracking:
+            trackio_callback = self.monitor.create_monitoring_callback()
+            if trackio_callback:
+                callbacks.append(trackio_callback)
+        
         if self.use_sft_trainer:
             # Use SFTTrainer for supervised fine-tuning
             trainer = SFTTrainer(
@@ -67,6 +80,7 @@ class SmolLM3Trainer:
                 dataset_text_field="text",
                 max_seq_length=self.config.max_seq_length,
                 packing=False,  # Disable packing for better control
+                callbacks=callbacks,
             )
         else:
             # Use standard Trainer
@@ -77,6 +91,7 @@ class SmolLM3Trainer:
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 data_collator=data_collator,
+                callbacks=callbacks,
             )
         
         return trainer
@@ -103,6 +118,17 @@ class SmolLM3Trainer:
         """Start training"""
         logger.info("Starting training")
         
+        # Log configuration to Trackio
+        if self.monitor and self.monitor.enable_tracking:
+            config_dict = {k: v for k, v in self.config.__dict__.items() 
+                          if not k.startswith('_')}
+            self.monitor.log_config(config_dict)
+            
+            # Log experiment URL
+            experiment_url = self.monitor.get_experiment_url()
+            if experiment_url:
+                logger.info(f"Trackio experiment URL: {experiment_url}")
+        
         # Load checkpoint if resuming
         if self.init_from == "resume":
             checkpoint_path = "/input-checkpoint"
@@ -122,11 +148,26 @@ class SmolLM3Trainer:
             with open(os.path.join(self.output_dir, "train_results.json"), "w") as f:
                 json.dump(train_result.metrics, f, indent=2)
             
+            # Log training summary to Trackio
+            if self.monitor and self.monitor.enable_tracking:
+                summary = {
+                    'final_loss': train_result.metrics.get('train_loss', 0),
+                    'total_steps': train_result.metrics.get('train_runtime', 0),
+                    'training_time': train_result.metrics.get('train_runtime', 0),
+                    'output_dir': self.output_dir,
+                    'model_name': getattr(self.config, 'model_name', 'unknown'),
+                }
+                self.monitor.log_training_summary(summary)
+                self.monitor.close()
+            
             logger.info("Training completed successfully!")
             logger.info(f"Training metrics: {train_result.metrics}")
             
         except Exception as e:
             logger.error(f"Training failed: {e}")
+            # Close monitoring on error
+            if self.monitor and self.monitor.enable_tracking:
+                self.monitor.close()
             raise
     
     def evaluate(self):

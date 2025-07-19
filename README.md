@@ -289,3 +289,16 @@ python -m llama_cpp.convert_model ./output-checkpoint --outfile model.gguf
 ## License
 
 This project follows the same license as the SmolLM3 model. Please refer to the Hugging Face model page for licensing information. 
+
+
+{
+  "id": "exp_20250718_195852",
+  "name": "petit-elle-l-aime-3",
+  "description": "SmolLM3 fine-tuning experiment",
+  "created_at": "2025-07-18T19:58:52.689087",
+  "status": "running",
+  "metrics": [],
+  "parameters": {},
+  "artifacts": [],
+  "logs": []
+}

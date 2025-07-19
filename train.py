@@ -76,6 +76,16 @@ def parse_args():
     parser.add_argument('--logging_steps', type=int, default=10,
                        help='Log every N steps')
     
+    # Trackio monitoring arguments
+    parser.add_argument('--enable_tracking', action='store_true', default=True,
+                       help='Enable Trackio experiment tracking')
+    parser.add_argument('--trackio_url', type=str, default=None,
+                       help='Trackio server URL')
+    parser.add_argument('--trackio_token', type=str, default=None,
+                       help='Trackio authentication token')
+    parser.add_argument('--experiment_name', type=str, default=None,
+                       help='Custom experiment name for tracking')
+    
     return parser.parse_args()
 
 def main():
@@ -99,14 +109,22 @@ def main():
     if args.gradient_accumulation_steps is not None:
         config.gradient_accumulation_steps = args.gradient_accumulation_steps
     
+    # Override Trackio configuration
+    if args.enable_tracking is not None:
+        config.enable_tracking = args.enable_tracking
+    if args.trackio_url is not None:
+        config.trackio_url = args.trackio_url
+    if args.trackio_token is not None:
+        config.trackio_token = args.trackio_token
+    if args.experiment_name is not None:
+        config.experiment_name = args.experiment_name
+    
     # Setup paths
-    dataset_path = os.path.join('/input', args.dataset_dir)
     output_path = args.out_dir
     
     # Ensure output directory exists
     os.makedirs(output_path, exist_ok=True)
     
-    logger.info(f"Dataset path: {dataset_path}")
     logger.info(f"Output path: {output_path}")
     
     # Initialize model
@@ -116,11 +134,23 @@ def main():
         config=config
     )
     
-    # Load dataset
+    # Determine dataset path
+    if hasattr(config, 'dataset_name') and config.dataset_name:
+        # Use Hugging Face dataset
+        dataset_path = config.dataset_name
+        logger.info(f"Using Hugging Face dataset: {dataset_path}")
+    else:
+        # Use local dataset
+        dataset_path = os.path.join('/input', args.dataset_dir)
+        logger.info(f"Using local dataset: {dataset_path}")
+    
+    # Load dataset with filtering options
     dataset = SmolLM3Dataset(
         data_path=dataset_path,
         tokenizer=model.tokenizer,
-        max_seq_length=args.max_seq_length
+        max_seq_length=args.max_seq_length,
+        filter_bad_entries=getattr(config, 'filter_bad_entries', False),
+        bad_entry_field=getattr(config, 'bad_entry_field', 'bad_entry')
     )
     
     # Initialize trainer

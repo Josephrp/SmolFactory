@@ -1,15 +1,16 @@
 """
-SmolLM3 Training Configuration
-Based on nanoGPT structure but adapted for SmolLM3
+SmolLM3 Training Configuration for OpenHermes-FR Dataset
+Optimized for French instruction tuning using legmlai/openhermes-fr
 """
 
 import os
 from dataclasses import dataclass
 from typing import Optional
+from config.train_smollm3 import SmolLM3Config
 
 @dataclass
-class SmolLM3Config:
-    """Configuration for SmolLM3 fine-tuning"""
+class SmolLM3ConfigOpenHermesFR(SmolLM3Config):
+    """Configuration for SmolLM3 fine-tuning on OpenHermes-FR dataset"""
     
     # Model configuration
     model_name: str = "HuggingFaceTB/SmolLM3-3B"
@@ -17,14 +18,14 @@ class SmolLM3Config:
     use_flash_attention: bool = True
     use_gradient_checkpointing: bool = True
     
-    # Training configuration
-    batch_size: int = 4
-    gradient_accumulation_steps: int = 4
-    learning_rate: float = 2e-5
+    # Training configuration - optimized for French instruction tuning
+    batch_size: int = 2  # Reduced for French text (longer sequences)
+    gradient_accumulation_steps: int = 8  # Increased to maintain effective batch size
+    learning_rate: float = 1e-5  # Slightly lower for instruction tuning
     weight_decay: float = 0.01
-    warmup_steps: int = 100
-    max_iters: int = 1000
-    eval_interval: int = 100
+    warmup_steps: int = 500  # More warmup for instruction tuning
+    max_iters: int = 2000  # More iterations for large dataset
+    eval_interval: int = 200
     log_interval: int = 10
     save_interval: int = 500
     
@@ -48,7 +49,7 @@ class SmolLM3Config:
     
     # Logging and saving
     save_steps: int = 500
-    eval_steps: int = 100
+    eval_steps: int = 200
     logging_steps: int = 10
     save_total_limit: Optional[int] = 3
     
@@ -58,9 +59,17 @@ class SmolLM3Config:
     greater_is_better: bool = False
     load_best_model_at_end: bool = True
     
-    # Data configuration
-    data_dir: str = "my_dataset"
-    train_file: str = "train.json"
+    # OpenHermes-FR Dataset configuration
+    dataset_name: str = "legmlai/openhermes-fr"
+    dataset_split: str = "train"
+    input_field: str = "prompt"
+    target_field: str = "accepted_completion"
+    filter_bad_entries: bool = True
+    bad_entry_field: str = "bad_entry"
+    
+    # Data configuration (not used for HF datasets but kept for compatibility)
+    data_dir: str = None
+    train_file: str = None
     validation_file: Optional[str] = None
     test_file: Optional[str] = None
     
@@ -90,8 +99,12 @@ class SmolLM3Config:
         
         if self.max_seq_length > 131072:  # 128k limit
             raise ValueError("max_seq_length cannot exceed 131072")
+        
+        # Set default experiment name if not provided
+        if self.experiment_name is None:
+            self.experiment_name = "smollm3_openhermes_fr"
 
-def get_config(config_path: str) -> SmolLM3Config:
+def get_config(config_path: str) -> SmolLM3ConfigOpenHermesFR:
     """Load configuration from file or return default"""
     if os.path.exists(config_path):
         # Load from file if it exists
@@ -106,11 +119,11 @@ def get_config(config_path: str) -> SmolLM3Config:
             # Try to find a config class
             for attr_name in dir(config_module):
                 attr = getattr(config_module, attr_name)
-                if isinstance(attr, SmolLM3Config):
+                if isinstance(attr, SmolLM3ConfigOpenHermesFR):
                     return attr
     
     # Return default configuration
-    return SmolLM3Config()
+    return SmolLM3ConfigOpenHermesFR()
 
 # Default configuration instance
-config = SmolLM3Config() 
+config = SmolLM3ConfigOpenHermesFR() 

@@ -22,13 +22,17 @@ class SmolLM3Dataset:
         tokenizer: PreTrainedTokenizer,
         max_seq_length: int = 4096,
         use_chat_template: bool = True,
-        chat_template_kwargs: Optional[Dict] = None
+        chat_template_kwargs: Optional[Dict] = None,
+        filter_bad_entries: bool = False,
+        bad_entry_field: str = "bad_entry"
     ):
         self.data_path = data_path
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
         self.use_chat_template = use_chat_template
         self.chat_template_kwargs = chat_template_kwargs or {}
+        self.filter_bad_entries = filter_bad_entries
+        self.bad_entry_field = bad_entry_field
         
         # Load and process dataset
         self.dataset = self._load_dataset()
@@ -74,6 +78,17 @@ class SmolLM3Dataset:
         try:
             dataset = load_dataset(self.data_path)
             logger.info(f"Loaded Hugging Face dataset: {self.data_path}")
+            
+            # Filter bad entries if requested
+            if self.filter_bad_entries and self.bad_entry_field in dataset["train"].column_names:
+                logger.info(f"Filtering out bad entries using field: {self.bad_entry_field}")
+                for split in dataset:
+                    if self.bad_entry_field in dataset[split].column_names:
+                        original_size = len(dataset[split])
+                        dataset[split] = dataset[split].filter(lambda x: not x[self.bad_entry_field])
+                        filtered_size = len(dataset[split])
+                        logger.info(f"Filtered {split}: {original_size} -> {filtered_size} samples")
+            
             # If only 'train' split exists, create validation and test splits
             if ("train" in dataset) and ("validation" not in dataset or "test" not in dataset):
                 logger.info("Automatically splitting train into train/validation/test (98/1/1)")
@@ -122,6 +137,11 @@ class SmolLM3Dataset:
                         messages = [
                             {"role": "user", "content": example["prompt"]},
                             {"role": "assistant", "content": example["accepted_completion"]}
+                        ]
+                    elif "prompt" in example and "completion" in example:
+                        messages = [
+                            {"role": "user", "content": example["prompt"]},
+                            {"role": "assistant", "content": example["completion"]}
                         ]
                     else:
                         # Fallback: treat as plain text
