@@ -76,9 +76,7 @@ class SmolLM3Trainer:
                 eval_dataset=eval_dataset,
                 args=training_args,
                 data_collator=data_collator,
-                dataset_text_field="text",
                 max_seq_length=self.config.max_seq_length,
-                packing=False,  # Disable packing for better control
                 callbacks=callbacks,
             )
         else:
