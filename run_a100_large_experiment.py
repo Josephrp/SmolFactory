@@ -9,6 +9,9 @@ import os
 import sys
 from pathlib import Path
 
+# Set CUDA memory optimization
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 def main():
     parser = argparse.ArgumentParser(description="Run A100 large-scale experiments")
     parser.add_argument(
