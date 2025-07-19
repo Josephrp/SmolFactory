@@ -167,13 +167,13 @@ class SmolLM3Dataset:
         
         def tokenize_function(examples):
             """Tokenize the examples"""
-            # Tokenize the texts
+            # Tokenize the texts with fixed length
             tokenized = self.tokenizer(
                 examples["text"],
                 truncation=True,
-                padding=False,
+                padding=True,  # Enable padding during tokenization
                 max_length=self.max_seq_length,
-                return_overflowing_tokens=True,
+                return_overflowing_tokens=False,  # Don't return overflowing tokens
                 return_length=True,
             )
             
@@ -263,6 +263,7 @@ class SmolLM3Dataset:
             mlm=False,  # We're doing causal LM, not masked LM
             pad_to_multiple_of=8,  # Pad to multiple of 8 for efficiency
             return_tensors="pt",  # Ensure we return PyTorch tensors
+            padding=True,  # Enable padding
         )
 
 def create_sample_dataset(output_path: str = "my_dataset"):
