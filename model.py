@@ -138,7 +138,7 @@ class SmolLM3Model:
             "eval_steps": self.config.eval_steps,
             "logging_steps": self.config.logging_steps,
             "save_total_limit": self.config.save_total_limit,
-            "evaluation_strategy": self.config.eval_strategy,
+            "eval_strategy": self.config.eval_strategy,
             "metric_for_best_model": self.config.metric_for_best_model,
             "greater_is_better": self.config.greater_is_better,
             "load_best_model_at_end": self.config.load_best_model_at_end,
