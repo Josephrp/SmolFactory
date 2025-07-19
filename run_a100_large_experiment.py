@@ -123,14 +123,22 @@ def main():
     try:
         from train import main as train_main
         
-        # Set up training arguments
+        # Set up training arguments - config is positional, not --config
         train_args = [
-            "--config", args.config,
-            "--output-dir", args.output_dir,
+            args.config,  # Config file as positional argument
+            "--out_dir", args.output_dir,
         ]
         
         if args.resume:
-            train_args.extend(["--resume", args.resume])
+            train_args.extend(["--init_from", "resume"])
+        
+        # Add Trackio arguments if provided
+        if args.trackio_url:
+            train_args.extend(["--trackio_url", args.trackio_url])
+        if args.trackio_token:
+            train_args.extend(["--trackio_token", args.trackio_token])
+        if args.experiment_name:
+            train_args.extend(["--experiment_name", args.experiment_name])
         
         # Override sys.argv for the training script
         original_argv = sys.argv
