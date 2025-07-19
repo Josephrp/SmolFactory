@@ -38,6 +38,16 @@ def main():
         action="store_true",
         help="Print configuration without starting training"
     )
+    parser.add_argument(
+        "--trackio-url",
+        type=str,
+        help="Trackio URL for experiment tracking"
+    )
+    parser.add_argument(
+        "--trackio-token",
+        type=str,
+        help="Trackio token for authentication"
+    )
     
     args = parser.parse_args()
     
@@ -72,6 +82,12 @@ def main():
     if args.experiment_name:
         config.experiment_name = args.experiment_name
     
+    # Override Trackio settings if provided
+    if args.trackio_url:
+        config.trackio_url = args.trackio_url
+    if args.trackio_token:
+        config.trackio_token = args.trackio_token
+    
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
@@ -91,6 +107,10 @@ def main():
     print(f"Max sequence length: {config.max_seq_length}")
     print(f"Mixed precision: {'bf16' if config.bf16 else 'fp16'}")
     print(f"Dataset: {config.dataset_name}")
+    if config.trackio_url:
+        print(f"Trackio URL: {config.trackio_url}")
+    if config.trackio_token:
+        print(f"Trackio Token: {'*' * len(config.trackio_token)}")
     print(f"{'='*60}\n")
     
     if args.dry_run:
