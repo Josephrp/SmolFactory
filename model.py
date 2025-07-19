@@ -86,14 +86,28 @@ class SmolLM3Model:
                 model_config.max_position_embeddings = self.max_seq_length
             
             # Load model
+            model_kwargs = {
+                "torch_dtype": self.torch_dtype,
+                "device_map": self.device_map,
+                "trust_remote_code": True,
+                "use_cache": False  # Disable KV cache for training
+            }
+            
+            # Only add flash attention if the model supports it
+            if hasattr(self.config, 'use_flash_attention') and self.config.use_flash_attention:
+                try:
+                    # Test if the model supports flash attention
+                    test_config = AutoConfig.from_pretrained(self.model_name, trust_remote_code=True)
+                    if hasattr(test_config, 'use_flash_attention_2'):
+                        model_kwargs["use_flash_attention_2"] = True
+                except:
+                    # If flash attention is not supported, skip it
+                    pass
+            
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
                 config=model_config,
-                torch_dtype=self.torch_dtype,
-                device_map=self.device_map,
-                trust_remote_code=True,
-                use_flash_attention_2=self.config.use_flash_attention if self.config else True,
-                use_cache=False  # Disable KV cache for training
+                **model_kwargs
             )
             
             # Enable gradient checkpointing if specified
