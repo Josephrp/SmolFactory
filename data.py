@@ -261,6 +261,8 @@ class SmolLM3Dataset:
         return DataCollatorForLanguageModeling(
             tokenizer=self.tokenizer,
             mlm=False,  # We're doing causal LM, not masked LM
+            pad_to_multiple_of=8,  # Pad to multiple of 8 for efficiency
+            return_tensors="pt",  # Ensure we return PyTorch tensors
         )
 
 def create_sample_dataset(output_path: str = "my_dataset"):
