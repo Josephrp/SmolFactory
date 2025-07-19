@@ -76,7 +76,6 @@ class SmolLM3Trainer:
                 eval_dataset=eval_dataset,
                 args=training_args,
                 data_collator=data_collator,
-                max_seq_length=self.config.max_seq_length,
                 callbacks=callbacks,
             )
         else:
