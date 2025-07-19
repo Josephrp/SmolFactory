@@ -89,8 +89,7 @@ class SmolLM3Model:
             model_kwargs = {
                 "torch_dtype": self.torch_dtype,
                 "device_map": self.device_map,
-                "trust_remote_code": True,
-                "use_cache": False  # Disable KV cache for training
+                "trust_remote_code": True
             }
             
             # Only add flash attention if the model supports it
