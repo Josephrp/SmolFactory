@@ -144,8 +144,9 @@ class SmolLM3Model:
             "load_best_model_at_end": self.config.load_best_model_at_end,
             "fp16": self.config.fp16,
             "bf16": self.config.bf16,
-            "ddp_backend": self.config.ddp_backend,
-            "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters,
+            # Only enable DDP if multiple GPUs are available
+            "ddp_backend": self.config.ddp_backend if torch.cuda.device_count() > 1 else None,
+            "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False,
             "report_to": "none",  # Disable external logging
             "remove_unused_columns": False,
             "dataloader_pin_memory": False,
