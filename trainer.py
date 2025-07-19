@@ -72,7 +72,6 @@ class SmolLM3Trainer:
             # Use SFTTrainer for supervised fine-tuning
             trainer = SFTTrainer(
                 model=self.model.model,
-                tokenizer=self.model.tokenizer,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 args=training_args,
