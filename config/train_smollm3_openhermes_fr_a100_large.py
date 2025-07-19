@@ -30,7 +30,7 @@ class SmolLM3ConfigOpenHermesFRA100Large(SmolLM3Config):
     save_interval: int = 1000  # Less frequent saving
     
     # Optimizer configuration - optimized for large batches
-    optimizer: str = "adamw"
+    optimizer: str = "adamw_torch"
     beta1: float = 0.9
     beta2: float = 0.999  # Higher beta2 for stability with large batches
     eps: float = 1e-8

@@ -30,7 +30,7 @@ class SmolLM3ConfigOpenHermesFRMultiplePasses(SmolLM3Config):
     save_interval: int = 2000  # Less frequent saving
     
     # Optimizer configuration - stability focused
-    optimizer: str = "adamw"
+    optimizer: str = "adamw_torch"
     beta1: float = 0.9
     beta2: float = 0.999  # Higher beta2 for stability
     eps: float = 1e-8

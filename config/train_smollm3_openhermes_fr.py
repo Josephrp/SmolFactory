@@ -30,7 +30,7 @@ class SmolLM3ConfigOpenHermesFR(SmolLM3Config):
     save_interval: int = 500
     
     # Optimizer configuration
-    optimizer: str = "adamw"
+    optimizer: str = "adamw_torch"
     beta1: float = 0.9
     beta2: float = 0.95
     eps: float = 1e-8
