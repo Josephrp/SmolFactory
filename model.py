@@ -85,6 +85,12 @@ class SmolLM3Model:
             if hasattr(model_config, 'max_position_embeddings'):
                 model_config.max_position_embeddings = self.max_seq_length
             
+            # SmolLM3-specific optimizations for long context
+            if hasattr(model_config, 'rope_scaling'):
+                # Enable YaRN scaling for long context
+                model_config.rope_scaling = {"type": "yarn", "factor": 2.0}
+                logger.info("Enabled YaRN scaling for long context")
+            
             # Load model
             model_kwargs = {
                 "torch_dtype": self.torch_dtype,
@@ -99,6 +105,7 @@ class SmolLM3Model:
                     test_config = AutoConfig.from_pretrained(self.model_name, trust_remote_code=True)
                     if hasattr(test_config, 'use_flash_attention_2'):
                         model_kwargs["use_flash_attention_2"] = True
+                        logger.info("Enabled Flash Attention 2 for better long context performance")
                 except:
                     # If flash attention is not supported, skip it
                     pass
@@ -114,6 +121,7 @@ class SmolLM3Model:
                 self.model.gradient_checkpointing_enable()
             
             logger.info(f"Model loaded successfully. Parameters: {self.model.num_parameters():,}")
+            logger.info(f"Max sequence length: {self.max_seq_length}")
             
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
@@ -124,11 +132,7 @@ class SmolLM3Model:
         if self.config is None:
             raise ValueError("Config is required to get training arguments")
         
-        # Debug: Print config attributes to identify the issue
-        logger.info(f"Config type: {type(self.config)}")
-        logger.info(f"Config attributes: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
-        
-        # Merge config with kwargs - using the working approach from the functioning commit
+        # Merge config with kwargs
         training_args = {
             "output_dir": output_dir,
             "per_device_train_batch_size": self.config.batch_size,
@@ -148,23 +152,67 @@ class SmolLM3Model:
             "load_best_model_at_end": self.config.load_best_model_at_end,
             "fp16": self.config.fp16,
             "bf16": self.config.bf16,
+            # Only enable DDP if multiple GPUs are available
             "ddp_backend": self.config.ddp_backend if torch.cuda.device_count() > 1 else None,
-            "report_to": None,
-            "dataloader_pin_memory": getattr(self.config, 'dataloader_pin_memory', True),
-            # Removed group_by_length as it's causing issues with newer transformers versions
-            # Removed length_column_name as it might conflict with data collator
+            "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False,
+            "report_to": None,  # Disable external logging - use None instead of "none"
+            "remove_unused_columns": False,
+            "dataloader_pin_memory": getattr(self.config, 'dataloader_pin_memory', False),
+            "group_by_length": getattr(self.config, 'group_by_length', True),
+            "length_column_name": "length",
+            "ignore_data_skip": False,
             "seed": 42,
+            "data_seed": 42,
             "dataloader_num_workers": getattr(self.config, 'dataloader_num_workers', 4),
             "max_grad_norm": getattr(self.config, 'max_grad_norm', 1.0),
             "optim": self.config.optimizer,
             "lr_scheduler_type": self.config.scheduler,
+            "warmup_ratio": 0.1,
             "save_strategy": "steps",
             "logging_strategy": "steps",
-            # Removed prediction_loss_only as it might cause issues
+            "prediction_loss_only": True,
         }
+        
+        # Ensure boolean parameters are properly typed
+        if "dataloader_pin_memory" in training_args:
+            training_args["dataloader_pin_memory"] = bool(training_args["dataloader_pin_memory"])
+        if "group_by_length" in training_args:
+            training_args["group_by_length"] = bool(training_args["group_by_length"])
+        if "prediction_loss_only" in training_args:
+            training_args["prediction_loss_only"] = bool(training_args["prediction_loss_only"])
+        if "ignore_data_skip" in training_args:
+            training_args["ignore_data_skip"] = bool(training_args["ignore_data_skip"])
+        if "remove_unused_columns" in training_args:
+            training_args["remove_unused_columns"] = bool(training_args["remove_unused_columns"])
+        if "ddp_find_unused_parameters" in training_args:
+            training_args["ddp_find_unused_parameters"] = bool(training_args["ddp_find_unused_parameters"])
+        if "fp16" in training_args:
+            training_args["fp16"] = bool(training_args["fp16"])
+        if "bf16" in training_args:
+            training_args["bf16"] = bool(training_args["bf16"])
+        if "load_best_model_at_end" in training_args:
+            training_args["load_best_model_at_end"] = bool(training_args["load_best_model_at_end"])
+        if "greater_is_better" in training_args:
+            training_args["greater_is_better"] = bool(training_args["greater_is_better"])
+        
+        # Add dataloader_prefetch_factor if it exists in config
+        if hasattr(self.config, 'dataloader_prefetch_factor'):
+            try:
+                # Test if the parameter is supported by creating a dummy TrainingArguments
+                test_args = TrainingArguments(output_dir="/tmp/test", dataloader_prefetch_factor=2)
+                training_args["dataloader_prefetch_factor"] = self.config.dataloader_prefetch_factor
+                logger.info(f"Added dataloader_prefetch_factor: {self.config.dataloader_prefetch_factor}")
+            except Exception as e:
+                logger.warning(f"dataloader_prefetch_factor not supported in this transformers version: {e}")
+                # Remove the parameter if it's not supported
+                if "dataloader_prefetch_factor" in training_args:
+                    del training_args["dataloader_prefetch_factor"]
         
         # Override with kwargs
         training_args.update(kwargs)
+        
+        # Clean up any None values that might cause issues
+        training_args = {k: v for k, v in training_args.items() if v is not None}
         
         return TrainingArguments(**training_args)
     

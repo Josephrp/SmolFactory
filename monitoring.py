@@ -37,8 +37,8 @@ class SmolLM3Monitor:
         self.experiment_name = experiment_name
         self.enable_tracking = enable_tracking and TRACKIO_AVAILABLE
         self.log_artifacts = log_artifacts
-        self.log_metrics = log_metrics
-        self.log_config = log_config
+        self.log_metrics_enabled = log_metrics  # Rename to avoid conflict
+        self.log_config_enabled = log_config  # Rename to avoid conflict
         
         # Initialize experiment metadata first
         self.experiment_id = None
@@ -91,9 +91,9 @@ class SmolLM3Monitor:
             logger.error(f"Failed to initialize Trackio API: {e}")
             self.enable_tracking = False
     
-    def log_config(self, config: Dict[str, Any]):
+    def log_configuration(self, config: Dict[str, Any]):
         """Log experiment configuration"""
-        if not self.enable_tracking or not self.log_config:
+        if not self.enable_tracking or not self.log_config_enabled:
             return
         
         try:
@@ -117,9 +117,13 @@ class SmolLM3Monitor:
         except Exception as e:
             logger.error(f"Failed to log configuration: {e}")
     
+    def log_config(self, config: Dict[str, Any]):
+        """Alias for log_configuration for backward compatibility"""
+        return self.log_configuration(config)
+    
     def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None):
         """Log training metrics"""
-        if not self.enable_tracking or not self.log_metrics:
+        if not self.enable_tracking or not self.log_metrics_enabled:
             return
         
         try:
@@ -211,9 +215,12 @@ class SmolLM3Monitor:
                     system_metrics[f'gpu_{i}_utilization'] = torch.cuda.utilization(i) if hasattr(torch.cuda, 'utilization') else 0
             
             # CPU and memory metrics (basic)
-            import psutil
-            system_metrics['cpu_percent'] = psutil.cpu_percent()
-            system_metrics['memory_percent'] = psutil.virtual_memory().percent
+            try:
+                import psutil
+                system_metrics['cpu_percent'] = psutil.cpu_percent()
+                system_metrics['memory_percent'] = psutil.virtual_memory().percent
+            except ImportError:
+                logger.warning("psutil not available, skipping CPU/memory metrics")
             
             self.log_metrics(system_metrics, step)
             
@@ -254,12 +261,13 @@ class SmolLM3Monitor:
     
     def create_monitoring_callback(self):
         """Create a callback for integration with Hugging Face Trainer"""
-        if not self.enable_tracking:
-            return None
+        from transformers import TrainerCallback
         
-        class TrackioCallback:
+        class TrackioCallback(TrainerCallback):
             def __init__(self, monitor):
+                super().__init__()
                 self.monitor = monitor
+                logger.info("TrackioCallback initialized")
             
             def on_init_end(self, args, state, control, **kwargs):
                 """Called when training initialization is complete"""
@@ -272,17 +280,20 @@ class SmolLM3Monitor:
                 """Called when logs are created"""
                 try:
                     if logs and isinstance(logs, dict):
-                        self.monitor.log_metrics(logs, state.global_step)
-                        self.monitor.log_system_metrics(state.global_step)
+                        step = getattr(state, 'global_step', None)
+                        self.monitor.log_metrics(logs, step)
+                        self.monitor.log_system_metrics(step)
                 except Exception as e:
                     logger.error(f"Error in on_log: {e}")
             
             def on_save(self, args, state, control, **kwargs):
                 """Called when a checkpoint is saved"""
                 try:
-                    checkpoint_path = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
-                    if os.path.exists(checkpoint_path):
-                        self.monitor.log_model_checkpoint(checkpoint_path, state.global_step)
+                    step = getattr(state, 'global_step', None)
+                    if step is not None:
+                        checkpoint_path = os.path.join(args.output_dir, f"checkpoint-{step}")
+                        if os.path.exists(checkpoint_path):
+                            self.monitor.log_model_checkpoint(checkpoint_path, step)
                 except Exception as e:
                     logger.error(f"Error in on_save: {e}")
             
@@ -290,7 +301,8 @@ class SmolLM3Monitor:
                 """Called when evaluation is performed"""
                 try:
                     if metrics and isinstance(metrics, dict):
-                        self.monitor.log_evaluation_results(metrics, state.global_step)
+                        step = getattr(state, 'global_step', None)
+                        self.monitor.log_evaluation_results(metrics, step)
                 except Exception as e:
                     logger.error(f"Error in on_evaluate: {e}")
             
@@ -309,12 +321,10 @@ class SmolLM3Monitor:
                         self.monitor.close()
                 except Exception as e:
                     logger.error(f"Error in on_train_end: {e}")
-            
-            def __call__(self, *args, **kwargs):
-                """Make the callback callable to avoid any issues"""
-                return self
         
-        return TrackioCallback(self)
+        callback = TrackioCallback(self)
+        logger.info("TrackioCallback created successfully")
+        return callback
     
     def get_experiment_url(self) -> Optional[str]:
         """Get the URL to view the experiment in Trackio"""

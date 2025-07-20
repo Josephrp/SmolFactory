@@ -14,7 +14,7 @@ class SmolLM3ConfigOpenHermesFRBalanced(SmolLM3Config):
     
     # Model configuration - balanced for A100
     model_name: str = "HuggingFaceTB/SmolLM3-3B"
-    max_seq_length: int = 12288  # Increased but not too much
+    max_seq_length: int = 12288  # Long context in SmolLM3
     use_flash_attention: bool = True
     use_gradient_checkpointing: bool = False  # Disabled for A100 efficiency
     
@@ -76,6 +76,12 @@ class SmolLM3ConfigOpenHermesFRBalanced(SmolLM3Config):
     # Chat template configuration
     use_chat_template: bool = True
     chat_template_kwargs: dict = None
+    
+    # SFTTrainer-specific optimizations
+    packing: bool = False  # Disable packing for better stability with long sequences
+    max_prompt_length: int = 12288  # Increased to handle longer prompts
+    max_completion_length: int = 8192  # long completion length
+    truncation: bool = True  # Enable truncation for long sequences
     
     # Trackio monitoring configuration
     enable_tracking: bool = True

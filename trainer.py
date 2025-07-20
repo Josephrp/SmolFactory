@@ -54,6 +54,10 @@ class SmolLM3Trainer:
             max_steps=self.config.max_iters,
         )
         
+        # Debug: Print training arguments
+        logger.info(f"Training arguments keys: {list(training_args.__dict__.keys())}")
+        logger.info(f"Training arguments type: {type(training_args)}")
+        
         # Get datasets
         logger.info("Getting train dataset...")
         train_dataset = self.dataset.get_train_dataset()
@@ -68,11 +72,13 @@ class SmolLM3Trainer:
         data_collator = self.dataset.get_data_collator()
         logger.info(f"Data collator: {type(data_collator)}")
         
-        # Add monitoring callback - temporarily disabled to debug
+        # Add monitoring callbacks
         callbacks = []
         
-        # Simple console callback for basic monitoring
-        class SimpleConsoleCallback:
+        # Add simple console callback for basic monitoring
+        from transformers import TrainerCallback
+        
+        class SimpleConsoleCallback(TrainerCallback):
             def on_init_end(self, args, state, control, **kwargs):
                 """Called when training initialization is complete"""
                 print("🔧 Training initialization completed")
@@ -101,47 +107,29 @@ class SmolLM3Trainer:
                     eval_loss = metrics.get('eval_loss', 'N/A')
                     print(f"📊 Evaluation at step {step}: eval_loss={eval_loss}")
         
-        # Add monitoring callbacks
-        callbacks = []
+        # Add console callback
+        callbacks.append(SimpleConsoleCallback())
+        logger.info("Added simple console monitoring callback")
         
-        # Temporarily disable callbacks to debug the bool object is not callable error
-        # Add simple console callback
-        # callbacks.append(SimpleConsoleCallback())
-        # logger.info("Added simple console monitoring callback")
+        # Add Trackio callback if available
+        if self.monitor and self.monitor.enable_tracking:
+            try:
+                trackio_callback = self.monitor.create_monitoring_callback()
+                if trackio_callback:
+                    callbacks.append(trackio_callback)
+                    logger.info("Added Trackio monitoring callback")
+                else:
+                    logger.warning("Failed to create Trackio callback")
+            except Exception as e:
+                logger.error(f"Error creating Trackio callback: {e}")
+                logger.info("Continuing with console monitoring only")
         
-        # Try to add Trackio callback if available
-        # if self.monitor and self.monitor.enable_tracking:
-        #     try:
-        #         trackio_callback = self.monitor.create_monitoring_callback()
-        #         if trackio_callback:
-        #             callbacks.append(trackio_callback)
-        #             logger.info("Added Trackio monitoring callback")
-        #         else:
-        #             logger.warning("Failed to create Trackio callback")
-        #     except Exception as e:
-        #         logger.error(f"Error creating Trackio callback: {e}")
-        #         logger.info("Continuing with console monitoring only")
+        logger.info(f"Total callbacks: {len(callbacks)}")
         
-        logger.info("Callbacks disabled for debugging")
-        
-        # Try standard Trainer first (more stable with callbacks)
-        logger.info("Creating Trainer with training arguments...")
+        # Try SFTTrainer first (better for instruction tuning)
+        logger.info("Creating SFTTrainer with training arguments...")
         logger.info(f"Training args type: {type(training_args)}")
         try:
-            trainer = Trainer(
-                model=self.model.model,
-                tokenizer=self.model.tokenizer,
-                args=training_args,
-                train_dataset=train_dataset,
-                eval_dataset=eval_dataset,
-                data_collator=data_collator,
-                callbacks=callbacks,
-            )
-            logger.info("Using standard Hugging Face Trainer")
-        except Exception as e:
-            logger.warning(f"Standard Trainer failed: {e}")
-            logger.error(f"Trainer creation error details: {type(e).__name__}: {str(e)}")
-            # Fallback to SFTTrainer
             trainer = SFTTrainer(
                 model=self.model.model,
                 train_dataset=train_dataset,
@@ -150,7 +138,26 @@ class SmolLM3Trainer:
                 data_collator=data_collator,
                 callbacks=callbacks,
             )
-            logger.info("Using SFTTrainer")
+            logger.info("Using SFTTrainer (optimized for instruction tuning)")
+        except Exception as e:
+            logger.warning(f"SFTTrainer failed: {e}")
+            logger.error(f"SFTTrainer creation error details: {type(e).__name__}: {str(e)}")
+            
+            # Fallback to standard Trainer
+            try:
+                trainer = Trainer(
+                    model=self.model.model,
+                    tokenizer=self.model.tokenizer,
+                    args=training_args,
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset,
+                    data_collator=data_collator,
+                    callbacks=callbacks,
+                )
+                logger.info("Using standard Hugging Face Trainer (fallback)")
+            except Exception as e2:
+                logger.error(f"Standard Trainer also failed: {e2}")
+                raise e2
         
         return trainer
     
