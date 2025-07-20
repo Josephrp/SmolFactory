@@ -1,0 +1,22 @@
+# Gradio and web interface
+gradio>=4.0.0
+gradio-client>=0.10.0
+
+# Core dependencies for Trackio Space
+requests>=2.31.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# JSON and data handling
+jsonschema>=4.17.0
+
+# Optional: for better UI
+plotly>=5.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+datasets>=2.14.0
+huggingface-hub>=0.16.0
+requests>=2.31.0 
+
+# Development and debugging
+python-dotenv>=1.0.0 
