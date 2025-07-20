@@ -9,6 +9,71 @@ from datetime import datetime
 from pathlib import Path
 from datasets import Dataset
 from huggingface_hub import HfApi, create_repo
+import subprocess
+
+def get_username_from_token(token: str) -> str:
+    """Get username from HF token with fallback to CLI"""
+    try:
+        # Try API first
+        api = HfApi(token=token)
+        user_info = api.whoami()
+        
+        # Handle different possible response formats
+        if isinstance(user_info, dict):
+            # Try different possible keys for username
+            username = (
+                user_info.get('name') or 
+                user_info.get('username') or 
+                user_info.get('user') or 
+                None
+            )
+        elif isinstance(user_info, str):
+            # If whoami returns just the username as string
+            username = user_info
+        else:
+            username = None
+            
+        if username:
+            print(f"✅ Got username from API: {username}")
+            return username
+        else:
+            print("⚠️  Could not get username from API, trying CLI...")
+            return get_username_from_cli(token)
+            
+    except Exception as e:
+        print(f"⚠️  API whoami failed: {e}")
+        print("⚠️  Trying CLI fallback...")
+        return get_username_from_cli(token)
+
+def get_username_from_cli(token: str) -> str:
+    """Fallback method to get username using CLI"""
+    try:
+        # Set HF token for CLI
+        os.environ['HF_TOKEN'] = token
+        
+        # Get username using CLI
+        result = subprocess.run(
+            ["huggingface-cli", "whoami"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            username = result.stdout.strip()
+            if username:
+                print(f"✅ Got username from CLI: {username}")
+                return username
+            else:
+                print("⚠️  CLI returned empty username")
+                return None
+        else:
+            print(f"⚠️  CLI whoami failed: {result.stderr}")
+            return None
+            
+    except Exception as e:
+        print(f"⚠️  CLI fallback failed: {e}")
+        return None
 
 def setup_trackio_dataset():
     """Set up the Trackio experiments dataset on Hugging Face Hub"""
@@ -21,15 +86,12 @@ def setup_trackio_dataset():
         print("You can get your token from: https://huggingface.co/settings/tokens")
         return False
     
-    # Initialize HF API and get user info
-    try:
-        api = HfApi(token=hf_token)
-        user_info = api.whoami()
-        username = user_info.get('name', 'unknown')
-        print(f"✅ Authenticated as: {username}")
-    except Exception as e:
-        print(f"❌ Failed to get user info from token: {e}")
+    username = get_username_from_token(hf_token)
+    if not username:
+        print("❌ Could not determine username from token. Please check your token.")
         return False
+    
+    print(f"✅ Authenticated as: {username}")
     
     # Use username in dataset repository if not specified
     dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', f'{username}/trackio-experiments')

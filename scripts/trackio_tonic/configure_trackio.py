@@ -5,7 +5,73 @@ Configuration script for Trackio environment variables
 
 import os
 import json
+import subprocess
 from datetime import datetime
+
+def get_username_from_token(token: str) -> str:
+    """Get username from HF token with fallback to CLI"""
+    try:
+        # Try API first
+        from huggingface_hub import HfApi
+        api = HfApi(token=token)
+        user_info = api.whoami()
+        
+        # Handle different possible response formats
+        if isinstance(user_info, dict):
+            # Try different possible keys for username
+            username = (
+                user_info.get('name') or 
+                user_info.get('username') or 
+                user_info.get('user') or 
+                None
+            )
+        elif isinstance(user_info, str):
+            # If whoami returns just the username as string
+            username = user_info
+        else:
+            username = None
+            
+        if username:
+            print(f"✅ Got username from API: {username}")
+            return username
+        else:
+            print("⚠️  Could not get username from API, trying CLI...")
+            return get_username_from_cli(token)
+            
+    except Exception as e:
+        print(f"⚠️  API whoami failed: {e}")
+        print("⚠️  Trying CLI fallback...")
+        return get_username_from_cli(token)
+
+def get_username_from_cli(token: str) -> str:
+    """Fallback method to get username using CLI"""
+    try:
+        # Set HF token for CLI
+        os.environ['HF_TOKEN'] = token
+        
+        # Get username using CLI
+        result = subprocess.run(
+            ["huggingface-cli", "whoami"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            username = result.stdout.strip()
+            if username:
+                print(f"✅ Got username from CLI: {username}")
+                return username
+            else:
+                print("⚠️  CLI returned empty username")
+                return None
+        else:
+            print(f"⚠️  CLI whoami failed: {result.stderr}")
+            return None
+            
+    except Exception as e:
+        print(f"⚠️  CLI fallback failed: {e}")
+        return None
 
 def configure_trackio():
     """Configure Trackio environment variables"""
@@ -17,14 +83,11 @@ def configure_trackio():
     hf_token = os.environ.get('HF_TOKEN')
     
     if hf_token:
-        try:
-            from huggingface_hub import HfApi
-            api = HfApi(token=hf_token)
-            user_info = api.whoami()
-            username = user_info.get('name', 'unknown')
+        username = get_username_from_token(hf_token)
+        if username:
             print(f"✅ Authenticated as: {username}")
-        except Exception as e:
-            print(f"❌ Failed to get user info from token: {e}")
+        else:
+            print("⚠️  Could not determine username from token")
             username = 'unknown'
     else:
         username = 'unknown'

@@ -35,21 +35,80 @@ class TrackioSpaceDeployer:
             # Get username from token
             try:
                 user_info = self.api.whoami()
-                self.username = user_info.get('name', 'unknown')
-                print(f"✅ Authenticated as: {self.username}")
+                # Handle different possible response formats
+                if isinstance(user_info, dict):
+                    # Try different possible keys for username
+                    self.username = (
+                        user_info.get('name') or 
+                        user_info.get('username') or 
+                        user_info.get('user') or 
+                        'unknown'
+                    )
+                elif isinstance(user_info, str):
+                    # If whoami returns just the username as string
+                    self.username = user_info
+                else:
+                    # Fallback to CLI method
+                    print("⚠️  Unexpected user_info format, trying CLI fallback...")
+                    self.username = self._get_username_from_cli()
+                
+                if self.username and self.username != 'unknown':
+                    print(f"✅ Authenticated as: {self.username}")
+                else:
+                    print("⚠️  Could not determine username from API, trying CLI...")
+                    self.username = self._get_username_from_cli()
+                    
             except Exception as e:
                 print(f"❌ Failed to get user info from token: {e}")
-                sys.exit(1)
+                print("⚠️  Trying CLI fallback for username...")
+                self.username = self._get_username_from_cli()
+                if not self.username:
+                    print("❌ Could not determine username. Please check your token.")
+                    sys.exit(1)
         else:
             self.api = None
-            self.username = None
+            self.username = self._get_username_from_cli()
+        
+        if not self.username:
+            print("❌ Could not determine username. Please check your token.")
+            sys.exit(1)
         
         self.space_url = f"https://huggingface.co/spaces/{self.username}/{self.space_name}"
         
         # Git configuration
         self.git_email = git_email or f"{self.username}@huggingface.co"
         self.git_name = git_name or self.username
-        
+    
+    def _get_username_from_cli(self) -> str:
+        """Fallback method to get username using CLI"""
+        try:
+            # Set HF token for CLI
+            os.environ['HF_TOKEN'] = self.token
+            
+            # Get username using CLI
+            result = subprocess.run(
+                ["huggingface-cli", "whoami"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                username = result.stdout.strip()
+                if username:
+                    print(f"✅ Got username from CLI: {username}")
+                    return username
+                else:
+                    print("⚠️  CLI returned empty username")
+                    return None
+            else:
+                print(f"⚠️  CLI whoami failed: {result.stderr}")
+                return None
+                
+        except Exception as e:
+            print(f"⚠️  CLI fallback failed: {e}")
+            return None
+    
     def create_space(self) -> bool:
         """Create a new Hugging Face Space using the latest API"""
         try:

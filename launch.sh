@@ -82,16 +82,18 @@ select_option() {
     done
 }
 
-# Function to validate HF token
-validate_hf_token() {
+# Function to validate HF token and get username
+validate_hf_token_and_get_username() {
     local token="$1"
     if [ -z "$token" ]; then
         return 1
     fi
     
-    # Test the token
+    # Test the token and get username
     export HF_TOKEN="$token"
     if huggingface-cli whoami >/dev/null 2>&1; then
+        # Get username from whoami command
+        HF_USERNAME=$(huggingface-cli whoami | head -n1 | tr -d '\n')
         return 0
     else
         return 1
@@ -306,17 +308,17 @@ print_header "SmolLM3 End-to-End Fine-tuning Pipeline"
 echo "=============================================="
 echo ""
 
-# Step 1: Get user credentials
+# Step 1: Get user credentials (only token needed now)
 print_step "Step 1: User Authentication"
 echo "================================"
 
-get_input "Hugging Face username" "" HF_USERNAME
 get_input "Hugging Face token (get from https://huggingface.co/settings/tokens)" "" HF_TOKEN
 
-# Validate HF token
-print_info "Validating Hugging Face token..."
-if validate_hf_token "$HF_TOKEN"; then
+# Validate HF token and get username automatically
+print_info "Validating Hugging Face token and getting username..."
+if validate_hf_token_and_get_username "$HF_TOKEN"; then
     print_status "HF token validated successfully"
+    print_info "Username: $HF_USERNAME"
 else
     print_error "Invalid HF token. Please check your token and try again."
     exit 1
@@ -373,7 +375,7 @@ echo "================================="
 echo ""
 echo "📋 Configuration Summary:"
 echo "========================"
-echo "  User: $HF_USERNAME"
+echo "  User: $HF_USERNAME (auto-detected from token)"
 echo "  Experiment: $EXPERIMENT_NAME"
 echo "  Model: $MODEL_NAME"
 echo "  Dataset: $DATASET_NAME"
@@ -484,38 +486,46 @@ else
     exit 1
 fi
 
-# Step 9: Deploy Trackio Space
+# Step 9: Deploy Trackio Space (automated)
 print_step "Step 9: Deploying Trackio Space"
 echo "==================================="
 
 cd scripts/trackio_tonic
 
-# Create deployment script input
-cat > deploy_input.txt << EOF
-$HF_USERNAME
+print_info "Deploying Trackio Space ..."
+print_info "Space name: $TRACKIO_SPACE_NAME"
+print_info "Username will be auto-detected from token"
+print_info "Secrets will be set automatically via API"
+
+# Run deployment script with automated features
+python deploy_trackio_space.py << EOF
 $TRACKIO_SPACE_NAME
 $HF_TOKEN
 $GIT_EMAIL
 $HF_USERNAME
 EOF
 
-# Run deployment script
-python deploy_trackio_space.py < deploy_input.txt
-
 print_status "Trackio Space deployed: $TRACKIO_URL"
 
-# Step 10: Setup HF Dataset
+# Step 10: Setup HF Dataset (automated)
 print_step "Step 10: Setting up HF Dataset"
 echo "=================================="
 
 cd ../dataset_tonic
+print_info "Setting up HF Dataset with automated features..."
+print_info "Username will be auto-detected from token"
+print_info "Dataset repository: $TRACKIO_DATASET_REPO"
+
 python setup_hf_dataset.py
 
-# Step 11: Configure Trackio
+# Step 11: Configure Trackio (automated)
 print_step "Step 11: Configuring Trackio"
 echo "================================="
 
 cd ../trackio_tonic
+print_info "Configuring Trackio ..."
+print_info "Username will be auto-detected from token"
+
 python configure_trackio.py
 
 # Step 12: Training Configuration
@@ -579,8 +589,6 @@ python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME
 print_step "Step 17: Creating Summary Report"
 echo "===================================="
 
-
-
 cat > training_summary.md << EOF
 # SmolLM3 Fine-tuning Summary
 
@@ -622,10 +630,6 @@ fi)
 EOF
 
 print_status "Summary report saved to: training_summary.md"
-
-# Clean up temporary files
-print_info "Cleaning up temporary files..."
-rm -f deploy_input.txt
 
 # Final summary
 echo ""
