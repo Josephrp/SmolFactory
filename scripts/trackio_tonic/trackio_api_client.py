@@ -20,6 +20,7 @@ class TrackioAPIClient:
     
     def __init__(self, space_url: str):
         self.space_url = space_url.rstrip('/')
+        # For Gradio Spaces, we need to use the direct function endpoints
         self.base_url = f"{self.space_url}/gradio_api/call"
         
     def _make_api_call(self, endpoint: str, data: list, max_retries: int = 3) -> Dict[str, Any]:

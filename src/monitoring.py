@@ -98,6 +98,14 @@ class SmolLM3Monitor:
             
             self.trackio_client = TrackioAPIClient(url)
             
+            # Test the connection first
+            test_result = self.trackio_client._make_api_call("list_experiments_interface", [])
+            if "error" in test_result:
+                logger.warning(f"Trackio Space not accessible: {test_result['error']}")
+                logger.info("Continuing with HF Datasets only")
+                self.enable_tracking = False
+                return
+            
             # Create experiment
             create_result = self.trackio_client.create_experiment(
                 name=self.experiment_name,
@@ -121,6 +129,7 @@ class SmolLM3Monitor:
             
         except Exception as e:
             logger.error("Failed to initialize Trackio API: %s", e)
+            logger.info("Continuing with HF Datasets only")
             self.enable_tracking = False
     
     def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
@@ -169,15 +178,18 @@ class SmolLM3Monitor:
         try:
             # Log configuration as parameters
             if self.trackio_client:
-                result = self.trackio_client.log_parameters(
-                    experiment_id=self.experiment_id,
-                    parameters=config
-                )
-                
-                if "success" in result:
-                    logger.info("Configuration logged to Trackio")
-                else:
-                    logger.error("Failed to log configuration: %s", result)
+                try:
+                    result = self.trackio_client.log_parameters(
+                        experiment_id=self.experiment_id,
+                        parameters=config
+                    )
+                    
+                    if "success" in result:
+                        logger.info("Configuration logged to Trackio")
+                    else:
+                        logger.warning("Failed to log configuration to Trackio: %s", result)
+                except Exception as e:
+                    logger.warning("Trackio configuration logging failed: %s", e)
             
             # Save to HF Dataset
             self._save_to_hf_dataset(config)
@@ -211,18 +223,21 @@ class SmolLM3Monitor:
             if step is not None:
                 metrics['step'] = step
             
-            # Log to Trackio
+            # Log to Trackio (if available)
             if self.trackio_client:
-                result = self.trackio_client.log_metrics(
-                    experiment_id=self.experiment_id,
-                    metrics=metrics,
-                    step=step
-                )
-                
-                if "success" in result:
-                    logger.debug("Metrics logged to Trackio")
-                else:
-                    logger.error("Failed to log metrics to Trackio: %s", result)
+                try:
+                    result = self.trackio_client.log_metrics(
+                        experiment_id=self.experiment_id,
+                        metrics=metrics,
+                        step=step
+                    )
+                    
+                    if "success" in result:
+                        logger.debug("Metrics logged to Trackio")
+                    else:
+                        logger.warning("Failed to log metrics to Trackio: %s", result)
+                except Exception as e:
+                    logger.warning("Trackio logging failed: %s", e)
             
             # Store locally
             self.metrics_history.append(metrics)

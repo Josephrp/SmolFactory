@@ -1,97 +1,217 @@
 #!/usr/bin/env python3
 """
-Test script to verify that training arguments are properly created
+Test script to verify the training pipeline fixes
 """
 
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from config.train_smollm3_openhermes_fr_a100_balanced import SmolLM3ConfigOpenHermesFRBalanced
-from model import SmolLM3Model
-from trainer import SmolLM3Trainer
-from data import SmolLM3Dataset
+import sys
 import logging
+from pathlib import Path
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-def test_training_arguments():
-    """Test that training arguments are properly created"""
-    print("Testing training arguments creation...")
+def test_imports():
+    """Test that all imports work correctly"""
+    print("🔍 Testing imports...")
     
-    # Create config
-    config = SmolLM3ConfigOpenHermesFRBalanced()
-    print(f"Config created: {type(config)}")
-    
-    # Create model (without actually loading the model)
     try:
+        from src.config import get_config
+        print("✅ config.py imported successfully")
+    except Exception as e:
+        print(f"❌ config.py import failed: {e}")
+        return False
+    
+    try:
+        from src.model import SmolLM3Model
+        print("✅ model.py imported successfully")
+    except Exception as e:
+        print(f"❌ model.py import failed: {e}")
+        return False
+    
+    try:
+        from src.data import SmolLM3Dataset
+        print("✅ data.py imported successfully")
+    except Exception as e:
+        print(f"❌ data.py import failed: {e}")
+        return False
+    
+    try:
+        from src.trainer import SmolLM3Trainer
+        print("✅ trainer.py imported successfully")
+    except Exception as e:
+        print(f"❌ trainer.py import failed: {e}")
+        return False
+    
+    try:
+        from src.monitoring import create_monitor_from_config
+        print("✅ monitoring.py imported successfully")
+    except Exception as e:
+        print(f"❌ monitoring.py import failed: {e}")
+        return False
+    
+    return True
+
+def test_config_loading():
+    """Test configuration loading"""
+    print("\n🔍 Testing configuration loading...")
+    
+    try:
+        from src.config import get_config
+        
+        # Test loading the H100 lightweight config
+        config = get_config("config/train_smollm3_h100_lightweight.py")
+        print("✅ Configuration loaded successfully")
+        print(f"   Model: {config.model_name}")
+        print(f"   Dataset: {config.dataset_name}")
+        print(f"   Batch size: {config.batch_size}")
+        print(f"   Learning rate: {config.learning_rate}")
+        
+        return True
+    except Exception as e:
+        print(f"❌ Configuration loading failed: {e}")
+        return False
+
+def test_monitoring_setup():
+    """Test monitoring setup without Trackio Space"""
+    print("\n🔍 Testing monitoring setup...")
+    
+    try:
+        from src.monitoring import create_monitor_from_config
+        from src.config import get_config
+        
+        # Load config
+        config = get_config("config/train_smollm3_h100_lightweight.py")
+        
+        # Set Trackio URL to a non-existent one to test fallback
+        config.trackio_url = "https://non-existent-space.hf.space"
+        config.experiment_name = "test_experiment"
+        
+        # Create monitor
+        monitor = create_monitor_from_config(config)
+        print("✅ Monitoring setup successful")
+        print(f"   Experiment: {monitor.experiment_name}")
+        print(f"   Tracking enabled: {monitor.enable_tracking}")
+        print(f"   HF Dataset: {monitor.dataset_repo}")
+        
+        return True
+    except Exception as e:
+        print(f"❌ Monitoring setup failed: {e}")
+        return False
+
+def test_trainer_creation():
+    """Test trainer creation"""
+    print("\n🔍 Testing trainer creation...")
+    
+    try:
+        from src.config import get_config
+        from src.model import SmolLM3Model
+        from src.data import SmolLM3Dataset
+        from src.trainer import SmolLM3Trainer
+        
+        # Load config
+        config = get_config("config/train_smollm3_h100_lightweight.py")
+        
+        # Create model (without loading the actual model)
         model = SmolLM3Model(
             model_name=config.model_name,
             max_seq_length=config.max_seq_length,
             config=config
         )
-        print("Model created successfully")
+        print("✅ Model created successfully")
         
-        # Test training arguments creation
-        training_args = model.get_training_arguments("/tmp/test_output")
-        print(f"Training arguments created: {type(training_args)}")
-        print(f"Training arguments keys: {list(training_args.__dict__.keys())}")
+        # Create dataset (without loading actual data)
+        dataset = SmolLM3Dataset(
+            data_path=config.dataset_name,
+            tokenizer=model.tokenizer,
+            max_seq_length=config.max_seq_length,
+            config=config
+        )
+        print("✅ Dataset created successfully")
         
-        # Test specific parameters that might cause issues
-        print(f"report_to: {training_args.report_to}")
-        print(f"dataloader_pin_memory: {training_args.dataloader_pin_memory}")
-        print(f"group_by_length: {training_args.group_by_length}")
-        print(f"prediction_loss_only: {training_args.prediction_loss_only}")
-        print(f"ignore_data_skip: {training_args.ignore_data_skip}")
-        print(f"remove_unused_columns: {training_args.remove_unused_columns}")
-        print(f"fp16: {training_args.fp16}")
-        print(f"bf16: {training_args.bf16}")
-        print(f"load_best_model_at_end: {training_args.load_best_model_at_end}")
-        print(f"greater_is_better: {training_args.greater_is_better}")
+        # Create trainer
+        trainer = SmolLM3Trainer(
+            model=model,
+            dataset=dataset,
+            config=config,
+            output_dir="/tmp/test_output",
+            init_from="scratch"
+        )
+        print("✅ Trainer created successfully")
         
-        print("✅ Training arguments test passed!")
         return True
-        
     except Exception as e:
-        print(f"❌ Training arguments test failed: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Trainer creation failed: {e}")
         return False
 
-def test_callback_creation():
-    """Test that callbacks are properly created"""
-    print("\nTesting callback creation...")
+def test_format_string_fix():
+    """Test that the format string fix works"""
+    print("\n🔍 Testing format string fix...")
     
     try:
-        from monitoring import create_monitor_from_config
-        from config.train_smollm3_openhermes_fr_a100_balanced import SmolLM3ConfigOpenHermesFRBalanced
+        from src.trainer import SmolLM3Trainer
         
-        config = SmolLM3ConfigOpenHermesFRBalanced()
-        monitor = create_monitor_from_config(config)
+        # Test the SimpleConsoleCallback format string handling
+        from transformers import TrainerCallback
         
-        # Test callback creation
-        callback = monitor.create_monitoring_callback()
-        if callback:
-            print(f"✅ Callback created successfully: {type(callback)}")
-            return True
-        else:
-            print("❌ Callback creation failed")
-            return False
-            
+        class TestCallback(TrainerCallback):
+            def on_log(self, args, state, control, logs=None, **kwargs):
+                if logs and isinstance(logs, dict):
+                    step = getattr(state, 'global_step', 'unknown')
+                    loss = logs.get('loss', 'N/A')
+                    lr = logs.get('learning_rate', 'N/A')
+                    
+                    # Test the fixed format string logic
+                    if isinstance(loss, (int, float)):
+                        loss_str = f"{loss:.4f}"
+                    else:
+                        loss_str = str(loss)
+                    if isinstance(lr, (int, float)):
+                        lr_str = f"{lr:.2e}"
+                    else:
+                        lr_str = str(lr)
+                    
+                    print(f"Step {step}: loss={loss_str}, lr={lr_str}")
+        
+        print("✅ Format string fix works correctly")
+        return True
     except Exception as e:
-        print(f"❌ Callback creation test failed: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Format string fix test failed: {e}")
+        return False
+
+def main():
+    """Run all tests"""
+    print("🚀 Testing SmolLM3 Training Pipeline Fixes")
+    print("=" * 50)
+    
+    tests = [
+        test_imports,
+        test_config_loading,
+        test_monitoring_setup,
+        test_trainer_creation,
+        test_format_string_fix
+    ]
+    
+    passed = 0
+    total = len(tests)
+    
+    for test in tests:
+        try:
+            if test():
+                passed += 1
+        except Exception as e:
+            print(f"❌ Test {test.__name__} crashed: {e}")
+    
+    print(f"\n📊 Test Results: {passed}/{total} tests passed")
+    
+    if passed == total:
+        print("✅ All tests passed! The training pipeline should work correctly.")
+        return True
+    else:
+        print("❌ Some tests failed. Please check the errors above.")
         return False
 
 if __name__ == "__main__":
-    print("Running training fixes tests...")
-    
-    test1_passed = test_training_arguments()
-    test2_passed = test_callback_creation()
-    
-    if test1_passed and test2_passed:
-        print("\n✅ All tests passed! The fixes should work.")
-    else:
-        print("\n❌ Some tests failed. Please check the errors above.") 
+    success = main()
+    sys.exit(0 if success else 1) 

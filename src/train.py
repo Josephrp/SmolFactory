@@ -207,15 +207,6 @@ def main():
         init_from=args.init_from
     )
     
-    # Add monitoring callback if available
-    if monitor:
-        try:
-            callback = monitor.create_monitoring_callback()
-            trainer.add_callback(callback)
-            logger.info("✅ Monitoring callback added to trainer")
-        except Exception as e:
-            logger.error(f"Failed to add monitoring callback: {e}")
-    
     # Start training
     try:
         trainer.train()

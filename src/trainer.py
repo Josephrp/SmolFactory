@@ -89,7 +89,16 @@ class SmolLM3Trainer:
                     step = state.global_step if hasattr(state, 'global_step') else 'unknown'
                     loss = logs.get('loss', 'N/A')
                     lr = logs.get('learning_rate', 'N/A')
-                    print("Step {}: loss={:.4f}, lr={}".format(step, loss, lr))
+                    # Fix format string error by ensuring proper type conversion
+                    if isinstance(loss, (int, float)):
+                        loss_str = f"{loss:.4f}"
+                    else:
+                        loss_str = str(loss)
+                    if isinstance(lr, (int, float)):
+                        lr_str = f"{lr:.2e}"
+                    else:
+                        lr_str = str(lr)
+                    print(f"Step {step}: loss={loss_str}, lr={lr_str}")
             
             def on_train_begin(self, args, state, control, **kwargs):
                 print("🚀 Training started!")
@@ -99,13 +108,13 @@ class SmolLM3Trainer:
             
             def on_save(self, args, state, control, **kwargs):
                 step = state.global_step if hasattr(state, 'global_step') else 'unknown'
-                print("💾 Checkpoint saved at step {}".format(step))
+                print(f"💾 Checkpoint saved at step {step}")
             
             def on_evaluate(self, args, state, control, metrics=None, **kwargs):
                 if metrics and isinstance(metrics, dict):
                     step = state.global_step if hasattr(state, 'global_step') else 'unknown'
                     eval_loss = metrics.get('eval_loss', 'N/A')
-                    print("📊 Evaluation at step {}: eval_loss={}".format(step, eval_loss))
+                    print(f"📊 Evaluation at step {step}: eval_loss={eval_loss}")
         
         # Add console callback
         callbacks.append(SimpleConsoleCallback())
