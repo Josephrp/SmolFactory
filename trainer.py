@@ -66,6 +66,10 @@ class SmolLM3Trainer:
         
         # Simple console callback for basic monitoring
         class SimpleConsoleCallback:
+            def on_init_end(self, args, state, control, **kwargs):
+                """Called when training initialization is complete"""
+                print("🔧 Training initialization completed")
+            
             def on_log(self, args, state, control, logs=None, **kwargs):
                 """Log metrics to console"""
                 if logs and isinstance(logs, dict):
