@@ -152,10 +152,9 @@ class SmolLM3Model:
             "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False,
             "report_to": None,
             "remove_unused_columns": False,
-            "dataloader_pin_memory": False,
-            "group_by_length": True,
-            "length_column_name": "length",
-            "ignore_data_skip": False,
+            "dataloader_pin_memory": getattr(self.config, 'dataloader_pin_memory', True),
+            # Removed group_by_length as it's causing issues with newer transformers versions
+            # Removed length_column_name as it might conflict with data collator
             "seed": 42,
             "data_seed": 42,
             "dataloader_num_workers": getattr(self.config, 'dataloader_num_workers', 4),
