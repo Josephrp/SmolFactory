@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 
 # Import Hugging Face Hub API
 try:
-    from huggingface_hub import HfApi, create_repo
+    from huggingface_hub import HfApi, create_repo, upload_file
     HF_HUB_AVAILABLE = True
 except ImportError:
     HF_HUB_AVAILABLE = False
@@ -25,21 +25,30 @@ except ImportError:
 class TrackioSpaceDeployer:
     """Deployer for Trackio on Hugging Face Spaces"""
     
-    def __init__(self, space_name: str, username: str, token: str, git_email: str = None, git_name: str = None):
+    def __init__(self, space_name: str, token: str, git_email: str = None, git_name: str = None):
         self.space_name = space_name
-        self.username = username
         self.token = token
-        self.space_url = f"https://huggingface.co/spaces/{username}/{space_name}"
         
-        # Git configuration
-        self.git_email = git_email or f"{username}@huggingface.co"
-        self.git_name = git_name or username
-        
-        # Initialize HF API
+        # Initialize HF API and get user info
         if HF_HUB_AVAILABLE:
             self.api = HfApi(token=self.token)
+            # Get username from token
+            try:
+                user_info = self.api.whoami()
+                self.username = user_info.get('name', 'unknown')
+                print(f"✅ Authenticated as: {self.username}")
+            except Exception as e:
+                print(f"❌ Failed to get user info from token: {e}")
+                sys.exit(1)
         else:
             self.api = None
+            self.username = None
+        
+        self.space_url = f"https://huggingface.co/spaces/{self.username}/{self.space_name}"
+        
+        # Git configuration
+        self.git_email = git_email or f"{self.username}@huggingface.co"
+        self.git_name = git_name or self.username
         
     def create_space(self) -> bool:
         """Create a new Hugging Face Space using the latest API"""
@@ -171,68 +180,110 @@ class TrackioSpaceDeployer:
             return None
     
     def upload_files_to_space(self, temp_dir: str) -> bool:
-        """Upload files to the Space using git"""
+        """Upload files to the Space using HF Hub API directly"""
         try:
-            print("Uploading files to Space...")
+            print("Uploading files to Space using HF Hub API...")
             
-            # Change to temp directory
-            original_dir = os.getcwd()
-            os.chdir(temp_dir)
+            if not HF_HUB_AVAILABLE:
+                print("❌ huggingface_hub not available for file upload")
+                return False
             
-            # Initialize git repository
-            subprocess.run(["git", "init"], check=True, capture_output=True)
-            subprocess.run(["git", "remote", "add", "origin", f"https://huggingface.co/spaces/{self.username}/{self.space_name}"], check=True, capture_output=True)
+            repo_id = f"{self.username}/{self.space_name}"
             
-            # Configure git user identity for this repository
-            # Get git config from the original directory or use defaults
-            try:
-                # Try to get existing git config
-                result = subprocess.run(["git", "config", "--global", "user.email"], capture_output=True, text=True)
-                if result.returncode == 0 and result.stdout.strip():
-                    git_email = result.stdout.strip()
-                else:
-                    git_email = self.git_email
-                
-                result = subprocess.run(["git", "config", "--global", "user.name"], capture_output=True, text=True)
-                if result.returncode == 0 and result.stdout.strip():
-                    git_name = result.stdout.strip()
-                else:
-                    git_name = self.git_name
-                
-            except Exception:
-                # Fallback to default values
-                git_email = self.git_email
-                git_name = self.git_name
+            # Upload each file using the HF Hub API
+            temp_path = Path(temp_dir)
+            uploaded_files = []
             
-            # Set git config for this repository
-            subprocess.run(["git", "config", "user.email", git_email], check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", git_name], check=True, capture_output=True)
+            for file_path in temp_path.iterdir():
+                if file_path.is_file():
+                    try:
+                        # Upload file to the space
+                        upload_file(
+                            path_or_fileobj=str(file_path),
+                            path_in_repo=file_path.name,
+                            repo_id=repo_id,
+                            repo_type="space",
+                            token=self.token
+                        )
+                        uploaded_files.append(file_path.name)
+                        print(f"✅ Uploaded {file_path.name}")
+                    except Exception as e:
+                        print(f"❌ Failed to upload {file_path.name}: {e}")
+                        return False
             
-            print(f"✅ Configured git with email: {git_email}, name: {git_name}")
-            
-            # Add all files
-            subprocess.run(["git", "add", "."], check=True, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "Initial Trackio Space setup"], check=True, capture_output=True)
-            
-            # Push to the space
-            try:
-                subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True)
-                print("✅ Pushed to main branch")
-            except subprocess.CalledProcessError:
-                # Try pushing to master branch if main doesn't exist
-                subprocess.run(["git", "push", "origin", "master"], check=True, capture_output=True)
-                print("✅ Pushed to master branch")
-            
-            # Return to original directory
-            os.chdir(original_dir)
-            
+            print(f"✅ Successfully uploaded {len(uploaded_files)} files to Space")
             return True
             
         except Exception as e:
             print(f"❌ Error uploading files: {e}")
-            # Return to original directory
-            os.chdir(original_dir)
             return False
+    
+    def set_space_secrets(self) -> bool:
+        """Set environment variables/secrets for the Space using HF Hub API"""
+        try:
+            print("Setting Space secrets using HF Hub API...")
+            
+            if not HF_HUB_AVAILABLE:
+                print("❌ huggingface_hub not available for setting secrets")
+                return self._manual_secret_setup()
+            
+            repo_id = f"{self.username}/{self.space_name}"
+            
+            # Get the HF token from environment or use the provided token
+            hf_token = os.getenv('HF_TOKEN', self.token)
+            
+            # Set the HF_TOKEN secret for the space using the API
+            try:
+                self.api.add_space_secret(
+                    repo_id=repo_id,
+                    key="HF_TOKEN",
+                    value=hf_token,
+                    description="Hugging Face token for dataset access"
+                )
+                print("✅ Successfully set HF_TOKEN secret via API")
+                
+                # Optionally set dataset repository if specified
+                dataset_repo = os.getenv('TRACKIO_DATASET_REPO')
+                if dataset_repo:
+                    self.api.add_space_variable(
+                        repo_id=repo_id,
+                        key="TRACKIO_DATASET_REPO",
+                        value=dataset_repo,
+                        description="Dataset repository for Trackio experiments"
+                    )
+                    print(f"✅ Successfully set TRACKIO_DATASET_REPO variable: {dataset_repo}")
+                
+                return True
+                
+            except Exception as api_error:
+                print(f"❌ Failed to set secrets via API: {api_error}")
+                print("Falling back to manual setup...")
+                return self._manual_secret_setup()
+            
+        except Exception as e:
+            print(f"❌ Error setting space secrets: {e}")
+            return self._manual_secret_setup()
+    
+    def _manual_secret_setup(self) -> bool:
+        """Fallback method for manual secret setup"""
+        print("📝 Manual Space Secrets Configuration:")
+        print(f"   HF_TOKEN={self.token}")
+        
+        dataset_repo = os.getenv('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        print(f"   TRACKIO_DATASET_REPO={dataset_repo}")
+        
+        print("\n🔧 To set secrets in your Space:")
+        print("1. Go to your Space settings: {self.space_url}/settings")
+        print("2. Navigate to the 'Repository secrets' section")
+        print("3. Add the following secrets:")
+        print(f"   Name: HF_TOKEN")
+        print(f"   Value: {self.token}")
+        if dataset_repo:
+            print(f"   Name: TRACKIO_DATASET_REPO")
+            print(f"   Value: {dataset_repo}")
+        print("4. Save the secrets")
+        
+        return True
     
     def test_space(self) -> bool:
         """Test if the Space is working correctly"""
@@ -272,18 +323,22 @@ class TrackioSpaceDeployer:
         if not temp_dir:
             return False
         
-        # Step 3: Upload files
+        # Step 3: Upload files using HF Hub API
         if not self.upload_files_to_space(temp_dir):
             return False
         
-        # Step 4: Clean up temp directory
+        # Step 4: Set space secrets using API
+        if not self.set_space_secrets():
+            return False
+        
+        # Step 5: Clean up temp directory
         try:
             shutil.rmtree(temp_dir)
             print("✅ Cleaned up temporary directory")
         except Exception as e:
             print(f"⚠️  Warning: Could not clean up temp directory: {e}")
         
-        # Step 5: Test space
+        # Step 6: Test space
         if not self.test_space():
             print("⚠️  Space created but may need more time to build")
             print("Please check the Space manually in a few minutes")
@@ -299,8 +354,7 @@ def main():
     print("Trackio Space Deployment Script")
     print("=" * 40)
     
-    # Get user input
-    username = input("Enter your Hugging Face username: ").strip()
+    # Get user input (no username needed - will be extracted from token)
     space_name = input("Enter Space name (e.g., trackio-monitoring): ").strip()
     token = input("Enter your Hugging Face token: ").strip()
     
@@ -308,8 +362,8 @@ def main():
     git_email = input("Enter your git email (optional, press Enter for default): ").strip()
     git_name = input("Enter your git name (optional, press Enter for default): ").strip()
     
-    if not username or not space_name or not token:
-        print("❌ Username, Space name, and token are required")
+    if not space_name or not token:
+        print("❌ Space name and token are required")
         sys.exit(1)
     
     # Use empty strings if not provided
@@ -318,8 +372,8 @@ def main():
     if not git_name:
         git_name = None
     
-    # Create deployer
-    deployer = TrackioSpaceDeployer(space_name, username, token, git_email, git_name)
+    # Create deployer (username will be extracted from token)
+    deployer = TrackioSpaceDeployer(space_name, token, git_email, git_name)
     
     # Run deployment
     success = deployer.deploy()
@@ -327,14 +381,17 @@ def main():
     if success:
         print("\n✅ Deployment successful!")
         print(f"🌐 Your Trackio Space: {deployer.space_url}")
+        print(f"👤 Username: {deployer.username}")
         print("\nNext steps:")
         print("1. Wait for the Space to build (usually 2-5 minutes)")
-        print("2. Test the interface by visiting the Space URL")
-        print("3. Use the Space URL in your training scripts")
+        print("2. Secrets have been automatically set via API")
+        print("3. Test the interface by visiting the Space URL")
+        print("4. Use the Space URL in your training scripts")
         print("\nIf the Space doesn't work immediately, check:")
         print("- The Space logs at the Space URL")
         print("- That all files were uploaded correctly")
         print("- That the HF token has write permissions")
+        print("- That the secrets were set correctly in Space settings")
     else:
         print("\n❌ Deployment failed!")
         print("Check the error messages above and try again.")

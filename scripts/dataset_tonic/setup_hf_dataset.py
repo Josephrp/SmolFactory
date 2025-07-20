@@ -8,19 +8,31 @@ import json
 from datetime import datetime
 from pathlib import Path
 from datasets import Dataset
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, create_repo
 
 def setup_trackio_dataset():
     """Set up the Trackio experiments dataset on Hugging Face Hub"""
     
     # Configuration - get from environment variables with fallbacks
-    dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
     hf_token = os.environ.get('HF_TOKEN')
     
     if not hf_token:
         print("❌ HF_TOKEN not found. Please set the HF_TOKEN environment variable.")
         print("You can get your token from: https://huggingface.co/settings/tokens")
         return False
+    
+    # Initialize HF API and get user info
+    try:
+        api = HfApi(token=hf_token)
+        user_info = api.whoami()
+        username = user_info.get('name', 'unknown')
+        print(f"✅ Authenticated as: {username}")
+    except Exception as e:
+        print(f"❌ Failed to get user info from token: {e}")
+        return False
+    
+    # Use username in dataset repository if not specified
+    dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', f'{username}/trackio-experiments')
     
     print(f"🚀 Setting up Trackio dataset: {dataset_repo}")
     print(f"🔧 Using dataset repository: {dataset_repo}")
@@ -247,6 +259,23 @@ def setup_trackio_dataset():
     ]
     
     try:
+        # Initialize HF API
+        api = HfApi(token=hf_token)
+        
+        # First, try to create the dataset repository
+        print(f"Creating dataset repository: {dataset_repo}")
+        try:
+            create_repo(
+                repo_id=dataset_repo,
+                token=hf_token,
+                repo_type="dataset",
+                exist_ok=True,
+                private=True  # Make it private for security
+            )
+            print(f"✅ Dataset repository created: {dataset_repo}")
+        except Exception as e:
+            print(f"⚠️  Repository creation failed (may already exist): {e}")
+        
         # Create dataset
         dataset = Dataset.from_list(initial_experiments)
         
@@ -262,8 +291,8 @@ def setup_trackio_dataset():
                 readme_content = f.read()
             print(f"✅ Found README template: {readme_path}")
         
-        # Push to HF Hub with README
-        api = HfApi(token=hf_token)
+        # Push to HF Hub
+        print("Pushing dataset to HF Hub...")
         dataset.push_to_hub(
             dataset_repo,
             token=hf_token,
@@ -273,6 +302,7 @@ def setup_trackio_dataset():
         # Create README separately if available
         if readme_content:
             try:
+                print("Uploading README.md...")
                 api.upload_file(
                     path_or_fileobj=readme_content.encode('utf-8'),
                     path_in_repo="README.md",
@@ -280,7 +310,7 @@ def setup_trackio_dataset():
                     repo_type="dataset",
                     token=hf_token
                 )
-                print("📝 Uploaded README.md separately")
+                print("📝 Uploaded README.md successfully")
             except Exception as e:
                 print(f"⚠️  Could not upload README: {e}")
         
@@ -288,7 +318,8 @@ def setup_trackio_dataset():
         print(f"📊 Added {len(initial_experiments)} experiments")
         if readme_content:
             print("📝 Included README from templates")
-        print("🔒 Dataset is private (only accessible with your token)")
+        print("🔓 Dataset is public (accessible to everyone)")
+        print(f"👤 Created by: {username}")
         print("\n🎯 Next steps:")
         print("1. Set HF_TOKEN in your Hugging Face Space environment")
         print("2. Deploy the updated app.py to your Space")
@@ -298,6 +329,10 @@ def setup_trackio_dataset():
         
     except Exception as e:
         print(f"❌ Failed to create dataset: {e}")
+        print("\nTroubleshooting:")
+        print("1. Check that your HF token has write permissions")
+        print("2. Verify the dataset repository name is available")
+        print("3. Try creating the dataset manually on HF first")
         return False
 
 if __name__ == "__main__":
