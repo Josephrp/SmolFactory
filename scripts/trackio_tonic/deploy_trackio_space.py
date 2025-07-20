@@ -9,8 +9,18 @@ import json
 import requests
 import subprocess
 import sys
+import tempfile
+import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+# Import Hugging Face Hub API
+try:
+    from huggingface_hub import HfApi, create_repo
+    HF_HUB_AVAILABLE = True
+except ImportError:
+    HF_HUB_AVAILABLE = False
+    print("Warning: huggingface_hub not available. Install with: pip install huggingface_hub")
 
 class TrackioSpaceDeployer:
     """Deployer for Trackio on Hugging Face Spaces"""
@@ -21,10 +31,55 @@ class TrackioSpaceDeployer:
         self.token = token
         self.space_url = f"https://huggingface.co/spaces/{username}/{space_name}"
         
+        # Initialize HF API
+        if HF_HUB_AVAILABLE:
+            self.api = HfApi(token=self.token)
+        else:
+            self.api = None
+        
     def create_space(self) -> bool:
-        """Create a new Hugging Face Space"""
+        """Create a new Hugging Face Space using the latest API"""
         try:
             print(f"Creating Space: {self.space_name}")
+            
+            if not HF_HUB_AVAILABLE:
+                print("❌ huggingface_hub not available, falling back to CLI")
+                return self._create_space_cli()
+            
+            # Use the latest HF Hub API to create space
+            repo_id = f"{self.username}/{self.space_name}"
+            
+            try:
+                # Create the space using the API
+                create_repo(
+                    repo_id=repo_id,
+                    token=self.token,
+                    repo_type="space",
+                    exist_ok=True,
+                    private=False,  # Spaces are typically public
+                    space_sdk="gradio",  # Specify Gradio SDK
+                    space_hardware="cpu-basic"  # Use basic CPU
+                )
+                
+                print(f"✅ Space created successfully: {self.space_url}")
+                return True
+                
+            except Exception as api_error:
+                print(f"API creation failed: {api_error}")
+                print("Falling back to CLI method...")
+                return self._create_space_cli()
+                
+        except Exception as e:
+            print(f"❌ Error creating space: {e}")
+            return False
+    
+    def _create_space_cli(self) -> bool:
+        """Fallback method using CLI commands"""
+        try:
+            print("Using CLI fallback method...")
+            
+            # Set HF token for CLI
+            os.environ['HF_TOKEN'] = self.token
             
             # Create space using Hugging Face CLI
             cmd = [
@@ -33,10 +88,11 @@ class TrackioSpaceDeployer:
                 "--type", "space"
             ]
             
-            # Try to create the space first
+            print(f"Running command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode != 0:
+                print(f"First attempt failed: {result.stderr}")
                 # Try alternative approach without space-specific flags
                 print("Retrying with basic space creation...")
                 cmd = [
@@ -53,123 +109,98 @@ class TrackioSpaceDeployer:
                 return False
                 
         except Exception as e:
-            print(f"❌ Error creating space: {e}")
+            print(f"❌ Error creating space with CLI: {e}")
             return False
     
-    def upload_files(self) -> bool:
-        """Upload necessary files to the Space"""
+    def prepare_space_files(self) -> str:
+        """Prepare all necessary files for the Space in a temporary directory"""
         try:
-            print("Uploading files to Space...")
+            print("Preparing Space files...")
+            
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp()
+            print(f"Created temporary directory: {temp_dir}")
             
             # Get the project root directory (3 levels up from this script)
             project_root = Path(__file__).parent.parent.parent
             templates_dir = project_root / "templates" / "spaces"
             
-            # Files to upload from templates/spaces
-            files_to_upload = [
+            # Files to copy from templates/spaces
+            files_to_copy = [
                 "app.py",
-                "requirements.txt"
+                "requirements.txt",
+                "README.md"
             ]
             
-            # README.md will be created by configure_space method
-            
-            # Copy files from templates/spaces to current directory
+            # Copy files from templates/spaces to temp directory
             copied_files = []
-            for file_name in files_to_upload:
+            for file_name in files_to_copy:
                 source_path = templates_dir / file_name
+                dest_path = Path(temp_dir) / file_name
+                
                 if source_path.exists():
-                    import shutil
-                    shutil.copy2(source_path, file_name)
+                    shutil.copy2(source_path, dest_path)
                     copied_files.append(file_name)
-                    print(f"✅ Copied {file_name} from templates")
+                    print(f"✅ Copied {file_name} to temp directory")
                 else:
                     print(f"⚠️  File not found: {source_path}")
             
-            # Check if we're in a git repository
-            try:
-                subprocess.run(["git", "status"], capture_output=True, check=True)
-            except subprocess.CalledProcessError:
-                print("⚠️  Not in a git repository, initializing...")
-                subprocess.run(["git", "init"], check=True)
-                subprocess.run(["git", "remote", "add", "origin", f"https://huggingface.co/spaces/{self.username}/{self.space_name}"], check=True)
-            
-            # Add all files at once
-            existing_files = [f for f in files_to_upload if os.path.exists(f)]
-            if existing_files:
-                subprocess.run(["git", "add"] + existing_files, check=True)
-                subprocess.run(["git", "add", "README.md"], check=True)  # Add README.md that was created in configure_space
-                subprocess.run(["git", "commit", "-m", "Initial Space setup"], check=True)
+            # Update README.md with actual space URL
+            readme_path = Path(temp_dir) / "README.md"
+            if readme_path.exists():
+                with open(readme_path, 'r', encoding='utf-8') as f:
+                    readme_content = f.read()
                 
-                # Push to the space
-                try:
-                    subprocess.run(["git", "push", "origin", "main"], check=True)
-                    print(f"✅ Uploaded {len(existing_files)} files")
-                except subprocess.CalledProcessError:
-                    # Try pushing to master branch if main doesn't exist
-                    subprocess.run(["git", "push", "origin", "master"], check=True)
-                    print(f"✅ Uploaded {len(existing_files)} files")
-            else:
-                print("⚠️  No files found to upload")
+                # Replace placeholder with actual space URL
+                readme_content = readme_content.replace("{SPACE_URL}", self.space_url)
+                
+                with open(readme_path, 'w', encoding='utf-8') as f:
+                    f.write(readme_content)
+                
+                print(f"✅ Updated README.md with space URL")
+            
+            print(f"✅ Prepared {len(copied_files)} files in temporary directory")
+            return temp_dir
+            
+        except Exception as e:
+            print(f"❌ Error preparing files: {e}")
+            return None
+    
+    def upload_files_to_space(self, temp_dir: str) -> bool:
+        """Upload files to the Space using git"""
+        try:
+            print("Uploading files to Space...")
+            
+            # Change to temp directory
+            original_dir = os.getcwd()
+            os.chdir(temp_dir)
+            
+            # Initialize git repository
+            subprocess.run(["git", "init"], check=True, capture_output=True)
+            subprocess.run(["git", "remote", "add", "origin", f"https://huggingface.co/spaces/{self.username}/{self.space_name}"], check=True, capture_output=True)
+            
+            # Add all files
+            subprocess.run(["git", "add", "."], check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "Initial Trackio Space setup"], check=True, capture_output=True)
+            
+            # Push to the space
+            try:
+                subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True)
+                print("✅ Pushed to main branch")
+            except subprocess.CalledProcessError:
+                # Try pushing to master branch if main doesn't exist
+                subprocess.run(["git", "push", "origin", "master"], check=True, capture_output=True)
+                print("✅ Pushed to master branch")
+            
+            # Return to original directory
+            os.chdir(original_dir)
             
             return True
             
         except Exception as e:
             print(f"❌ Error uploading files: {e}")
-            return False
-    
-    def configure_space(self) -> bool:
-        """Configure the Space settings"""
-        try:
-            print("Configuring Space settings...")
-            
-            # Get the project root directory (3 levels up from this script)
-            project_root = Path(__file__).parent.parent.parent
-            templates_dir = project_root / "templates" / "spaces"
-            readme_template_path = templates_dir / "README.md"
-            
-            # Read README template if it exists
-            if readme_template_path.exists():
-                with open(readme_template_path, 'r', encoding='utf-8') as f:
-                    readme_template = f.read()
-                
-                # Replace placeholder with actual space URL
-                readme_content = readme_template.replace("{SPACE_URL}", self.space_url)
-                
-                # Write README.md for the space
-                with open("README.md", "w", encoding='utf-8') as f:
-                    f.write(readme_content)
-                
-                print(f"✅ Created README.md from template")
-            else:
-                print(f"⚠️  README template not found: {readme_template_path}")
-                # Fallback to basic README
-                basic_readme = f"""---
-title: Trackio Tonic
-emoji: 🐠
-colorFrom: indigo
-colorTo: yellow
-sdk: gradio
-sdk_version: 5.38.0
-app_file: app.py
-pinned: true
-license: mit
-short_description: trackio for training monitoring
----
-
-# Trackio Experiment Tracking
-
-A Gradio interface for experiment tracking and monitoring.
-
-Visit: {self.space_url}
-"""
-                with open("README.md", "w", encoding='utf-8') as f:
-                    f.write(basic_readme)
-                print(f"✅ Created basic README.md")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error configuring space: {e}")
+            # Return to original directory
+            os.chdir(original_dir)
             return False
     
     def test_space(self) -> bool:
@@ -179,16 +210,18 @@ Visit: {self.space_url}
             
             # Wait a bit for the space to build
             import time
-            time.sleep(30)
+            print("Waiting 180 seconds for Space to build...")
+            time.sleep(180)
             
             # Try to access the space
-            response = requests.get(self.space_url, timeout=10)
+            response = requests.get(self.space_url, timeout=30)
             
             if response.status_code == 200:
                 print(f"✅ Space is accessible: {self.space_url}")
                 return True
             else:
                 print(f"⚠️  Space returned status code: {response.status_code}")
+                print(f"Response: {response.text[:500]}...")
                 return False
                 
         except Exception as e:
@@ -203,17 +236,26 @@ Visit: {self.space_url}
         if not self.create_space():
             return False
         
-        # Step 2: Configure space
-        if not self.configure_space():
+        # Step 2: Prepare files
+        temp_dir = self.prepare_space_files()
+        if not temp_dir:
             return False
         
         # Step 3: Upload files
-        if not self.upload_files():
+        if not self.upload_files_to_space(temp_dir):
             return False
         
-        # Step 4: Test space
+        # Step 4: Clean up temp directory
+        try:
+            shutil.rmtree(temp_dir)
+            print("✅ Cleaned up temporary directory")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not clean up temp directory: {e}")
+        
+        # Step 5: Test space
         if not self.test_space():
-            print("⚠️  Space created but may need time to build")
+            print("⚠️  Space created but may need more time to build")
+            print("Please check the Space manually in a few minutes")
         
         print(f"🎉 Deployment completed!")
         print(f"📊 Trackio Space URL: {self.space_url}")
@@ -229,10 +271,10 @@ def main():
     # Get user input
     username = input("Enter your Hugging Face username: ").strip()
     space_name = input("Enter Space name (e.g., trackio-monitoring): ").strip()
-    token = input("Enter your Hugging Face token (optional): ").strip()
+    token = input("Enter your Hugging Face token: ").strip()
     
-    if not username or not space_name:
-        print("❌ Username and Space name are required")
+    if not username or not space_name or not token:
+        print("❌ Username, Space name, and token are required")
         sys.exit(1)
     
     # Create deployer
@@ -248,9 +290,17 @@ def main():
         print("1. Wait for the Space to build (usually 2-5 minutes)")
         print("2. Test the interface by visiting the Space URL")
         print("3. Use the Space URL in your training scripts")
+        print("\nIf the Space doesn't work immediately, check:")
+        print("- The Space logs at the Space URL")
+        print("- That all files were uploaded correctly")
+        print("- That the HF token has write permissions")
     else:
         print("\n❌ Deployment failed!")
         print("Check the error messages above and try again.")
+        print("\nTroubleshooting:")
+        print("1. Verify your HF token has write permissions")
+        print("2. Check that the space name is available")
+        print("3. Try creating the space manually on HF first")
 
 if __name__ == "__main__":
     main() 
