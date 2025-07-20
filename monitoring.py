@@ -40,16 +40,16 @@ class SmolLM3Monitor:
         self.log_metrics = log_metrics
         self.log_config = log_config
         
-        # Initialize Trackio API client
-        self.trackio_client = None
-        if self.enable_tracking:
-            self._setup_trackio(trackio_url, trackio_token)
-        
-        # Experiment metadata
+        # Initialize experiment metadata first
         self.experiment_id = None
         self.start_time = datetime.now()
         self.metrics_history = []
         self.artifacts = []
+        
+        # Initialize Trackio API client
+        self.trackio_client = None
+        if self.enable_tracking:
+            self._setup_trackio(trackio_url, trackio_token)
         
         logger.info(f"Initialized monitoring for experiment: {experiment_name}")
     
