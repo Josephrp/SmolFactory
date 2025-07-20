@@ -1,4 +1,4 @@
-# SmolLM3 Fine-tuning for FlexAI Console
+# SmolLM3 Fine-tuning
 
 This repository provides a complete setup for fine-tuning SmolLM3 models using the FlexAI console, following the nanoGPT structure but adapted for modern transformer models.
 

@@ -1,3 +1,6 @@
+.cursorrules/
+*.mdc
+
 # Python
 __pycache__/
 *.py[cod]
@@ -86,9 +89,9 @@ accelerate_config.yaml
 
 # Training outputs
 runs/
-*.json
+#*.json
 !config/*.json
-!*.json.example
+#!*.json.example
 
 # Evaluation results
 eval_results/

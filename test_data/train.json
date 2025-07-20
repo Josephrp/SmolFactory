@@ -1,0 +1,14 @@
+[
+  {
+    "messages": [
+      {"role": "user", "content": "What is machine learning?"},
+      {"role": "assistant", "content": "Machine learning is a subset of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed."}
+    ]
+  },
+  {
+    "messages": [
+      {"role": "user", "content": "Explain gravity in simple terms."},
+      {"role": "assistant", "content": "Gravity is the force that pulls objects toward each other, like how the Earth pulls things down to the ground."}
+    ]
+  }
+] 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Push Trained Model and Results to Hugging Face Hub
-Integrates with Trackio monitoring and provides complete model deployment
+Integrates with Trackio monitoring and HF Datasets for complete model deployment
 """
 
 import os
@@ -32,7 +32,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class HuggingFacePusher:
-    """Push trained models and results to Hugging Face Hub"""
+    """Push trained models and results to Hugging Face Hub with HF Datasets integration"""
     
     def __init__(
         self,
@@ -41,14 +41,20 @@ class HuggingFacePusher:
         token: Optional[str] = None,
         private: bool = False,
         trackio_url: Optional[str] = None,
-        experiment_name: Optional[str] = None
+        experiment_name: Optional[str] = None,
+        dataset_repo: Optional[str] = None,
+        hf_token: Optional[str] = None
     ):
         self.model_path = Path(model_path)
         self.repo_name = repo_name
-        self.token = token or os.getenv('HF_TOKEN')
+        self.token = token or hf_token or os.getenv('HF_TOKEN')
         self.private = private
         self.trackio_url = trackio_url
         self.experiment_name = experiment_name
+        
+        # HF Datasets configuration
+        self.dataset_repo = dataset_repo or os.getenv('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        self.hf_token = hf_token or os.getenv('HF_TOKEN')
         
         # Initialize HF API
         if HF_AVAILABLE:
@@ -58,14 +64,17 @@ class HuggingFacePusher:
         
         # Initialize monitoring if available
         self.monitor = None
-        if MONITORING_AVAILABLE and trackio_url:
+        if MONITORING_AVAILABLE:
             self.monitor = SmolLM3Monitor(
                 experiment_name=experiment_name or "model_push",
                 trackio_url=trackio_url,
-                enable_tracking=True
+                enable_tracking=bool(trackio_url),
+                hf_token=self.hf_token,
+                dataset_repo=self.dataset_repo
             )
         
         logger.info(f"Initialized HuggingFacePusher for {repo_name}")
+        logger.info(f"Dataset repository: {self.dataset_repo}")
     
     def create_repository(self) -> bool:
         """Create the Hugging Face repository"""
@@ -131,6 +140,7 @@ This is a fine-tuned SmolLM3 model based on the HuggingFaceTB/SmolLM3-3B archite
 - **Fine-tuning Method**: Supervised Fine-tuning
 - **Training Date**: {datetime.now().strftime('%Y-%m-%d')}
 - **Model Size**: {self._get_model_size():.1f} GB
+- **Dataset Repository**: {self.dataset_repo}
 
 ## Training Configuration
 
@@ -166,12 +176,17 @@ print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 - **Training Time**: {results.get('training_time_hours', 'Unknown')} hours
 - **Final Loss**: {results.get('final_loss', 'Unknown')}
 - **Final Accuracy**: {results.get('final_accuracy', 'Unknown')}
+- **Dataset Repository**: {self.dataset_repo}
 
 ## Model Performance
 
 - **Training Loss**: {results.get('train_loss', 'Unknown')}
 - **Validation Loss**: {results.get('eval_loss', 'Unknown')}
 - **Training Steps**: {results.get('total_steps', 'Unknown')}
+
+## Experiment Tracking
+
+This model was trained with experiment tracking enabled. Training metrics and configuration are stored in the HF Dataset repository: `{self.dataset_repo}`
 
 ## Limitations and Biases
 
@@ -293,6 +308,7 @@ print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 - **Model Size**: {self._get_model_size():.1f} GB
 - **Training Steps**: {results.get('total_steps', 'Unknown')}
 - **Final Loss**: {results.get('final_loss', 'Unknown')}
+- **Dataset Repository**: {self.dataset_repo}
 
 ## Training Configuration
 
@@ -305,6 +321,10 @@ print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 ```json
 {json.dumps(results, indent=2)}
 ```
+
+## Experiment Tracking
+
+Training metrics and configuration are stored in the HF Dataset repository: `{self.dataset_repo}`
 
 ## Files
 
@@ -327,8 +347,8 @@ MIT License
             upload_file(
                 path_or_fileobj=str(readme_path),
                 path_in_repo="README.md",
-                repo_id=self.repo_name,
-                token=self.token
+                token=self.token,
+                repo_id=self.repo_name
             )
             
             # Clean up
@@ -342,23 +362,36 @@ MIT License
             return False
     
     def log_to_trackio(self, action: str, details: Dict[str, Any]):
-        """Log push action to Trackio"""
+        """Log push action to Trackio and HF Datasets"""
         if self.monitor:
             try:
+                # Log to Trackio
                 self.monitor.log_metrics({
                     "push_action": action,
                     "repo_name": self.repo_name,
                     "model_size_gb": self._get_model_size(),
+                    "dataset_repo": self.dataset_repo,
                     **details
                 })
-                logger.info(f"✅ Logged {action} to Trackio")
+                
+                # Log training summary
+                self.monitor.log_training_summary({
+                    "model_push": True,
+                    "model_repo": self.repo_name,
+                    "dataset_repo": self.dataset_repo,
+                    "push_date": datetime.now().isoformat(),
+                    **details
+                })
+                
+                logger.info(f"✅ Logged {action} to Trackio and HF Datasets")
             except Exception as e:
                 logger.error(f"❌ Failed to log to Trackio: {e}")
     
     def push_model(self, training_config: Optional[Dict[str, Any]] = None, 
                    results: Optional[Dict[str, Any]] = None) -> bool:
-        """Complete model push process"""
+        """Complete model push process with HF Datasets integration"""
         logger.info(f"🚀 Starting model push to {self.repo_name}")
+        logger.info(f"📊 Dataset repository: {self.dataset_repo}")
         
         # Validate model path
         if not self.validate_model_path():
@@ -399,7 +432,7 @@ MIT License
         if results:
             self.upload_training_results(str(self.model_path))
         
-        # Log to Trackio
+        # Log to Trackio and HF Datasets
         self.log_to_trackio("model_push", {
             "model_path": str(self.model_path),
             "repo_name": self.repo_name,
@@ -409,6 +442,7 @@ MIT License
         })
         
         logger.info(f"🎉 Model successfully pushed to: https://huggingface.co/{self.repo_name}")
+        logger.info(f"📊 Experiment data stored in: {self.dataset_repo}")
         return True
     
     def _load_training_config(self) -> Dict[str, Any]:
@@ -437,9 +471,11 @@ def parse_args():
     
     # Optional arguments
     parser.add_argument('--token', type=str, default=None, help='Hugging Face token')
+    parser.add_argument('--hf-token', type=str, default=None, help='Hugging Face token (alternative to --token)')
     parser.add_argument('--private', action='store_true', help='Make repository private')
     parser.add_argument('--trackio-url', type=str, default=None, help='Trackio Space URL for logging')
     parser.add_argument('--experiment-name', type=str, default=None, help='Experiment name for Trackio')
+    parser.add_argument('--dataset-repo', type=str, default=None, help='HF Dataset repository for experiment storage')
     
     return parser.parse_args()
 
@@ -463,7 +499,9 @@ def main():
             token=args.token,
             private=args.private,
             trackio_url=args.trackio_url,
-            experiment_name=args.experiment_name
+            experiment_name=args.experiment_name,
+            dataset_repo=args.dataset_repo,
+            hf_token=args.hf_token
         )
         
         # Push model
@@ -472,6 +510,8 @@ def main():
         if success:
             logger.info("✅ Model push completed successfully!")
             logger.info(f"🌐 View your model at: https://huggingface.co/{args.repo_name}")
+            if args.dataset_repo:
+                logger.info(f"📊 View experiment data at: https://huggingface.co/datasets/{args.dataset_repo}")
         else:
             logger.error("❌ Model push failed!")
             return 1
