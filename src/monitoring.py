@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Import the real API client
 try:
-    from trackio_api_client import TrackioAPIClient
+    from scripts.trackio_tonic.trackio_api_client import TrackioAPIClient
     TRACKIO_AVAILABLE = True
 except ImportError:
     TRACKIO_AVAILABLE = False

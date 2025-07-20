@@ -62,17 +62,17 @@ Thumbs.db
 logs/
 tensorboard_logs/
 
-# Model outputs
-output/
-checkpoints/
-models/
-wandb/
+# # Model outputs
+# output/
+# checkpoints/
+# models/
+# wandb/
 
 # Datasets
-data/
-datasets/
-my_dataset/
-test_dataset/
+# data/
+# datasets/
+# my_dataset/
+# test_dataset/
 
 # Temporary files
 tmp/

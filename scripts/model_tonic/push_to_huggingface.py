@@ -23,6 +23,9 @@ except ImportError:
     print("Warning: huggingface_hub not available. Install with: pip install huggingface_hub")
 
 try:
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
     from monitoring import SmolLM3Monitor
     MONITORING_AVAILABLE = True
 except ImportError:
