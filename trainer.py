@@ -55,11 +55,18 @@ class SmolLM3Trainer:
         )
         
         # Get datasets
+        logger.info("Getting train dataset...")
         train_dataset = self.dataset.get_train_dataset()
+        logger.info(f"Train dataset: {type(train_dataset)} with {len(train_dataset)} samples")
+        
+        logger.info("Getting eval dataset...")
         eval_dataset = self.dataset.get_eval_dataset()
+        logger.info(f"Eval dataset: {type(eval_dataset)} with {len(eval_dataset)} samples")
         
         # Get data collator
+        logger.info("Getting data collator...")
         data_collator = self.dataset.get_data_collator()
+        logger.info(f"Data collator: {type(data_collator)}")
         
         # Add monitoring callback - temporarily disabled to debug
         callbacks = []
@@ -116,6 +123,8 @@ class SmolLM3Trainer:
         #     logger.info("Continuing with console monitoring only")
         
         # Try standard Trainer first (more stable with callbacks)
+        logger.info("Creating Trainer with training arguments...")
+        logger.info(f"Training args keys: {list(training_args.keys())}")
         try:
             trainer = Trainer(
                 model=self.model.model,
@@ -129,6 +138,7 @@ class SmolLM3Trainer:
             logger.info("Using standard Hugging Face Trainer")
         except Exception as e:
             logger.warning(f"Standard Trainer failed: {e}")
+            logger.error(f"Trainer creation error details: {type(e).__name__}: {str(e)}")
             # Fallback to SFTTrainer
             trainer = SFTTrainer(
                 model=self.model.model,
