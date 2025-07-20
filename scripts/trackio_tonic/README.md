@@ -38,9 +38,9 @@ from monitoring import SmolLM3Monitor
 
 monitor = SmolLM3Monitor(
     experiment_name="my_experiment",
-    trackio_url="https://huggingface.co/spaces/Tonic/trackio_test_3",
+    trackio_url="https://huggingface.co/spaces/Tonic/trackio_test_4",
     enable_tracking=True
 )
 ```
 
-Visit: https://huggingface.co/spaces/Tonic/trackio_test_3 
+Visit: https://huggingface.co/spaces/Tonic/trackio_test_4 
