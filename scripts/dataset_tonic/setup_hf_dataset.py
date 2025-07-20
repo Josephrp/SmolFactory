@@ -267,9 +267,22 @@ def setup_trackio_dataset():
         dataset.push_to_hub(
             dataset_repo,
             token=hf_token,
-            private=True,  # Make it private for security
-            readme_content=readme_content  # Include README if available
+            private=False  # Make it private for security
         )
+        
+        # Create README separately if available
+        if readme_content:
+            try:
+                api.upload_file(
+                    path_or_fileobj=readme_content.encode('utf-8'),
+                    path_in_repo="README.md",
+                    repo_id=dataset_repo,
+                    repo_type="dataset",
+                    token=hf_token
+                )
+                print("📝 Uploaded README.md separately")
+            except Exception as e:
+                print(f"⚠️  Could not upload README: {e}")
         
         print(f"✅ Successfully created dataset: {dataset_repo}")
         print(f"📊 Added {len(initial_experiments)} experiments")

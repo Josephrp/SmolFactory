@@ -56,11 +56,13 @@ def main():
     
     args = parser.parse_args()
     
-    # Add the current directory to Python path
-    sys.path.insert(0, str(Path(__file__).parent))
+    # Add the project root to Python path
+    project_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
     
     # Import the configuration
     try:
+        # Import all available configurations
         from config.train_smollm3_openhermes_fr_a100_large import get_config as get_large_config
         from config.train_smollm3_openhermes_fr_a100_multiple_passes import get_config as get_multiple_passes_config
         from config.train_smollm3_h100_lightweight import config as h100_lightweight_config
@@ -128,7 +130,7 @@ def main():
     # Import and run training
     try:
         # Add src directory to path
-        src_path = str(Path(__file__).parent.parent.parent / "src")
+        src_path = str(project_root / "src")
         sys.path.insert(0, src_path)
         from train import main as train_main
         
