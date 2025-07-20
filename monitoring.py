@@ -263,34 +263,52 @@ class SmolLM3Monitor:
             
             def on_init_end(self, args, state, control, **kwargs):
                 """Called when training initialization is complete"""
-                logger.info("Training initialization completed")
+                try:
+                    logger.info("Training initialization completed")
+                except Exception as e:
+                    logger.error(f"Error in on_init_end: {e}")
             
             def on_log(self, args, state, control, logs=None, **kwargs):
                 """Called when logs are created"""
-                if logs:
-                    self.monitor.log_metrics(logs, state.global_step)
-                    self.monitor.log_system_metrics(state.global_step)
+                try:
+                    if logs and isinstance(logs, dict):
+                        self.monitor.log_metrics(logs, state.global_step)
+                        self.monitor.log_system_metrics(state.global_step)
+                except Exception as e:
+                    logger.error(f"Error in on_log: {e}")
             
             def on_save(self, args, state, control, **kwargs):
                 """Called when a checkpoint is saved"""
-                checkpoint_path = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
-                if os.path.exists(checkpoint_path):
-                    self.monitor.log_model_checkpoint(checkpoint_path, state.global_step)
+                try:
+                    checkpoint_path = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+                    if os.path.exists(checkpoint_path):
+                        self.monitor.log_model_checkpoint(checkpoint_path, state.global_step)
+                except Exception as e:
+                    logger.error(f"Error in on_save: {e}")
             
             def on_evaluate(self, args, state, control, metrics=None, **kwargs):
                 """Called when evaluation is performed"""
-                if metrics:
-                    self.monitor.log_evaluation_results(metrics, state.global_step)
+                try:
+                    if metrics and isinstance(metrics, dict):
+                        self.monitor.log_evaluation_results(metrics, state.global_step)
+                except Exception as e:
+                    logger.error(f"Error in on_evaluate: {e}")
             
             def on_train_begin(self, args, state, control, **kwargs):
                 """Called when training begins"""
-                logger.info("Training started")
+                try:
+                    logger.info("Training started")
+                except Exception as e:
+                    logger.error(f"Error in on_train_begin: {e}")
             
             def on_train_end(self, args, state, control, **kwargs):
                 """Called when training ends"""
-                logger.info("Training completed")
-                if self.monitor:
-                    self.monitor.close()
+                try:
+                    logger.info("Training completed")
+                    if self.monitor:
+                        self.monitor.close()
+                except Exception as e:
+                    logger.error(f"Error in on_train_end: {e}")
         
         return TrackioCallback(self)
     

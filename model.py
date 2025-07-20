@@ -172,15 +172,7 @@ class SmolLM3Model:
         # Override with kwargs
         training_args.update(kwargs)
         
-        # Debug: Print training args before creating TrainingArguments
-        logger.info(f"Training arguments keys: {list(training_args.keys())}")
-        
-        try:
-            return TrainingArguments(**training_args)
-        except Exception as e:
-            logger.error(f"Failed to create TrainingArguments: {e}")
-            logger.error(f"Training arguments: {training_args}")
-            raise
+        return TrainingArguments(**training_args)
     
     def save_pretrained(self, path: str):
         """Save model and tokenizer"""
