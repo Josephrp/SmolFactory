@@ -39,9 +39,10 @@ class SmolLM3ConfigH100Lightweight(SmolLM3Config):
     scheduler: str = "cosine"
     min_lr: float = 2e-6  # Higher minimum LR
     
-    # Mixed precision - Full precision for H100
-    fp16: bool = True
-    bf16: bool = False
+    # Mixed precision - Using fp16 for better compatibility
+    # Note: bf16 can cause issues on some GPU setups, fp16 is more universally supported
+    fp16: bool = False
+    bf16: bool = True
     
     # Logging and saving - more frequent for rapid training
     save_steps: int = 200

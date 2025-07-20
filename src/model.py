@@ -36,7 +36,16 @@ class SmolLM3Model:
         # Set device and dtype
         if torch_dtype is None:
             if torch.cuda.is_available():
-                self.torch_dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+                # Check if config specifies mixed precision
+                if config and hasattr(config, 'fp16') and config.fp16:
+                    # Use fp16 if explicitly configured
+                    self.torch_dtype = torch.float16
+                elif config and hasattr(config, 'bf16') and config.bf16:
+                    # Use bf16 if explicitly configured
+                    self.torch_dtype = torch.bfloat16
+                else:
+                    # Default to bfp16 for better compatibility
+                    self.torch_dtype = torch.bfloat16
             else:
                 self.torch_dtype = torch.float32
         else:
@@ -110,11 +119,25 @@ class SmolLM3Model:
                     # If flash attention is not supported, skip it
                     pass
             
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                config=model_config,
-                **model_kwargs
-            )
+            # Try to load the model, fallback to fp16 if bf16 fails
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    config=model_config,
+                    **model_kwargs
+                )
+            except RuntimeError as e:
+                if "bfloat16" in str(e) or "BFloat16" in str(e):
+                    logger.warning("BFloat16 not supported, falling back to Float16")
+                    model_kwargs["torch_dtype"] = torch.float16
+                    self.torch_dtype = torch.float16
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_name,
+                        config=model_config,
+                        **model_kwargs
+                    )
+                else:
+                    raise
             
             # Enable gradient checkpointing if specified
             if self.config and self.config.use_gradient_checkpointing:
