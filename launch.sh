@@ -495,6 +495,8 @@ cat > deploy_input.txt << EOF
 $HF_USERNAME
 $TRACKIO_SPACE_NAME
 $HF_TOKEN
+$GIT_EMAIL
+$HF_USERNAME
 EOF
 
 # Run deployment script

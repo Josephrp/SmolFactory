@@ -25,11 +25,15 @@ except ImportError:
 class TrackioSpaceDeployer:
     """Deployer for Trackio on Hugging Face Spaces"""
     
-    def __init__(self, space_name: str, username: str, token: str):
+    def __init__(self, space_name: str, username: str, token: str, git_email: str = None, git_name: str = None):
         self.space_name = space_name
         self.username = username
         self.token = token
         self.space_url = f"https://huggingface.co/spaces/{username}/{space_name}"
+        
+        # Git configuration
+        self.git_email = git_email or f"{username}@huggingface.co"
+        self.git_name = git_name or username
         
         # Initialize HF API
         if HF_HUB_AVAILABLE:
@@ -179,6 +183,33 @@ class TrackioSpaceDeployer:
             subprocess.run(["git", "init"], check=True, capture_output=True)
             subprocess.run(["git", "remote", "add", "origin", f"https://huggingface.co/spaces/{self.username}/{self.space_name}"], check=True, capture_output=True)
             
+            # Configure git user identity for this repository
+            # Get git config from the original directory or use defaults
+            try:
+                # Try to get existing git config
+                result = subprocess.run(["git", "config", "--global", "user.email"], capture_output=True, text=True)
+                if result.returncode == 0 and result.stdout.strip():
+                    git_email = result.stdout.strip()
+                else:
+                    git_email = self.git_email
+                
+                result = subprocess.run(["git", "config", "--global", "user.name"], capture_output=True, text=True)
+                if result.returncode == 0 and result.stdout.strip():
+                    git_name = result.stdout.strip()
+                else:
+                    git_name = self.git_name
+                
+            except Exception:
+                # Fallback to default values
+                git_email = self.git_email
+                git_name = self.git_name
+            
+            # Set git config for this repository
+            subprocess.run(["git", "config", "user.email", git_email], check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", git_name], check=True, capture_output=True)
+            
+            print(f"✅ Configured git with email: {git_email}, name: {git_name}")
+            
             # Add all files
             subprocess.run(["git", "add", "."], check=True, capture_output=True)
             subprocess.run(["git", "commit", "-m", "Initial Trackio Space setup"], check=True, capture_output=True)
@@ -273,12 +304,22 @@ def main():
     space_name = input("Enter Space name (e.g., trackio-monitoring): ").strip()
     token = input("Enter your Hugging Face token: ").strip()
     
+    # Get git configuration (optional)
+    git_email = input("Enter your git email (optional, press Enter for default): ").strip()
+    git_name = input("Enter your git name (optional, press Enter for default): ").strip()
+    
     if not username or not space_name or not token:
         print("❌ Username, Space name, and token are required")
         sys.exit(1)
     
+    # Use empty strings if not provided
+    if not git_email:
+        git_email = None
+    if not git_name:
+        git_name = None
+    
     # Create deployer
-    deployer = TrackioSpaceDeployer(space_name, username, token)
+    deployer = TrackioSpaceDeployer(space_name, username, token, git_email, git_name)
     
     # Run deployment
     success = deployer.deploy()
