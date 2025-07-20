@@ -1,0 +1,277 @@
+---
+description: SmolLM3 Fine-tuning Pipeline - Project Rules and Conventions
+globs: ["**/*.py", "**/*.sh", "**/*.md", "**/*.json"]
+alwaysApply: true
+---
+
+# SmolLM3 Fine-tuning Pipeline Project Rules
+
+## Project Overview
+This is a comprehensive end-to-end fine-tuning pipeline for SmolLM3 models with Trackio monitoring, Hugging Face integration, and interactive configuration management.
+
+## Core Architecture
+
+### Directory Structure
+- `config/` - Training configuration files for different scenarios
+- `src/` - Core training and model logic
+- `scripts/` - Utility scripts for deployment, dataset management, and model pushing
+- `docs/` - Comprehensive documentation and guides
+- `templates/` - Templates for HF Spaces and datasets
+- `tests/` - Test files and debugging scripts
+- `outputs/` - Training outputs and checkpoints
+
+### Key Components
+
+#### Training Configurations
+- **Basic Training**: SmolLM3-3B + OpenHermes-FR, 3 epochs, batch size 2
+- **H100 Lightweight**: SmolLM3-3B + OpenHermes-FR (80K samples), 1 epoch, batch size 16
+- **A100 Large Scale**: SmolLM3-3B + OpenHermes-FR, 1.3 passes, batch size 8
+- **Multiple Passes**: SmolLM3-3B + OpenHermes-FR, 4 epochs, batch size 6
+- **Custom Configuration**: User-defined parameters
+
+#### Core Modules
+- `src/train.py` - Main training orchestration
+- `src/model.py` - Model loading and configuration
+- `src/data.py` - Dataset processing and loading
+- `src/monitoring.py` - Trackio integration and metrics
+- `src/trainer.py` - Training loop and optimization
+
+## Coding Conventions
+
+### Python Style
+- Use type hints for all function parameters and return values
+- Follow PEP 8 for formatting
+- Use descriptive variable names in snake_case
+- Add comprehensive docstrings for all functions
+- Use f-strings for string formatting
+
+### Configuration Management
+- All training configs inherit from `SmolLM3Config` base class
+- Use dataclasses for configuration objects
+- Validate configuration parameters in __post_init__
+- Support both YAML and Python configuration files
+
+### Error Handling
+- Use try-except blocks for external API calls (HF, Trackio)
+- Log errors with appropriate context
+- Provide user-friendly error messages
+- Implement graceful degradation for optional features
+
+### Monitoring Integration
+- Always include Trackio URL and experiment name in configs
+- Log metrics every N steps (configurable)
+- Save checkpoints and artifacts to HF Datasets
+- Use structured logging with consistent field names
+
+## File Naming Conventions
+
+### Configuration Files
+- `train_smollm3_*.py` - Training configurations
+- `*_config.py` - General configuration files
+- Use descriptive suffixes: `_h100_lightweight`, `_a100_large`, `_multiple_passes`
+
+### Script Files
+- `deploy_*.py` - Deployment scripts
+- `setup_*.py` - Setup and initialization scripts
+- `push_*.py` - Model pushing scripts
+- `configure_*.py` - Configuration scripts
+
+### Test Files
+- `test_*.py` - Test files
+- `debug_*.py` - Debugging scripts
+- Include descriptive names indicating what they test
+
+## Training Pipeline Workflow
+
+### Interactive Pipeline (`launch.sh`)
+1. **Authentication**: HF username and token validation
+2. **Configuration Selection**: Choose from predefined configs or custom
+3. **Experiment Setup**: Configure experiment name and repositories
+4. **Environment Setup**: Install dependencies and setup virtual environment
+5. **Deployment**: Deploy Trackio Space and setup HF Dataset
+6. **Training**: Execute training with monitoring
+7. **Model Push**: Upload model to HF Hub with documentation
+8. **Testing**: Validate uploaded model functionality
+
+### Configuration Selection Logic
+- Basic Training: Default for beginners and learning
+- H100 Lightweight: Rapid experiments on H100 GPUs
+- A100 Large Scale: Serious research and production
+- Multiple Passes: Thorough training for production models
+- Custom: User-defined parameters for specific needs
+
+## Dataset Management
+
+### Supported Formats
+- Hugging Face Datasets format
+- JSON files with prompt/completion pairs
+- Chat format with messages array
+- Custom formats with conversion functions
+
+### Dataset Processing
+- Automatic format detection and conversion
+- Random sampling for lightweight configurations
+- Validation split creation
+- Bad entry filtering and handling
+
+### Dataset Sampling (H100 Lightweight)
+- 80,000 random samples from OpenHermes-FR
+- 1,000 validation samples (if available)
+- Fixed random seed (42) for reproducibility
+- Automatic sampling during dataset preparation
+
+## Model Management
+
+### Model Loading
+- Support for HuggingFaceTB/SmolLM3-3B
+- Flash attention and gradient checkpointing
+- Mixed precision training (fp16/bf16)
+- Device mapping and memory optimization
+
+### Model Pushing
+- Comprehensive model cards with training details
+- Automatic README generation
+- License and usage information
+- Training metrics and configuration
+
+## Monitoring and Tracking
+
+### Trackio Integration
+- Real-time metrics logging
+- Training curves visualization
+- Resource usage monitoring
+- Artifact storage and versioning
+
+### Metrics to Track
+- Training and validation loss
+- Learning rate schedule
+- Gradient norms
+- GPU utilization and memory
+- Training speed (steps/second)
+
+## Error Handling and Validation
+
+### Input Validation
+- Validate HF tokens before use
+- Check CUDA availability
+- Verify dataset accessibility
+- Validate configuration parameters
+
+### Error Recovery
+- Graceful handling of network issues
+- Automatic retry for failed operations
+- Checkpoint recovery for interrupted training
+- Fallback options for optional features
+
+## Documentation Standards
+
+### README Files
+- Clear project description
+- Installation instructions
+- Usage examples
+- Configuration options
+- Troubleshooting guide
+
+### Code Documentation
+- Comprehensive docstrings
+- Type hints for all functions
+- Example usage in docstrings
+- Parameter descriptions
+- Return value documentation
+
+## Testing and Validation
+
+### Test Categories
+- Unit tests for core functions
+- Integration tests for pipeline
+- Configuration validation tests
+- Model loading and saving tests
+- Dataset processing tests
+
+### Debugging Tools
+- Standalone test scripts
+- Configuration validation
+- Model testing utilities
+- Dataset inspection tools
+
+## Performance Optimization
+
+### H100 Optimizations
+- Larger batch sizes (16 vs 8 for A100)
+- Reduced gradient accumulation (4 vs 16)
+- Higher learning rates (8e-6 vs 5e-6)
+- Optimized data loading (4 workers, pin memory)
+
+### Memory Management
+- Gradient checkpointing for large models
+- Mixed precision training
+- Dynamic batch sizing
+- Memory-efficient data loading
+
+## Security and Best Practices
+
+### Token Management
+- Never hardcode tokens in code
+- Use environment variables
+- Validate tokens before use
+- Secure token storage
+
+### Data Privacy
+- Filter sensitive data from datasets
+- Validate dataset contents
+- Secure data transmission
+- Proper data disposal
+
+## Deployment and CI/CD
+
+### Environment Setup
+- Python virtual environments
+- CUDA-compatible PyTorch
+- Required dependencies installation
+- System package management
+
+### Automated Deployment
+- Trackio Space deployment
+- HF Dataset setup
+- Model repository creation
+- Configuration file generation
+
+## Troubleshooting Guidelines
+
+### Common Issues
+- CUDA out of memory: Reduce batch size
+- Network timeouts: Check internet connection
+- Token validation: Verify HF token permissions
+- Dataset loading: Check dataset accessibility
+
+### Debugging Steps
+1. Check system requirements
+2. Validate configuration
+3. Test individual components
+4. Review logs and error messages
+5. Verify external service connectivity
+
+## Future Enhancements
+
+### Planned Features
+- Multi-GPU training support
+- Advanced dataset sampling strategies
+- Automated hyperparameter optimization
+- Enhanced monitoring and visualization
+- Support for additional model architectures
+
+### Extensibility
+- Modular configuration system
+- Plugin architecture for custom features
+- Support for custom datasets and models
+- Flexible monitoring integration
+
+---
+
+**When working with this codebase:**
+- Always consider the end-to-end pipeline workflow
+- Follow the established configuration patterns
+- Include proper error handling and validation
+- Maintain comprehensive documentation
+- Test changes thoroughly before deployment
+- Consider performance implications for different hardware configurations 
