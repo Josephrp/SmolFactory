@@ -174,13 +174,17 @@ def main():
     )
     
     # Determine dataset path
+    # Check if using Hugging Face dataset or local dataset
     if hasattr(config, 'dataset_name') and config.dataset_name:
         # Use Hugging Face dataset
         dataset_path = config.dataset_name
         logger.info(f"Using Hugging Face dataset: {dataset_path}")
     else:
-        # Use local dataset
-        dataset_path = os.path.join('/input', args.dataset_dir)
+        # Use local dataset from config or command line argument
+        if args.dataset_dir:
+            dataset_path = os.path.join('/input', args.dataset_dir)
+        else:
+            dataset_path = os.path.join('/input', config.data_dir)
         logger.info(f"Using local dataset: {dataset_path}")
     
     # Load dataset with filtering options and sampling

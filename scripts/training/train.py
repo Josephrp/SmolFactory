@@ -53,6 +53,12 @@ def main():
         type=str,
         help="Trackio token for authentication"
     )
+    parser.add_argument(
+        "--dataset-dir",
+        type=str,
+        default="my_dataset",
+        help="Dataset directory path"
+    )
     
     args = parser.parse_args()
     
@@ -65,13 +71,13 @@ def main():
         # Import all available configurations
         from config.train_smollm3_openhermes_fr_a100_large import get_config as get_large_config
         from config.train_smollm3_openhermes_fr_a100_multiple_passes import get_config as get_multiple_passes_config
-        from config.train_smollm3_h100_lightweight import config as h100_lightweight_config
+        from config.train_smollm3_h100_lightweight import get_config as get_h100_lightweight_config
         
         # Map config files to their respective functions
         config_map = {
             "config/train_smollm3_openhermes_fr_a100_large.py": get_large_config,
             "config/train_smollm3_openhermes_fr_a100_multiple_passes.py": get_multiple_passes_config,
-            "config/train_smollm3_h100_lightweight.py": lambda x: h100_lightweight_config,
+            "config/train_smollm3_h100_lightweight.py": get_h100_lightweight_config,
         }
         
         if args.config in config_map:
@@ -116,7 +122,15 @@ def main():
     print(f"Max iterations: {config.max_iters}")
     print(f"Max sequence length: {config.max_seq_length}")
     print(f"Mixed precision: {'bf16' if config.bf16 else 'fp16'}")
-    print(f"Dataset: {config.dataset_name}")
+    if hasattr(config, 'dataset_name') and config.dataset_name:
+        print(f"Dataset: {config.dataset_name}")
+        if hasattr(config, 'sample_size') and config.sample_size:
+            print(f"Sample size: {config.sample_size}")
+    else:
+        print(f"Dataset directory: {config.data_dir}")
+        print(f"Training file: {config.train_file}")
+        if config.validation_file:
+            print(f"Validation file: {config.validation_file}")
     if config.trackio_url:
         print(f"Trackio URL: {config.trackio_url}")
     if config.trackio_token:
@@ -150,6 +164,9 @@ def main():
             train_args.extend(["--trackio_token", args.trackio_token])
         if args.experiment_name:
             train_args.extend(["--experiment_name", args.experiment_name])
+        
+        # Add dataset directory argument
+        train_args.extend(["--dataset_dir", args.dataset_dir])
         
         # Override sys.argv for the training script
         original_argv = sys.argv
