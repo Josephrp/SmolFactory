@@ -1,6 +1,6 @@
 """
 Trackio Monitoring Integration for SmolLM3 Fine-tuning
-Provides comprehensive experiment tracking and monitoring capabilities
+Provides comprehensive experiment tracking and monitoring capabilities with HF Datasets support
 """
 
 import os
@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Import the real API client
 try:
-    from trackio_api_client import TrackioAPIClient
+    from scripts.trackio_tonic.trackio_api_client import TrackioAPIClient
     TRACKIO_AVAILABLE = True
 except ImportError:
     TRACKIO_AVAILABLE = False
@@ -22,7 +22,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class SmolLM3Monitor:
-    """Monitoring and tracking for SmolLM3 fine-tuning experiments"""
+    """Monitoring and tracking for SmolLM3 fine-tuning experiments with HF Datasets support"""
     
     def __init__(
         self,
@@ -32,13 +32,19 @@ class SmolLM3Monitor:
         enable_tracking: bool = True,
         log_artifacts: bool = True,
         log_metrics: bool = True,
-        log_config: bool = True
+        log_config: bool = True,
+        hf_token: Optional[str] = None,
+        dataset_repo: Optional[str] = None
     ):
         self.experiment_name = experiment_name
         self.enable_tracking = enable_tracking and TRACKIO_AVAILABLE
         self.log_artifacts = log_artifacts
         self.log_metrics_enabled = log_metrics  # Rename to avoid conflict
         self.log_config_enabled = log_config  # Rename to avoid conflict
+        
+        # HF Datasets configuration
+        self.hf_token = hf_token or os.environ.get('HF_TOKEN')
+        self.dataset_repo = dataset_repo or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
         
         # Initialize experiment metadata first
         self.experiment_id = None
@@ -51,7 +57,33 @@ class SmolLM3Monitor:
         if self.enable_tracking:
             self._setup_trackio(trackio_url, trackio_token)
         
+        # Initialize HF Datasets client
+        self.hf_dataset_client = None
+        if self.hf_token:
+            self._setup_hf_datasets()
+        
         logger.info("Initialized monitoring for experiment: %s", experiment_name)
+        logger.info("Dataset repository: %s", self.dataset_repo)
+    
+    def _setup_hf_datasets(self):
+        """Setup HF Datasets client for persistent storage"""
+        try:
+            from datasets import Dataset
+            from huggingface_hub import HfApi
+            
+            self.hf_dataset_client = {
+                'Dataset': Dataset,
+                'HfApi': HfApi,
+                'api': HfApi(token=self.hf_token)
+            }
+            logger.info("✅ HF Datasets client initialized for %s", self.dataset_repo)
+            
+        except ImportError:
+            logger.warning("⚠️ datasets or huggingface-hub not available. Install with: pip install datasets huggingface-hub")
+            self.hf_dataset_client = None
+        except Exception as e:
+            logger.error("Failed to initialize HF Datasets client: %s", e)
+            self.hf_dataset_client = None
     
     def _setup_trackio(self, trackio_url: Optional[str], trackio_token: Optional[str]):
         """Setup Trackio API client"""
@@ -91,6 +123,44 @@ class SmolLM3Monitor:
             logger.error("Failed to initialize Trackio API: %s", e)
             self.enable_tracking = False
     
+    def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
+        """Save experiment data to HF Dataset"""
+        if not self.hf_dataset_client:
+            return False
+        
+        try:
+            # Convert experiment data to dataset format
+            dataset_data = [{
+                'experiment_id': self.experiment_id or "exp_{}".format(datetime.now().strftime('%Y%m%d_%H%M%S')),
+                'name': self.experiment_name,
+                'description': "SmolLM3 fine-tuning experiment",
+                'created_at': self.start_time.isoformat(),
+                'status': 'running',
+                'metrics': json.dumps(self.metrics_history),
+                'parameters': json.dumps(experiment_data),
+                'artifacts': json.dumps(self.artifacts),
+                'logs': json.dumps([]),
+                'last_updated': datetime.now().isoformat()
+            }]
+            
+            # Create dataset
+            Dataset = self.hf_dataset_client['Dataset']
+            dataset = Dataset.from_list(dataset_data)
+            
+            # Push to HF Hub
+            dataset.push_to_hub(
+                self.dataset_repo,
+                token=self.hf_token,
+                private=True
+            )
+            
+            logger.info("✅ Saved experiment data to %s", self.dataset_repo)
+            return True
+            
+        except Exception as e:
+            logger.error("Failed to save to HF Dataset: %s", e)
+            return False
+    
     def log_configuration(self, config: Dict[str, Any]):
         """Log experiment configuration"""
         if not self.enable_tracking or not self.log_config_enabled:
@@ -98,24 +168,30 @@ class SmolLM3Monitor:
         
         try:
             # Log configuration as parameters
-            result = self.trackio_client.log_parameters(
-                experiment_id=self.experiment_id,
-                parameters=config
-            )
-            
-            if "success" in result:
-                # Also save config locally
-                config_path = "config_{}_{}.json".format(
-                    self.experiment_name, 
-                    self.start_time.strftime('%Y%m%d_%H%M%S')
+            if self.trackio_client:
+                result = self.trackio_client.log_parameters(
+                    experiment_id=self.experiment_id,
+                    parameters=config
                 )
-                with open(config_path, 'w') as f:
-                    json.dump(config, f, indent=2, default=str)
                 
-                self.artifacts.append(config_path)
-                logger.info("Configuration logged to Trackio and saved to %s", config_path)
-            else:
-                logger.error("Failed to log configuration: %s", result)
+                if "success" in result:
+                    logger.info("Configuration logged to Trackio")
+                else:
+                    logger.error("Failed to log configuration: %s", result)
+            
+            # Save to HF Dataset
+            self._save_to_hf_dataset(config)
+            
+            # Also save config locally
+            config_path = "config_{}_{}.json".format(
+                self.experiment_name, 
+                self.start_time.strftime('%Y%m%d_%H%M%S')
+            )
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2, default=str)
+            
+            self.artifacts.append(config_path)
+            logger.info("Configuration saved to %s", config_path)
             
         except Exception as e:
             logger.error("Failed to log configuration: %s", e)
@@ -136,18 +212,26 @@ class SmolLM3Monitor:
                 metrics['step'] = step
             
             # Log to Trackio
-            result = self.trackio_client.log_metrics(
-                experiment_id=self.experiment_id,
-                metrics=metrics,
-                step=step
-            )
+            if self.trackio_client:
+                result = self.trackio_client.log_metrics(
+                    experiment_id=self.experiment_id,
+                    metrics=metrics,
+                    step=step
+                )
+                
+                if "success" in result:
+                    logger.debug("Metrics logged to Trackio")
+                else:
+                    logger.error("Failed to log metrics to Trackio: %s", result)
             
-            if "success" in result:
-                # Store locally
-                self.metrics_history.append(metrics)
-                logger.debug("Metrics logged: %s", metrics)
-            else:
-                logger.error("Failed to log metrics: %s", result)
+            # Store locally
+            self.metrics_history.append(metrics)
+            
+            # Save to HF Dataset periodically
+            if len(self.metrics_history) % 10 == 0:  # Save every 10 metrics
+                self._save_to_hf_dataset({'metrics': self.metrics_history})
+            
+            logger.debug("Metrics logged: %s", metrics)
             
         except Exception as e:
             logger.error("Failed to log metrics: %s", e)
@@ -166,16 +250,19 @@ class SmolLM3Monitor:
                 "checkpoint_size": os.path.getsize(checkpoint_path) if os.path.exists(checkpoint_path) else 0
             }
             
-            result = self.trackio_client.log_parameters(
-                experiment_id=self.experiment_id,
-                parameters=checkpoint_info
-            )
+            if self.trackio_client:
+                result = self.trackio_client.log_parameters(
+                    experiment_id=self.experiment_id,
+                    parameters=checkpoint_info
+                )
+                
+                if "success" in result:
+                    logger.info("Checkpoint logged to Trackio")
+                else:
+                    logger.error("Failed to log checkpoint to Trackio: %s", result)
             
-            if "success" in result:
-                self.artifacts.append(checkpoint_path)
-                logger.info("Checkpoint logged: %s", checkpoint_path)
-            else:
-                logger.error("Failed to log checkpoint: %s", result)
+            self.artifacts.append(checkpoint_path)
+            logger.info("Checkpoint logged: %s", checkpoint_path)
             
         except Exception as e:
             logger.error("Failed to log checkpoint: %s", e)
@@ -245,25 +332,31 @@ class SmolLM3Monitor:
             summary['experiment_duration_seconds'] = duration
             summary['experiment_duration_hours'] = duration / 3600
             
-            # Log final summary
-            result = self.trackio_client.log_parameters(
-                experiment_id=self.experiment_id,
-                parameters=summary
-            )
-            
-            if "success" in result:
-                # Save summary locally
-                summary_path = "training_summary_{}_{}.json".format(
-                    self.experiment_name,
-                    self.start_time.strftime('%Y%m%d_%H%M%S')
+            # Log final summary to Trackio
+            if self.trackio_client:
+                result = self.trackio_client.log_parameters(
+                    experiment_id=self.experiment_id,
+                    parameters=summary
                 )
-                with open(summary_path, 'w') as f:
-                    json.dump(summary, f, indent=2, default=str)
                 
-                self.artifacts.append(summary_path)
-                logger.info("Training summary logged and saved to %s", summary_path)
-            else:
-                logger.error("Failed to log training summary: %s", result)
+                if "success" in result:
+                    logger.info("Training summary logged to Trackio")
+                else:
+                    logger.error("Failed to log training summary to Trackio: %s", result)
+            
+            # Save to HF Dataset
+            self._save_to_hf_dataset(summary)
+            
+            # Save summary locally
+            summary_path = "training_summary_{}_{}.json".format(
+                self.experiment_name,
+                self.start_time.strftime('%Y%m%d_%H%M%S')
+            )
+            with open(summary_path, 'w') as f:
+                json.dump(summary, f, indent=2, default=str)
+            
+            self.artifacts.append(summary_path)
+            logger.info("Training summary logged and saved to %s", summary_path)
             
         except Exception as e:
             logger.error("Failed to log training summary: %s", e)
@@ -356,6 +449,10 @@ class SmolLM3Monitor:
                     logger.error("Failed to close monitoring session: %s", result)
             except Exception as e:
                 logger.error("Failed to close monitoring session: %s", e)
+        
+        # Final save to HF Dataset
+        if self.hf_dataset_client:
+            self._save_to_hf_dataset({'status': 'completed'})
 
 # Utility function to create monitor from config
 def create_monitor_from_config(config, experiment_name: Optional[str] = None) -> SmolLM3Monitor:
@@ -370,5 +467,7 @@ def create_monitor_from_config(config, experiment_name: Optional[str] = None) ->
         enable_tracking=getattr(config, 'enable_tracking', True),
         log_artifacts=getattr(config, 'log_artifacts', True),
         log_metrics=getattr(config, 'log_metrics', True),
-        log_config=getattr(config, 'log_config', True)
+        log_config=getattr(config, 'log_config', True),
+        hf_token=getattr(config, 'hf_token', None),
+        dataset_repo=getattr(config, 'dataset_repo', None)
     ) 

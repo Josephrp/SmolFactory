@@ -1,0 +1,7 @@
+{
+  "hf_token": "Not set",
+  "dataset_repo": "tonic/trackio-experiments",
+  "space_id": "Not set",
+  "last_updated": "2025-07-20T14:26:40.652811",
+  "notes": "Trackio configuration - set these as environment variables in your HF Space"
+}

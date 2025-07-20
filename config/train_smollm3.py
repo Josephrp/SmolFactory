@@ -76,6 +76,10 @@ class SmolLM3Config:
     log_metrics: bool = True
     log_config: bool = True
     experiment_name: Optional[str] = None
+    # HF Datasets configuration
+    hf_token: Optional[str] = None
+    dataset_repo: Optional[str] = None
+
     
     def __post_init__(self):
         if self.chat_template_kwargs is None:

@@ -19,10 +19,10 @@ I fixed the issue by standardizing all logging statements to use traditional str
 
 ### Files Fixed
 
-1. **`monitoring.py`** - Fixed all logging statements
-2. **`trainer.py`** - Fixed all logging statements  
-3. **`model.py`** - Fixed all logging statements
-4. **`data.py`** - Fixed all logging statements
+1. **`src/monitoring.py`** - Fixed all logging statements
+2. **`src/trainer.py`** - Fixed all logging statements  
+3. **`src/model.py`** - Fixed all logging statements
+4. **`src/data.py`** - Fixed all logging statements
 
 ### Changes Made
 
@@ -52,6 +52,7 @@ This script tests:
 - ✅ Logging functionality
 - ✅ Module imports
 - ✅ Configuration loading
+- ✅ Monitoring creation
 - ✅ Error handling
 
 ## 🚀 Usage
@@ -68,25 +69,29 @@ python run_a100_large_experiment.py \
 
 ## 📋 Key Changes
 
-### 1. Monitoring Module (`monitoring.py`)
+### 1. Monitoring Module (`src/monitoring.py`)
 - Fixed all `logger.info()`, `logger.error()`, `logger.warning()` calls
 - Replaced f-strings with `%` formatting
 - Fixed string concatenation in file paths
+- Fixed HF Datasets integration logging
 
-### 2. Trainer Module (`trainer.py`)
+### 2. Trainer Module (`src/trainer.py`)
 - Fixed logging in `SmolLM3Trainer` class
 - Fixed console output formatting
 - Fixed error message formatting
+- Fixed callback logging
 
-### 3. Model Module (`model.py`)
+### 3. Model Module (`src/model.py`)
 - Fixed model loading logging
 - Fixed configuration logging
 - Fixed error reporting
+- Fixed parameter logging
 
-### 4. Data Module (`data.py`)
+### 4. Data Module (`src/data.py`)
 - Fixed dataset loading logging
 - Fixed processing progress logging
 - Fixed error handling
+- Fixed split processing logging
 
 ## 🔧 Technical Details
 
@@ -119,6 +124,7 @@ To verify the fix works:
    - ✅ Logging tests
    - ✅ Import tests  
    - ✅ Configuration tests
+   - ✅ Monitoring creation tests
 
 3. **Run your training command**:
    ```bash
@@ -131,6 +137,7 @@ To verify the fix works:
 - No changes to the training logic or configuration
 - All error messages and logging remain informative
 - The fix is backward compatible
+- HF Datasets integration is preserved
 
 ## 🚨 Prevention
 

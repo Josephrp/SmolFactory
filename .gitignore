@@ -1,3 +1,6 @@
+.cursorrules/
+*.mdc
+
 # Python
 __pycache__/
 *.py[cod]
@@ -59,17 +62,17 @@ Thumbs.db
 logs/
 tensorboard_logs/
 
-# Model outputs
-output/
-checkpoints/
-models/
-wandb/
+# # Model outputs
+# output/
+# checkpoints/
+# models/
+# wandb/
 
 # Datasets
-data/
-datasets/
-my_dataset/
-test_dataset/
+# data/
+# datasets/
+# my_dataset/
+# test_dataset/
 
 # Temporary files
 tmp/
@@ -86,9 +89,9 @@ accelerate_config.yaml
 
 # Training outputs
 runs/
-*.json
+#*.json
 !config/*.json
-!*.json.example
+#!*.json.example
 
 # Evaluation results
 eval_results/

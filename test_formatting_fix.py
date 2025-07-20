@@ -36,16 +36,16 @@ def test_imports():
     """Test that all modules can be imported without formatting errors"""
     try:
         # Test importing the main modules
-        from monitoring import SmolLM3Monitor
+        from src.monitoring import SmolLM3Monitor
         print("✅ monitoring module imported successfully")
         
-        from trainer import SmolLM3Trainer
+        from src.trainer import SmolLM3Trainer
         print("✅ trainer module imported successfully")
         
-        from model import SmolLM3Model
+        from src.model import SmolLM3Model
         print("✅ model module imported successfully")
         
-        from data import SmolLM3Dataset
+        from src.data import SmolLM3Dataset
         print("✅ data module imported successfully")
         
         return True
@@ -83,6 +83,24 @@ def test_config_loading():
         print("❌ Config loading test failed: {}".format(e))
         return False
 
+def test_monitoring_creation():
+    """Test that monitoring can be created without formatting errors"""
+    try:
+        from src.monitoring import SmolLM3Monitor
+        
+        # Test creating a monitor instance
+        monitor = SmolLM3Monitor(
+            experiment_name="test_experiment",
+            enable_tracking=False  # Disable tracking for test
+        )
+        
+        print("✅ Monitoring instance created successfully")
+        return True
+        
+    except Exception as e:
+        print("❌ Monitoring creation test failed: {}".format(e))
+        return False
+
 def main():
     """Run all tests"""
     print("🧪 Testing String Formatting Fix")
@@ -92,6 +110,7 @@ def main():
         ("Logging", test_logging),
         ("Imports", test_imports),
         ("Config Loading", test_config_loading),
+        ("Monitoring Creation", test_monitoring_creation),
     ]
     
     passed = 0

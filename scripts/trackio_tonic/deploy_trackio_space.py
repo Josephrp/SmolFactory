@@ -95,7 +95,7 @@ class TrackioSpaceDeployer:
             
             # Write README.md for the space
             space_readme = f"""---
-title: Trackio for Petite Elle L'Aime
+title: Trackio Tonic
 emoji: 🐠
 colorFrom: indigo
 colorTo: yellow

@@ -85,6 +85,10 @@ class SmolLM3ConfigOpenHermesFRMultiplePasses(SmolLM3Config):
     log_metrics: bool = True
     log_config: bool = True
     experiment_name: Optional[str] = None
+    # HF Datasets configuration
+    hf_token: Optional[str] = None
+    dataset_repo: Optional[str] = None
+
     
     # Additional A100 optimizations
     dataloader_num_workers: int = 8  # More workers for faster data loading

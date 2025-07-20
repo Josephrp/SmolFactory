@@ -20,6 +20,7 @@ from config import get_config
 from model import SmolLM3Model
 from data import SmolLM3Dataset
 from trainer import SmolLM3Trainer
+from monitoring import create_monitor_from_config
 
 def setup_logging():
     """Setup logging configuration"""
@@ -86,6 +87,12 @@ def parse_args():
     parser.add_argument('--experiment_name', type=str, default=None,
                        help='Custom experiment name for tracking')
     
+    # HF Datasets arguments
+    parser.add_argument('--hf_token', type=str, default=None,
+                       help='Hugging Face token for dataset access')
+    parser.add_argument('--dataset_repo', type=str, default=None,
+                       help='HF Dataset repository for experiment storage')
+    
     return parser.parse_args()
 
 def main():
@@ -119,6 +126,12 @@ def main():
     if args.experiment_name is not None:
         config.experiment_name = args.experiment_name
     
+    # Override HF Datasets configuration
+    if args.hf_token is not None:
+        os.environ['HF_TOKEN'] = args.hf_token
+    if args.dataset_repo is not None:
+        os.environ['TRACKIO_DATASET_REPO'] = args.dataset_repo
+    
     # Setup paths
     output_path = args.out_dir
     
@@ -126,6 +139,22 @@ def main():
     os.makedirs(output_path, exist_ok=True)
     
     logger.info(f"Output path: {output_path}")
+    
+    # Initialize monitoring
+    monitor = None
+    if config.enable_tracking:
+        try:
+            monitor = create_monitor_from_config(config, args.experiment_name)
+            logger.info(f"✅ Monitoring initialized for experiment: {monitor.experiment_name}")
+            logger.info(f"📊 Dataset repository: {monitor.dataset_repo}")
+            
+            # Log configuration
+            config_dict = {k: v for k, v in vars(config).items() if not k.startswith('_')}
+            monitor.log_configuration(config_dict)
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize monitoring: {e}")
+            logger.warning("Continuing without monitoring...")
     
     # Initialize model
     model = SmolLM3Model(
@@ -162,13 +191,60 @@ def main():
         init_from=args.init_from
     )
     
+    # Add monitoring callback if available
+    if monitor:
+        try:
+            callback = monitor.create_monitoring_callback()
+            trainer.add_callback(callback)
+            logger.info("✅ Monitoring callback added to trainer")
+        except Exception as e:
+            logger.error(f"Failed to add monitoring callback: {e}")
+    
     # Start training
     try:
         trainer.train()
         logger.info("Training completed successfully!")
+        
+        # Log training summary
+        if monitor:
+            try:
+                summary = {
+                    'final_loss': getattr(trainer, 'final_loss', None),
+                    'total_steps': getattr(trainer, 'total_steps', None),
+                    'training_duration': getattr(trainer, 'training_duration', None),
+                    'model_path': output_path,
+                    'config_file': args.config
+                }
+                monitor.log_training_summary(summary)
+                logger.info("✅ Training summary logged")
+            except Exception as e:
+                logger.error(f"Failed to log training summary: {e}")
+        
     except Exception as e:
         logger.error(f"Training failed: {e}")
+        
+        # Log error to monitoring
+        if monitor:
+            try:
+                error_summary = {
+                    'error': str(e),
+                    'status': 'failed',
+                    'model_path': output_path,
+                    'config_file': args.config
+                }
+                monitor.log_training_summary(error_summary)
+            except Exception as log_error:
+                logger.error(f"Failed to log error to monitoring: {log_error}")
+        
         raise
+    finally:
+        # Close monitoring
+        if monitor:
+            try:
+                monitor.close()
+                logger.info("✅ Monitoring session closed")
+            except Exception as e:
+                logger.error(f"Failed to close monitoring: {e}")
 
 if __name__ == '__main__':
     main() 

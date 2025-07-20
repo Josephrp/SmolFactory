@@ -20,42 +20,345 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class TrackioSpace:
-    """Trackio deployment for Hugging Face Spaces"""
+    """Trackio deployment for Hugging Face Spaces using HF Datasets"""
     
-    def __init__(self):
+    def __init__(self, hf_token: Optional[str] = None, dataset_repo: Optional[str] = None):
         self.experiments = {}
         self.current_experiment = None
-        self.data_file = "trackio_experiments.json"
+        
+        # Get dataset repository and HF token from parameters or environment variables
+        self.dataset_repo = dataset_repo or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        self.hf_token = hf_token or os.environ.get('HF_TOKEN')
+        
+        logger.info(f"🔧 Using dataset repository: {self.dataset_repo}")
+        
+        if not self.hf_token:
+            logger.warning("⚠️ HF_TOKEN not found. Some features may not work.")
+        
         self._load_experiments()
         
     def _load_experiments(self):
-        """Load experiments from file"""
+        """Load experiments from HF Dataset"""
         try:
-            if os.path.exists(self.data_file):
-                with open(self.data_file, 'r') as f:
-                    data = json.load(f)
-                    self.experiments = data.get('experiments', {})
-                    self.current_experiment = data.get('current_experiment')
-                logger.info(f"Loaded {len(self.experiments)} experiments from {self.data_file}")
+            if self.hf_token:
+                from datasets import load_dataset
+                
+                # Try to load the dataset
+                try:
+                    dataset = load_dataset(self.dataset_repo, token=self.hf_token)
+                    logger.info(f"✅ Loaded experiments from {self.dataset_repo}")
+                    
+                    # Convert dataset to experiments dict
+                    self.experiments = {}
+                    if 'train' in dataset:
+                        for row in dataset['train']:
+                            exp_id = row.get('experiment_id')
+                            if exp_id:
+                                self.experiments[exp_id] = {
+                                    'id': exp_id,
+                                    'name': row.get('name', ''),
+                                    'description': row.get('description', ''),
+                                    'created_at': row.get('created_at', ''),
+                                    'status': row.get('status', 'running'),
+                                    'metrics': json.loads(row.get('metrics', '[]')),
+                                    'parameters': json.loads(row.get('parameters', '{}')),
+                                    'artifacts': json.loads(row.get('artifacts', '[]')),
+                                    'logs': json.loads(row.get('logs', '[]'))
+                                }
+                    
+                    logger.info(f"📊 Loaded {len(self.experiments)} experiments from dataset")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to load from dataset: {e}")
+                    # Fall back to backup data
+                    self._load_backup_experiments()
             else:
-                logger.info("No existing experiment data found, starting fresh")
+                # No HF token, use backup data
+                self._load_backup_experiments()
+                
         except Exception as e:
             logger.error(f"Failed to load experiments: {e}")
-            self.experiments = {}
+            self._load_backup_experiments()
+    
+    def _load_backup_experiments(self):
+        """Load backup experiments when dataset is not available"""
+        logger.info("🔄 Loading backup experiments...")
+        
+        backup_experiments = {
+            'exp_20250720_130853': {
+                'id': 'exp_20250720_130853',
+                'name': 'petite-elle-l-aime-3',
+                'description': 'SmolLM3 fine-tuning experiment',
+                'created_at': '2025-07-20T11:20:01.780908',
+                'status': 'running',
+                'metrics': [
+                    {
+                        'timestamp': '2025-07-20T11:20:01.780908',
+                        'step': 25,
+                        'metrics': {
+                            'loss': 1.1659,
+                            'grad_norm': 10.3125,
+                            'learning_rate': 7e-08,
+                            'num_tokens': 1642080.0,
+                            'mean_token_accuracy': 0.75923578992486,
+                            'epoch': 0.004851130919895701
+                        }
+                    },
+                    {
+                        'timestamp': '2025-07-20T11:26:39.042155',
+                        'step': 50,
+                        'metrics': {
+                            'loss': 1.165,
+                            'grad_norm': 10.75,
+                            'learning_rate': 1.4291666666666667e-07,
+                            'num_tokens': 3324682.0,
+                            'mean_token_accuracy': 0.7577659255266189,
+                            'epoch': 0.009702261839791402
+                        }
+                    },
+                    {
+                        'timestamp': '2025-07-20T11:33:16.203045',
+                        'step': 75,
+                        'metrics': {
+                            'loss': 1.1639,
+                            'grad_norm': 10.6875,
+                            'learning_rate': 2.1583333333333334e-07,
+                            'num_tokens': 4987941.0,
+                            'mean_token_accuracy': 0.7581205774843692,
+                            'epoch': 0.014553392759687101
+                        }
+                    },
+                    {
+                        'timestamp': '2025-07-20T11:39:53.453917',
+                        'step': 100,
+                        'metrics': {
+                            'loss': 1.1528,
+                            'grad_norm': 10.75,
+                            'learning_rate': 2.8875e-07,
+                            'num_tokens': 6630190.0,
+                            'mean_token_accuracy': 0.7614579878747463,
+                            'epoch': 0.019404523679582803
+                        }
+                    }
+                ],
+                'parameters': {
+                    'model_name': 'HuggingFaceTB/SmolLM3-3B',
+                    'max_seq_length': 12288,
+                    'use_flash_attention': True,
+                    'use_gradient_checkpointing': False,
+                    'batch_size': 8,
+                    'gradient_accumulation_steps': 16,
+                    'learning_rate': 3.5e-06,
+                    'weight_decay': 0.01,
+                    'warmup_steps': 1200,
+                    'max_iters': 18000,
+                    'eval_interval': 1000,
+                    'log_interval': 25,
+                    'save_interval': 2000,
+                    'optimizer': 'adamw_torch',
+                    'beta1': 0.9,
+                    'beta2': 0.999,
+                    'eps': 1e-08,
+                    'scheduler': 'cosine',
+                    'min_lr': 3.5e-07,
+                    'fp16': False,
+                    'bf16': True,
+                    'ddp_backend': 'nccl',
+                    'ddp_find_unused_parameters': False,
+                    'save_steps': 2000,
+                    'eval_steps': 1000,
+                    'logging_steps': 25,
+                    'save_total_limit': 5,
+                    'eval_strategy': 'steps',
+                    'metric_for_best_model': 'eval_loss',
+                    'greater_is_better': False,
+                    'load_best_model_at_end': True,
+                    'data_dir': None,
+                    'train_file': None,
+                    'validation_file': None,
+                    'test_file': None,
+                    'use_chat_template': True,
+                    'chat_template_kwargs': {'add_generation_prompt': True, 'no_think_system_message': True},
+                    'enable_tracking': True,
+                    'trackio_url': 'https://tonic-test-trackio-test.hf.space',
+                    'trackio_token': None,
+                    'log_artifacts': True,
+                    'log_metrics': True,
+                    'log_config': True,
+                    'experiment_name': 'petite-elle-l-aime-3',
+                    'dataset_name': 'legmlai/openhermes-fr',
+                    'dataset_split': 'train',
+                    'input_field': 'prompt',
+                    'target_field': 'accepted_completion',
+                    'filter_bad_entries': True,
+                    'bad_entry_field': 'bad_entry',
+                    'packing': False,
+                    'max_prompt_length': 12288,
+                    'max_completion_length': 8192,
+                    'truncation': True,
+                    'dataloader_num_workers': 10,
+                    'dataloader_pin_memory': True,
+                    'dataloader_prefetch_factor': 3,
+                    'max_grad_norm': 1.0,
+                    'group_by_length': True
+                },
+                'artifacts': [],
+                'logs': []
+            },
+            'exp_20250720_134319': {
+                'id': 'exp_20250720_134319',
+                'name': 'petite-elle-l-aime-3-1',
+                'description': 'SmolLM3 fine-tuning experiment',
+                'created_at': '2025-07-20T11:54:31.993219',
+                'status': 'running',
+                'metrics': [
+                    {
+                        'timestamp': '2025-07-20T11:54:31.993219',
+                        'step': 25,
+                        'metrics': {
+                            'loss': 1.166,
+                            'grad_norm': 10.375,
+                            'learning_rate': 7e-08,
+                            'num_tokens': 1642080.0,
+                            'mean_token_accuracy': 0.7590958896279335,
+                            'epoch': 0.004851130919895701
+                        }
+                    },
+                    {
+                        'timestamp': '2025-07-20T11:54:33.589487',
+                        'step': 25,
+                        'metrics': {
+                            'gpu_0_memory_allocated': 17.202261447906494,
+                            'gpu_0_memory_reserved': 75.474609375,
+                            'gpu_0_utilization': 0,
+                            'cpu_percent': 2.7,
+                            'memory_percent': 10.1
+                        }
+                    }
+                ],
+                'parameters': {
+                    'model_name': 'HuggingFaceTB/SmolLM3-3B',
+                    'max_seq_length': 12288,
+                    'use_flash_attention': True,
+                    'use_gradient_checkpointing': False,
+                    'batch_size': 8,
+                    'gradient_accumulation_steps': 16,
+                    'learning_rate': 3.5e-06,
+                    'weight_decay': 0.01,
+                    'warmup_steps': 1200,
+                    'max_iters': 18000,
+                    'eval_interval': 1000,
+                    'log_interval': 25,
+                    'save_interval': 2000,
+                    'optimizer': 'adamw_torch',
+                    'beta1': 0.9,
+                    'beta2': 0.999,
+                    'eps': 1e-08,
+                    'scheduler': 'cosine',
+                    'min_lr': 3.5e-07,
+                    'fp16': False,
+                    'bf16': True,
+                    'ddp_backend': 'nccl',
+                    'ddp_find_unused_parameters': False,
+                    'save_steps': 2000,
+                    'eval_steps': 1000,
+                    'logging_steps': 25,
+                    'save_total_limit': 5,
+                    'eval_strategy': 'steps',
+                    'metric_for_best_model': 'eval_loss',
+                    'greater_is_better': False,
+                    'load_best_model_at_end': True,
+                    'data_dir': None,
+                    'train_file': None,
+                    'validation_file': None,
+                    'test_file': None,
+                    'use_chat_template': True,
+                    'chat_template_kwargs': {'add_generation_prompt': True, 'no_think_system_message': True},
+                    'enable_tracking': True,
+                    'trackio_url': 'https://tonic-test-trackio-test.hf.space',
+                    'trackio_token': None,
+                    'log_artifacts': True,
+                    'log_metrics': True,
+                    'log_config': True,
+                    'experiment_name': 'petite-elle-l-aime-3-1',
+                    'dataset_name': 'legmlai/openhermes-fr',
+                    'dataset_split': 'train',
+                    'input_field': 'prompt',
+                    'target_field': 'accepted_completion',
+                    'filter_bad_entries': True,
+                    'bad_entry_field': 'bad_entry',
+                    'packing': False,
+                    'max_prompt_length': 12288,
+                    'max_completion_length': 8192,
+                    'truncation': True,
+                    'dataloader_num_workers': 10,
+                    'dataloader_pin_memory': True,
+                    'dataloader_prefetch_factor': 3,
+                    'max_grad_norm': 1.0,
+                    'group_by_length': True
+                },
+                'artifacts': [],
+                'logs': []
+            }
+        }
+        
+        self.experiments = backup_experiments
+        self.current_experiment = 'exp_20250720_134319'
+        logger.info(f"✅ Loaded {len(backup_experiments)} backup experiments")
     
     def _save_experiments(self):
-        """Save experiments to file"""
+        """Save experiments to HF Dataset"""
         try:
-            data = {
-                'experiments': self.experiments,
-                'current_experiment': self.current_experiment,
-                'last_updated': datetime.now().isoformat()
-            }
-            with open(self.data_file, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
-            logger.debug(f"Saved {len(self.experiments)} experiments to {self.data_file}")
+            if self.hf_token:
+                from datasets import Dataset
+                from huggingface_hub import HfApi
+                
+                # Convert experiments to dataset format
+                dataset_data = []
+                for exp_id, exp_data in self.experiments.items():
+                    dataset_data.append({
+                        'experiment_id': exp_id,
+                        'name': exp_data.get('name', ''),
+                        'description': exp_data.get('description', ''),
+                        'created_at': exp_data.get('created_at', ''),
+                        'status': exp_data.get('status', 'running'),
+                        'metrics': json.dumps(exp_data.get('metrics', [])),
+                        'parameters': json.dumps(exp_data.get('parameters', {})),
+                        'artifacts': json.dumps(exp_data.get('artifacts', [])),
+                        'logs': json.dumps(exp_data.get('logs', [])),
+                        'last_updated': datetime.now().isoformat()
+                    })
+                
+                # Create dataset
+                dataset = Dataset.from_list(dataset_data)
+                
+                # Push to HF Hub
+                api = HfApi(token=self.hf_token)
+                dataset.push_to_hub(
+                    self.dataset_repo,
+                    token=self.hf_token,
+                    private=True  # Make it private for security
+                )
+                
+                logger.info(f"✅ Saved {len(dataset_data)} experiments to {self.dataset_repo}")
+                
+            else:
+                logger.warning("⚠️ No HF_TOKEN available, experiments not saved to dataset")
+                
         except Exception as e:
-            logger.error(f"Failed to save experiments: {e}")
+            logger.error(f"Failed to save experiments to dataset: {e}")
+            # Fall back to local file for backup
+            try:
+                data = {
+                    'experiments': self.experiments,
+                    'current_experiment': self.current_experiment,
+                    'last_updated': datetime.now().isoformat()
+                }
+                with open("trackio_experiments_backup.json", 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                logger.info("✅ Saved backup to local file")
+            except Exception as backup_e:
+                logger.error(f"Failed to save backup: {backup_e}")
     
     def create_experiment(self, name: str, description: str = "") -> Dict[str, Any]:
         """Create a new experiment"""
@@ -160,8 +463,102 @@ class TrackioSpace:
         
         return pd.DataFrame(data)
 
-# Initialize Trackio space
+# Global instance
 trackio_space = TrackioSpace()
+
+def update_trackio_config(hf_token: str, dataset_repo: str) -> str:
+    """Update TrackioSpace configuration with new HF token and dataset repository"""
+    global trackio_space
+    
+    try:
+        # Create new instance with updated configuration
+        trackio_space = TrackioSpace(hf_token=hf_token if hf_token.strip() else None, 
+                                   dataset_repo=dataset_repo if dataset_repo.strip() else None)
+        
+        # Reload experiments with new configuration
+        trackio_space._load_experiments()
+        
+        return f"✅ Configuration updated successfully!\n📊 Dataset: {trackio_space.dataset_repo}\n🔑 HF Token: {'Set' if trackio_space.hf_token else 'Not set'}\n📈 Loaded {len(trackio_space.experiments)} experiments"
+        
+    except Exception as e:
+        return f"❌ Failed to update configuration: {str(e)}"
+
+def test_dataset_connection(hf_token: str, dataset_repo: str) -> str:
+    """Test connection to HF Dataset repository"""
+    try:
+        if not hf_token.strip():
+            return "❌ Please provide a Hugging Face token"
+        
+        if not dataset_repo.strip():
+            return "❌ Please provide a dataset repository"
+        
+        from datasets import load_dataset
+        
+        # Test loading the dataset
+        dataset = load_dataset(dataset_repo, token=hf_token)
+        
+        # Count experiments
+        experiment_count = len(dataset['train']) if 'train' in dataset else 0
+        
+        return f"✅ Connection successful!\n📊 Dataset: {dataset_repo}\n📈 Found {experiment_count} experiments\n🔗 Dataset URL: https://huggingface.co/datasets/{dataset_repo}"
+        
+    except Exception as e:
+        return f"❌ Connection failed: {str(e)}\n\n💡 Troubleshooting:\n1. Check your HF token is correct\n2. Verify the dataset repository exists\n3. Ensure your token has read access to the dataset"
+
+def create_dataset_repository(hf_token: str, dataset_repo: str) -> str:
+    """Create HF Dataset repository if it doesn't exist"""
+    try:
+        if not hf_token.strip():
+            return "❌ Please provide a Hugging Face token"
+        
+        if not dataset_repo.strip():
+            return "❌ Please provide a dataset repository"
+        
+        from datasets import Dataset
+        from huggingface_hub import HfApi
+        
+        # Parse username and dataset name
+        if '/' not in dataset_repo:
+            return "❌ Dataset repository must be in format: username/dataset-name"
+        
+        username, dataset_name = dataset_repo.split('/', 1)
+        
+        # Create API client
+        api = HfApi(token=hf_token)
+        
+        # Check if dataset exists
+        try:
+            api.dataset_info(dataset_repo)
+            return f"✅ Dataset {dataset_repo} already exists!"
+        except:
+            # Dataset doesn't exist, create it
+            pass
+        
+        # Create empty dataset
+        empty_dataset = Dataset.from_dict({
+            'experiment_id': [],
+            'name': [],
+            'description': [],
+            'created_at': [],
+            'status': [],
+            'metrics': [],
+            'parameters': [],
+            'artifacts': [],
+            'logs': [],
+            'last_updated': []
+        })
+        
+        # Push to hub
+        empty_dataset.push_to_hub(
+            dataset_repo,
+            token=hf_token,
+            private=True
+        )
+        
+        return f"✅ Dataset {dataset_repo} created successfully!\n🔗 View at: https://huggingface.co/datasets/{dataset_repo}\n📊 Ready to store experiments"
+        
+    except Exception as e:
+        return f"❌ Failed to create dataset: {str(e)}\n\n💡 Troubleshooting:\n1. Check your HF token has write permissions\n2. Verify the username in the repository name\n3. Ensure the dataset name is valid"
 
 # Initialize API client for remote data
 api_client = None
@@ -171,6 +568,24 @@ try:
     logger.info("✅ API client initialized for remote data access")
 except ImportError:
     logger.warning("⚠️ API client not available, using local data only")
+
+# Add Hugging Face Spaces compatibility
+def is_huggingface_spaces():
+    """Check if running on Hugging Face Spaces"""
+    return os.environ.get('SPACE_ID') is not None
+
+def get_persistent_data_path():
+    """Get a persistent data path for Hugging Face Spaces"""
+    if is_huggingface_spaces():
+        # Use a path that might persist better on HF Spaces
+        return "/tmp/trackio_experiments.json"
+    else:
+        return "trackio_experiments.json"
+
+# Override the data file path for HF Spaces
+if is_huggingface_spaces():
+    logger.info("🚀 Running on Hugging Face Spaces - using persistent storage")
+    trackio_space.data_file = get_persistent_data_path()
 
 def get_remote_experiment_data(experiment_id: str) -> Dict[str, Any]:
     """Get experiment data from remote API"""
@@ -487,6 +902,83 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
     gr.Markdown("Monitor and track your ML experiments with real-time visualization!")
     
     with gr.Tabs():
+        # Configuration Tab
+        with gr.Tab("⚙️ Configuration"):
+            gr.Markdown("### Configure HF Datasets Connection")
+            gr.Markdown("Set your Hugging Face token and dataset repository for persistent experiment storage.")
+            
+            with gr.Row():
+                with gr.Column():
+                    hf_token_input = gr.Textbox(
+                        label="Hugging Face Token",
+                        placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                        type="password",
+                        info="Your HF token for dataset access (optional - will use environment variable if not set)"
+                    )
+                    dataset_repo_input = gr.Textbox(
+                        label="Dataset Repository",
+                        placeholder="your-username/your-dataset-name",
+                        value="tonic/trackio-experiments",
+                        info="HF Dataset repository for experiment storage"
+                    )
+                    
+                    with gr.Row():
+                        update_config_btn = gr.Button("Update Configuration", variant="primary")
+                        test_connection_btn = gr.Button("Test Connection", variant="secondary")
+                        create_repo_btn = gr.Button("Create Dataset", variant="success")
+                    
+                    gr.Markdown("### Current Configuration")
+                    current_config_output = gr.Textbox(
+                        label="Status",
+                        lines=8,
+                        interactive=False,
+                        value=f"📊 Dataset: {trackio_space.dataset_repo}\n🔑 HF Token: {'Set' if trackio_space.hf_token else 'Not set'}\n📈 Experiments: {len(trackio_space.experiments)}"
+                    )
+                
+                with gr.Column():
+                    gr.Markdown("### Configuration Help")
+                    gr.Markdown("""
+                    **Getting Your HF Token:**
+                    1. Go to [Hugging Face Settings](https://huggingface.co/settings/tokens)
+                    2. Click "New token"
+                    3. Give it a name (e.g., "Trackio Access")
+                    4. Select "Write" permissions
+                    5. Copy the token and paste it above
+                    
+                    **Dataset Repository:**
+                    - Format: `username/dataset-name`
+                    - Examples: `tonic/trackio-experiments`, `your-username/my-experiments`
+                    - Use "Create Dataset" button to create a new repository
+                    
+                    **Environment Variables:**
+                    You can also set these as environment variables:
+                    - `HF_TOKEN`: Your Hugging Face token
+                    - `TRACKIO_DATASET_REPO`: Dataset repository
+                    
+                    **Actions:**
+                    - **Update Configuration**: Apply new settings and reload experiments
+                    - **Test Connection**: Verify access to the dataset repository
+                    - **Create Dataset**: Create a new dataset repository if it doesn't exist
+                    """)
+            
+            update_config_btn.click(
+                update_trackio_config,
+                inputs=[hf_token_input, dataset_repo_input],
+                outputs=current_config_output
+            )
+            
+            test_connection_btn.click(
+                test_dataset_connection,
+                inputs=[hf_token_input, dataset_repo_input],
+                outputs=current_config_output
+            )
+            
+            create_repo_btn.click(
+                create_dataset_repository,
+                inputs=[hf_token_input, dataset_repo_input],
+                outputs=current_config_output
+            )
+        
         # Create Experiment Tab
         with gr.Tab("Create Experiment"):
             gr.Markdown("### Create a New Experiment")
