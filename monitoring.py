@@ -11,13 +11,13 @@ from datetime import datetime
 import torch
 from pathlib import Path
 
+# Import the real API client
 try:
-    import trackio
-    from trackio import TrackioClient
+    from trackio_api_client import TrackioAPIClient
     TRACKIO_AVAILABLE = True
 except ImportError:
     TRACKIO_AVAILABLE = False
-    print("Warning: Trackio not available. Install with: pip install trackio")
+    print("Warning: Trackio API client not available. Install with: pip install requests")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class SmolLM3Monitor:
         self.log_metrics = log_metrics
         self.log_config = log_config
         
-        # Initialize Trackio client
+        # Initialize Trackio API client
         self.trackio_client = None
         if self.enable_tracking:
             self._setup_trackio(trackio_url, trackio_token)
@@ -54,32 +54,41 @@ class SmolLM3Monitor:
         logger.info(f"Initialized monitoring for experiment: {experiment_name}")
     
     def _setup_trackio(self, trackio_url: Optional[str], trackio_token: Optional[str]):
-        """Setup Trackio client"""
+        """Setup Trackio API client"""
         try:
             # Get Trackio configuration from environment or parameters
             url = trackio_url or os.getenv('TRACKIO_URL')
-            token = trackio_token or os.getenv('TRACKIO_TOKEN')
             
             if not url:
                 logger.warning("Trackio URL not provided. Set TRACKIO_URL environment variable.")
                 self.enable_tracking = False
                 return
             
-            self.trackio_client = TrackioClient(
-                url=url,
-                token=token
-            )
+            self.trackio_client = TrackioAPIClient(url)
             
-            # Create or get experiment
-            self.experiment_id = self.trackio_client.create_experiment(
+            # Create experiment
+            create_result = self.trackio_client.create_experiment(
                 name=self.experiment_name,
                 description=f"SmolLM3 fine-tuning experiment started at {self.start_time}"
             )
             
-            logger.info(f"Trackio client initialized. Experiment ID: {self.experiment_id}")
+            if "success" in create_result:
+                # Extract experiment ID from response
+                import re
+                response_text = create_result['data']
+                match = re.search(r'exp_\d{8}_\d{6}', response_text)
+                if match:
+                    self.experiment_id = match.group()
+                    logger.info(f"Trackio API client initialized. Experiment ID: {self.experiment_id}")
+                else:
+                    logger.error("Could not extract experiment ID from response")
+                    self.enable_tracking = False
+            else:
+                logger.error(f"Failed to create experiment: {create_result}")
+                self.enable_tracking = False
             
         except Exception as e:
-            logger.error(f"Failed to initialize Trackio: {e}")
+            logger.error(f"Failed to initialize Trackio API: {e}")
             self.enable_tracking = False
     
     def log_config(self, config: Dict[str, Any]):
@@ -89,18 +98,21 @@ class SmolLM3Monitor:
         
         try:
             # Log configuration as parameters
-            self.trackio_client.log_parameters(
+            result = self.trackio_client.log_parameters(
                 experiment_id=self.experiment_id,
                 parameters=config
             )
             
-            # Also save config locally
-            config_path = f"config_{self.experiment_name}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=2, default=str)
-            
-            self.artifacts.append(config_path)
-            logger.info(f"Configuration logged to Trackio and saved to {config_path}")
+            if "success" in result:
+                # Also save config locally
+                config_path = f"config_{self.experiment_name}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
+                with open(config_path, 'w') as f:
+                    json.dump(config, f, indent=2, default=str)
+                
+                self.artifacts.append(config_path)
+                logger.info(f"Configuration logged to Trackio and saved to {config_path}")
+            else:
+                logger.error(f"Failed to log configuration: {result}")
             
         except Exception as e:
             logger.error(f"Failed to log configuration: {e}")
@@ -117,16 +129,18 @@ class SmolLM3Monitor:
                 metrics['step'] = step
             
             # Log to Trackio
-            self.trackio_client.log_metrics(
+            result = self.trackio_client.log_metrics(
                 experiment_id=self.experiment_id,
                 metrics=metrics,
                 step=step
             )
             
-            # Store locally
-            self.metrics_history.append(metrics)
-            
-            logger.debug(f"Metrics logged: {metrics}")
+            if "success" in result:
+                # Store locally
+                self.metrics_history.append(metrics)
+                logger.debug(f"Metrics logged: {metrics}")
+            else:
+                logger.error(f"Failed to log metrics: {result}")
             
         except Exception as e:
             logger.error(f"Failed to log metrics: {e}")
@@ -137,15 +151,24 @@ class SmolLM3Monitor:
             return
         
         try:
-            # Log checkpoint as artifact
-            self.trackio_client.log_artifact(
+            # For now, just log the checkpoint path as a parameter
+            # The actual file upload would need additional API endpoints
+            checkpoint_info = {
+                "checkpoint_path": checkpoint_path,
+                "checkpoint_step": step,
+                "checkpoint_size": os.path.getsize(checkpoint_path) if os.path.exists(checkpoint_path) else 0
+            }
+            
+            result = self.trackio_client.log_parameters(
                 experiment_id=self.experiment_id,
-                file_path=checkpoint_path,
-                artifact_name=f"checkpoint_step_{step}" if step else "checkpoint"
+                parameters=checkpoint_info
             )
             
-            self.artifacts.append(checkpoint_path)
-            logger.info(f"Checkpoint logged: {checkpoint_path}")
+            if "success" in result:
+                self.artifacts.append(checkpoint_path)
+                logger.info(f"Checkpoint logged: {checkpoint_path}")
+            else:
+                logger.error(f"Failed to log checkpoint: {result}")
             
         except Exception as e:
             logger.error(f"Failed to log checkpoint: {e}")
@@ -210,18 +233,21 @@ class SmolLM3Monitor:
             summary['experiment_duration_hours'] = duration / 3600
             
             # Log final summary
-            self.trackio_client.log_parameters(
+            result = self.trackio_client.log_parameters(
                 experiment_id=self.experiment_id,
                 parameters=summary
             )
             
-            # Save summary locally
-            summary_path = f"training_summary_{self.experiment_name}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
-            with open(summary_path, 'w') as f:
-                json.dump(summary, f, indent=2, default=str)
-            
-            self.artifacts.append(summary_path)
-            logger.info(f"Training summary logged and saved to {summary_path}")
+            if "success" in result:
+                # Save summary locally
+                summary_path = f"training_summary_{self.experiment_name}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
+                with open(summary_path, 'w') as f:
+                    json.dump(summary, f, indent=2, default=str)
+                
+                self.artifacts.append(summary_path)
+                logger.info(f"Training summary logged and saved to {summary_path}")
+            else:
+                logger.error(f"Failed to log training summary: {result}")
             
         except Exception as e:
             logger.error(f"Failed to log training summary: {e}")
@@ -257,7 +283,7 @@ class SmolLM3Monitor:
     def get_experiment_url(self) -> Optional[str]:
         """Get the URL to view the experiment in Trackio"""
         if self.trackio_client and self.experiment_id:
-            return f"{self.trackio_client.url}/experiments/{self.experiment_id}"
+            return f"{self.trackio_client.space_url}?tab=view_experiments"
         return None
     
     def close(self):
@@ -265,11 +291,14 @@ class SmolLM3Monitor:
         if self.enable_tracking and self.trackio_client:
             try:
                 # Mark experiment as completed
-                self.trackio_client.update_experiment_status(
+                result = self.trackio_client.update_experiment_status(
                     experiment_id=self.experiment_id,
                     status="completed"
                 )
-                logger.info("Monitoring session closed")
+                if "success" in result:
+                    logger.info("Monitoring session closed")
+                else:
+                    logger.error(f"Failed to close monitoring session: {result}")
             except Exception as e:
                 logger.error(f"Failed to close monitoring session: {e}")
 
@@ -277,22 +306,14 @@ class SmolLM3Monitor:
 def create_monitor_from_config(config, experiment_name: Optional[str] = None) -> SmolLM3Monitor:
     """Create a monitor instance from configuration"""
     if experiment_name is None:
-        experiment_name = f"smollm3_finetune_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    # Extract monitoring configuration
-    trackio_url = getattr(config, 'trackio_url', None)
-    trackio_token = getattr(config, 'trackio_token', None)
-    enable_tracking = getattr(config, 'enable_tracking', True)
-    log_artifacts = getattr(config, 'log_artifacts', True)
-    log_metrics = getattr(config, 'log_metrics', True)
-    log_config = getattr(config, 'log_config', True)
+        experiment_name = getattr(config, 'experiment_name', 'smollm3_experiment')
     
     return SmolLM3Monitor(
         experiment_name=experiment_name,
-        trackio_url=trackio_url,
-        trackio_token=trackio_token,
-        enable_tracking=enable_tracking,
-        log_artifacts=log_artifacts,
-        log_metrics=log_metrics,
-        log_config=log_config
+        trackio_url=getattr(config, 'trackio_url', None),
+        trackio_token=getattr(config, 'trackio_token', None),
+        enable_tracking=getattr(config, 'enable_tracking', True),
+        log_artifacts=getattr(config, 'log_artifacts', True),
+        log_metrics=getattr(config, 'log_metrics', True),
+        log_config=getattr(config, 'log_config', True)
     ) 
