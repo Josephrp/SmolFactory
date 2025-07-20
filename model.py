@@ -172,7 +172,17 @@ class SmolLM3Model:
         # Override with kwargs
         training_args.update(kwargs)
         
-        return TrainingArguments(**training_args)
+        # Debug: Check for any boolean values that might be causing issues
+        for key, value in training_args.items():
+            if isinstance(value, bool):
+                logger.info(f"Boolean argument: {key} = {value}")
+        
+        try:
+            return TrainingArguments(**training_args)
+        except Exception as e:
+            logger.error(f"Failed to create TrainingArguments: {e}")
+            logger.error(f"Training arguments: {training_args}")
+            raise
     
     def save_pretrained(self, path: str):
         """Save model and tokenizer"""
