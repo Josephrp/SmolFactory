@@ -148,7 +148,7 @@ get_training_config() {
     case "$config_type" in
         "Basic Training")
             MODEL_NAME="HuggingFaceTB/SmolLM3-3B"
-            DATASET_NAME="HuggingFaceTB/smoltalk"
+            DATASET_NAME="legmlai/openhermes-fr"
             MAX_EPOCHS=3
             BATCH_SIZE=2
             GRADIENT_ACCUMULATION_STEPS=8
