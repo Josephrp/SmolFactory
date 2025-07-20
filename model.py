@@ -149,22 +149,18 @@ class SmolLM3Model:
             "fp16": self.config.fp16,
             "bf16": self.config.bf16,
             "ddp_backend": self.config.ddp_backend if torch.cuda.device_count() > 1 else None,
-            "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False,
             "report_to": None,
-            "remove_unused_columns": False,
             "dataloader_pin_memory": getattr(self.config, 'dataloader_pin_memory', True),
             # Removed group_by_length as it's causing issues with newer transformers versions
             # Removed length_column_name as it might conflict with data collator
             "seed": 42,
-            "data_seed": 42,
             "dataloader_num_workers": getattr(self.config, 'dataloader_num_workers', 4),
             "max_grad_norm": getattr(self.config, 'max_grad_norm', 1.0),
             "optim": self.config.optimizer,
             "lr_scheduler_type": self.config.scheduler,
-            "warmup_ratio": 0.1,
             "save_strategy": "steps",
             "logging_strategy": "steps",
-            "prediction_loss_only": True,
+            # Removed prediction_loss_only as it might cause issues
         }
         
         # Override with kwargs
