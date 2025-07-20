@@ -24,7 +24,9 @@ class SmolLM3Dataset:
         use_chat_template: bool = True,
         chat_template_kwargs: Optional[Dict] = None,
         filter_bad_entries: bool = False,
-        bad_entry_field: str = "bad_entry"
+        bad_entry_field: str = "bad_entry",
+        sample_size: Optional[int] = None,
+        sample_seed: int = 42
     ):
         self.data_path = data_path
         self.tokenizer = tokenizer
@@ -33,6 +35,8 @@ class SmolLM3Dataset:
         self.chat_template_kwargs = chat_template_kwargs or {}
         self.filter_bad_entries = filter_bad_entries
         self.bad_entry_field = bad_entry_field
+        self.sample_size = sample_size
+        self.sample_seed = sample_seed
         
         # Load and process dataset
         self.dataset = self._load_dataset()
@@ -88,6 +92,32 @@ class SmolLM3Dataset:
                         dataset[split] = dataset[split].filter(lambda x: not x[self.bad_entry_field])
                         filtered_size = len(dataset[split])
                         logger.info("Filtered %s: %d -> %d samples", split, original_size, filtered_size)
+            
+            # Apply sampling if requested
+            if self.sample_size is not None and "train" in dataset:
+                logger.info(f"Sampling {self.sample_size} random samples from {len(dataset['train'])} total samples")
+                import random
+                random.seed(self.sample_seed)
+                
+                # Sample indices
+                total_samples = len(dataset["train"])
+                if self.sample_size > total_samples:
+                    logger.warning(f"Requested sample size ({self.sample_size}) is larger than dataset size ({total_samples}). Using all samples.")
+                    sampled_indices = list(range(total_samples))
+                else:
+                    sampled_indices = random.sample(range(total_samples), self.sample_size)
+                
+                # Apply sampling to train split
+                dataset["train"] = dataset["train"].select(sampled_indices)
+                logger.info(f"Sampled {len(dataset['train'])} train samples")
+                
+                # Also sample validation if it exists and is large
+                if "validation" in dataset and len(dataset["validation"]) > 1000:
+                    val_sample_size = min(1000, len(dataset["validation"]))
+                    logger.info(f"Sampling {val_sample_size} validation samples from {len(dataset['validation'])} total")
+                    val_sampled_indices = random.sample(range(len(dataset["validation"])), val_sample_size)
+                    dataset["validation"] = dataset["validation"].select(val_sampled_indices)
+                    logger.info(f"Sampled {len(dataset['validation'])} validation samples")
             
             # If only 'train' split exists, create validation and test splits
             if ("train" in dataset) and ("validation" not in dataset or "test" not in dataset):

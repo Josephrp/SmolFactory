@@ -448,7 +448,41 @@ echo "================================"
 
 export HF_TOKEN="$HF_TOKEN"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
-huggingface-cli login --token $HF_TOKEN
+
+# Login to Hugging Face with token
+print_info "Logging in to Hugging Face..."
+if huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential; then
+    print_status "Successfully logged in to Hugging Face"
+    print_info "Username: $(huggingface-cli whoami)"
+else
+    print_error "Failed to login to Hugging Face"
+    print_error "Please check your token and try again"
+    exit 1
+fi
+
+# Configure git for HF operations
+print_step "Step 8.1: Git Configuration"
+echo "================================"
+
+print_info "Configuring git for Hugging Face operations..."
+
+# Get user's email for git configuration
+get_input "Enter the email you used to register your account at huggingface for git configuration" "" GIT_EMAIL
+
+# Configure git locally (not globally) for this project
+git config user.email "$GIT_EMAIL"
+git config user.name "$HF_USERNAME"
+
+# Verify git configuration
+print_info "Verifying git configuration..."
+if git config user.email && git config user.name; then
+    print_status "Git configured successfully"
+    print_info "  Email: $(git config user.email)"
+    print_info "  Name: $(git config user.name)"
+else
+    print_error "Failed to configure git"
+    exit 1
+fi
 
 # Step 9: Deploy Trackio Space
 print_step "Step 9: Deploying Trackio Space"
@@ -482,14 +516,14 @@ echo "================================="
 cd ../trackio_tonic
 python configure_trackio.py
 
-# Step 12: Create training configuration
-print_step "Step 12: Creating Training Configuration"
-echo "==========================================="
+# Step 12: Training Configuration
+print_step "Step 12: Training Configuration"
+echo "==================================="
 
 cd ../..
-create_training_config "$CONFIG_FILE"
+print_info "Using existing configuration file: $CONFIG_FILE"
 
-# Step 13: Dataset preparation (handled by src/data.py during training)
+# Step 13: Dataset Configuration
 print_step "Step 13: Dataset Configuration"
 echo "=================================="
 
@@ -499,57 +533,40 @@ if [ "$TRAINING_CONFIG_TYPE" = "H100 Lightweight (Rapid)" ]; then
     print_info "Sample size: ${DATASET_SAMPLE_SIZE:-80000} (will be handled by data.py)"
 fi
 
-# Step 14: Calculate training parameters
-print_step "Step 14: Calculating Training Parameters"
-echo "============================================"
+# Step 14: Training Parameters
+print_step "Step 14: Training Parameters"
+echo "================================"
 
-# Estimate training steps
-EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS))
-echo "  Effective batch size: $EFFECTIVE_BATCH_SIZE"
-echo "  Learning rate: $LEARNING_RATE"
-echo "  Max epochs: $MAX_EPOCHS"
-echo "  Sequence length: $MAX_SEQ_LENGTH"
-echo "  Training steps will be calculated by the training script"
+print_info "Training parameters will be loaded from configuration file"
+print_info "Model: $MODEL_NAME"
+print_info "Dataset: $DATASET_NAME"
+print_info "Batch size: $BATCH_SIZE"
+print_info "Learning rate: $LEARNING_RATE"
 
 # Step 15: Start training
 print_step "Step 15: Starting Training"
 echo "=============================="
 
-print_info "Using existing scripts/training/train.py script with the following parameters:"
-echo "  Model: $MODEL_NAME"
-echo "  Dataset: $DATASET_NAME"
-echo "  Output: /output-checkpoint"
-echo "  Batch size: $BATCH_SIZE"
-echo "  Learning rate: $LEARNING_RATE"
-echo "  Sequence length: $MAX_SEQ_LENGTH"
+print_info "Starting training with configuration: $CONFIG_FILE"
+print_info "Experiment: $EXPERIMENT_NAME"
+print_info "Output: /output-checkpoint"
+print_info "Trackio: $TRACKIO_URL"
 
-# Run the existing training script
-python scripts/training/train.py "$CONFIG_FILE" \
-    --dataset_dir "$DATASET_NAME" \
-    --out_dir /output-checkpoint \
-    --init_from scratch \
-    --batch_size $BATCH_SIZE \
-    --learning_rate $LEARNING_RATE \
-    --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
-    --max_seq_length $MAX_SEQ_LENGTH \
-    --save_steps $SAVE_STEPS \
-    --eval_steps $EVAL_STEPS \
-    --logging_steps $LOGGING_STEPS \
-    --enable_tracking \
-    --trackio_url "$TRACKIO_URL" \
-    --experiment_name "$EXPERIMENT_NAME" \
-    --hf_token "$HF_TOKEN" \
-    --dataset_repo "$TRACKIO_DATASET_REPO"
+# Run the simpler training script
+python scripts/training/train.py \
+    --config "$CONFIG_FILE" \
+    --experiment-name "$EXPERIMENT_NAME" \
+    --output-dir /output-checkpoint \
+    --trackio-url "$TRACKIO_URL"
 
 # Step 16: Push model to Hugging Face Hub
 print_step "Step 16: Pushing Model to HF Hub"
 echo "====================================="
 
-print_info "Using scripts/model_tonic/push_to_huggingface.py script"
-echo "  Checkpoint: /output-checkpoint"
-echo "  Repository: $REPO_NAME"
+print_info "Pushing model to: $REPO_NAME"
+print_info "Checkpoint: /output-checkpoint"
 
-# Run the existing push script
+# Run the push script
 python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME" \
     --token "$HF_TOKEN" \
     --trackio-url "$TRACKIO_URL" \

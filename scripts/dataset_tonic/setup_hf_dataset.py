@@ -6,6 +6,7 @@ Setup script for Hugging Face Dataset repository for Trackio experiments
 import os
 import json
 from datetime import datetime
+from pathlib import Path
 from datasets import Dataset
 from huggingface_hub import HfApi
 
@@ -249,16 +250,31 @@ def setup_trackio_dataset():
         # Create dataset
         dataset = Dataset.from_list(initial_experiments)
         
-        # Push to HF Hub
+        # Get the project root directory (2 levels up from this script)
+        project_root = Path(__file__).parent.parent.parent
+        templates_dir = project_root / "templates" / "datasets"
+        readme_path = templates_dir / "readme.md"
+        
+        # Read README content if it exists
+        readme_content = None
+        if readme_path.exists():
+            with open(readme_path, 'r', encoding='utf-8') as f:
+                readme_content = f.read()
+            print(f"✅ Found README template: {readme_path}")
+        
+        # Push to HF Hub with README
         api = HfApi(token=hf_token)
         dataset.push_to_hub(
             dataset_repo,
             token=hf_token,
-            private=True  # Make it private for security
+            private=True,  # Make it private for security
+            readme_content=readme_content  # Include README if available
         )
         
         print(f"✅ Successfully created dataset: {dataset_repo}")
         print(f"📊 Added {len(initial_experiments)} experiments")
+        if readme_content:
+            print("📝 Included README from templates")
         print("🔒 Dataset is private (only accessible with your token)")
         print("\n🎯 Next steps:")
         print("1. Set HF_TOKEN in your Hugging Face Space environment")

@@ -56,6 +56,8 @@ config = SmolLM3Config(
     target_field="completion",
     filter_bad_entries=False,
     bad_entry_field="bad_entry",
+    sample_size=80000,  # 80K samples for lightweight training
+    sample_seed=42,  # For reproducibility
     
     # Chat template configuration
     use_chat_template=True,

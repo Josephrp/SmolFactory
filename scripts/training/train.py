@@ -63,11 +63,13 @@ def main():
     try:
         from config.train_smollm3_openhermes_fr_a100_large import get_config as get_large_config
         from config.train_smollm3_openhermes_fr_a100_multiple_passes import get_config as get_multiple_passes_config
+        from config.train_smollm3_h100_lightweight import config as h100_lightweight_config
         
         # Map config files to their respective functions
         config_map = {
             "config/train_smollm3_openhermes_fr_a100_large.py": get_large_config,
             "config/train_smollm3_openhermes_fr_a100_multiple_passes.py": get_multiple_passes_config,
+            "config/train_smollm3_h100_lightweight.py": lambda x: h100_lightweight_config,
         }
         
         if args.config in config_map:
@@ -81,6 +83,7 @@ def main():
         print("Available configurations:")
         print("  - config/train_smollm3_openhermes_fr_a100_large.py (Large batch, 1.3 passes)")
         print("  - config/train_smollm3_openhermes_fr_a100_multiple_passes.py (Multiple passes, 4 epochs)")
+        print("  - config/train_smollm3_h100_lightweight.py (H100 lightweight, 80K samples)")
         return 1
     
     # Override experiment name if provided
@@ -124,6 +127,9 @@ def main():
     
     # Import and run training
     try:
+        # Add src directory to path
+        src_path = str(Path(__file__).parent.parent.parent / "src")
+        sys.path.insert(0, src_path)
         from train import main as train_main
         
         # Set up training arguments - config is positional, not --config

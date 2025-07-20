@@ -61,22 +61,55 @@ class TrackioSpaceDeployer:
         try:
             print("Uploading files to Space...")
             
-            # Files to upload
+            # Get the project root directory (3 levels up from this script)
+            project_root = Path(__file__).parent.parent.parent
+            templates_dir = project_root / "templates" / "spaces"
+            
+            # Files to upload from templates/spaces
             files_to_upload = [
                 "app.py",
-                "requirements_space.txt",
-                "README.md"
+                "requirements.txt"
             ]
             
-            for file_path in files_to_upload:
-                if os.path.exists(file_path):
-                    # Use git to add and push files
-                    subprocess.run(["git", "add", file_path], check=True)
-                    subprocess.run(["git", "commit", "-m", f"Add {file_path}"], check=True)
-                    subprocess.run(["git", "push"], check=True)
-                    print(f"✅ Uploaded {file_path}")
+            # README.md will be created by configure_space method
+            
+            # Copy files from templates/spaces to current directory
+            copied_files = []
+            for file_name in files_to_upload:
+                source_path = templates_dir / file_name
+                if source_path.exists():
+                    import shutil
+                    shutil.copy2(source_path, file_name)
+                    copied_files.append(file_name)
+                    print(f"✅ Copied {file_name} from templates")
                 else:
-                    print(f"⚠️  File not found: {file_path}")
+                    print(f"⚠️  File not found: {source_path}")
+            
+            # Check if we're in a git repository
+            try:
+                subprocess.run(["git", "status"], capture_output=True, check=True)
+            except subprocess.CalledProcessError:
+                print("⚠️  Not in a git repository, initializing...")
+                subprocess.run(["git", "init"], check=True)
+                subprocess.run(["git", "remote", "add", "origin", f"https://huggingface.co/spaces/{self.username}/{self.space_name}"], check=True)
+            
+            # Add all files at once
+            existing_files = [f for f in files_to_upload if os.path.exists(f)]
+            if existing_files:
+                subprocess.run(["git", "add"] + existing_files, check=True)
+                subprocess.run(["git", "add", "README.md"], check=True)  # Add README.md that was created in configure_space
+                subprocess.run(["git", "commit", "-m", "Initial Space setup"], check=True)
+                
+                # Push to the space
+                try:
+                    subprocess.run(["git", "push", "origin", "main"], check=True)
+                    print(f"✅ Uploaded {len(existing_files)} files")
+                except subprocess.CalledProcessError:
+                    # Try pushing to master branch if main doesn't exist
+                    subprocess.run(["git", "push", "origin", "master"], check=True)
+                    print(f"✅ Uploaded {len(existing_files)} files")
+            else:
+                print("⚠️  No files found to upload")
             
             return True
             
@@ -89,20 +122,28 @@ class TrackioSpaceDeployer:
         try:
             print("Configuring Space settings...")
             
-            # Create space configuration
-            space_config = {
-                "title": "Trackio - Experiment Tracking",
-                "emoji": "🚀",
-                "colorFrom": "blue",
-                "colorTo": "purple",
-                "sdk": "gradio",
-                "sdk_version": "4.0.0",
-                "app_file": "app.py",
-                "pinned": False
-            }
+            # Get the project root directory (3 levels up from this script)
+            project_root = Path(__file__).parent.parent.parent
+            templates_dir = project_root / "templates" / "spaces"
+            readme_template_path = templates_dir / "README.md"
             
-            # Write README.md for the space
-            space_readme = f"""---
+            # Read README template if it exists
+            if readme_template_path.exists():
+                with open(readme_template_path, 'r', encoding='utf-8') as f:
+                    readme_template = f.read()
+                
+                # Replace placeholder with actual space URL
+                readme_content = readme_template.replace("{SPACE_URL}", self.space_url)
+                
+                # Write README.md for the space
+                with open("README.md", "w", encoding='utf-8') as f:
+                    f.write(readme_content)
+                
+                print(f"✅ Created README.md from template")
+            else:
+                print(f"⚠️  README template not found: {readme_template_path}")
+                # Fallback to basic README
+                basic_readme = f"""---
 title: Trackio Tonic
 emoji: 🐠
 colorFrom: indigo
@@ -119,39 +160,11 @@ short_description: trackio for training monitoring
 
 A Gradio interface for experiment tracking and monitoring.
 
-## Features
-
-- Create and manage experiments
-- Log training metrics and parameters
-- View experiment details and results
-- Update experiment status
-
-## Usage
-
-1. Create a new experiment using the "Create Experiment" tab
-2. Log metrics during training using the "Log Metrics" tab
-3. View experiment details using the "View Experiments" tab
-4. Update experiment status using the "Update Status" tab
-
-## Integration
-
-To connect your training script to this Trackio Space:
-
-```python
-from monitoring import SmolLM3Monitor
-
-monitor = SmolLM3Monitor(
-    experiment_name="my_experiment",
-    trackio_url="{self.space_url}",
-    enable_tracking=True
-)
-```
-
 Visit: {self.space_url}
 """
-            
-            with open("README.md", "w") as f:
-                f.write(space_readme)
+                with open("README.md", "w", encoding='utf-8') as f:
+                    f.write(basic_readme)
+                print(f"✅ Created basic README.md")
             
             return True
             

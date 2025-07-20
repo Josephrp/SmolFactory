@@ -183,13 +183,15 @@ def main():
         dataset_path = os.path.join('/input', args.dataset_dir)
         logger.info(f"Using local dataset: {dataset_path}")
     
-    # Load dataset with filtering options
+    # Load dataset with filtering options and sampling
     dataset = SmolLM3Dataset(
         data_path=dataset_path,
         tokenizer=model.tokenizer,
         max_seq_length=args.max_seq_length,
         filter_bad_entries=getattr(config, 'filter_bad_entries', False),
-        bad_entry_field=getattr(config, 'bad_entry_field', 'bad_entry')
+        bad_entry_field=getattr(config, 'bad_entry_field', 'bad_entry'),
+        sample_size=getattr(config, 'sample_size', None),
+        sample_seed=getattr(config, 'sample_seed', 42)
     )
     
     # Initialize trainer
