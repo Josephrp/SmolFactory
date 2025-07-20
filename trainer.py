@@ -124,7 +124,7 @@ class SmolLM3Trainer:
         
         # Try standard Trainer first (more stable with callbacks)
         logger.info("Creating Trainer with training arguments...")
-        logger.info(f"Training args keys: {list(training_args.keys())}")
+        logger.info(f"Training args type: {type(training_args)}")
         try:
             trainer = Trainer(
                 model=self.model.model,
