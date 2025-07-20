@@ -261,6 +261,10 @@ class SmolLM3Monitor:
             def __init__(self, monitor):
                 self.monitor = monitor
             
+            def on_init_end(self, args, state, control, **kwargs):
+                """Called when training initialization is complete"""
+                logger.info("Training initialization completed")
+            
             def on_log(self, args, state, control, logs=None, **kwargs):
                 """Called when logs are created"""
                 if logs:
@@ -277,6 +281,16 @@ class SmolLM3Monitor:
                 """Called when evaluation is performed"""
                 if metrics:
                     self.monitor.log_evaluation_results(metrics, state.global_step)
+            
+            def on_train_begin(self, args, state, control, **kwargs):
+                """Called when training begins"""
+                logger.info("Training started")
+            
+            def on_train_end(self, args, state, control, **kwargs):
+                """Called when training ends"""
+                logger.info("Training completed")
+                if self.monitor:
+                    self.monitor.close()
         
         return TrackioCallback(self)
     
