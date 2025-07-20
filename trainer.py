@@ -61,12 +61,51 @@ class SmolLM3Trainer:
         # Get data collator
         data_collator = self.dataset.get_data_collator()
         
-        # Add monitoring callback
+        # Add monitoring callback - temporarily disabled to debug
         callbacks = []
+        
+        # Simple console callback for basic monitoring
+        class SimpleConsoleCallback:
+            def on_log(self, args, state, control, logs=None, **kwargs):
+                """Log metrics to console"""
+                if logs and isinstance(logs, dict):
+                    step = state.global_step if hasattr(state, 'global_step') else 'unknown'
+                    loss = logs.get('loss', 'N/A')
+                    lr = logs.get('learning_rate', 'N/A')
+                    print(f"Step {step}: loss={loss:.4f}, lr={lr}")
+            
+            def on_train_begin(self, args, state, control, **kwargs):
+                print("🚀 Training started!")
+            
+            def on_train_end(self, args, state, control, **kwargs):
+                print("✅ Training completed!")
+            
+            def on_save(self, args, state, control, **kwargs):
+                step = state.global_step if hasattr(state, 'global_step') else 'unknown'
+                print(f"💾 Checkpoint saved at step {step}")
+            
+            def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+                if metrics and isinstance(metrics, dict):
+                    step = state.global_step if hasattr(state, 'global_step') else 'unknown'
+                    eval_loss = metrics.get('eval_loss', 'N/A')
+                    print(f"📊 Evaluation at step {step}: eval_loss={eval_loss}")
+        
+        # Add simple console callback
+        callbacks.append(SimpleConsoleCallback())
+        logger.info("Added simple console monitoring callback")
+        
+        # Try to add Trackio callback if available
         if self.monitor and self.monitor.enable_tracking:
-            trackio_callback = self.monitor.create_monitoring_callback()
-            if trackio_callback:
-                callbacks.append(trackio_callback)
+            try:
+                trackio_callback = self.monitor.create_monitoring_callback()
+                if trackio_callback:
+                    callbacks.append(trackio_callback)
+                    logger.info("Added Trackio monitoring callback")
+                else:
+                    logger.warning("Failed to create Trackio callback")
+            except Exception as e:
+                logger.error(f"Error creating Trackio callback: {e}")
+                logger.info("Continuing with console monitoring only")
         
         if self.use_sft_trainer:
             # Use SFTTrainer for supervised fine-tuning

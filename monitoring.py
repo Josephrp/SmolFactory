@@ -309,6 +309,10 @@ class SmolLM3Monitor:
                         self.monitor.close()
                 except Exception as e:
                     logger.error(f"Error in on_train_end: {e}")
+            
+            def __call__(self, *args, **kwargs):
+                """Make the callback callable to avoid any issues"""
+                return self
         
         return TrackioCallback(self)
     
