@@ -40,7 +40,7 @@ class SmolLM3Dataset:
     
     def _load_dataset(self) -> Dataset:
         """Load dataset from various formats"""
-        logger.info(f"Loading dataset from {self.data_path}")
+        logger.info("Loading dataset from %s", self.data_path)
         
         # Check if it's a Hugging Face dataset
         if os.path.isdir(self.data_path):
@@ -54,7 +54,7 @@ class SmolLM3Dataset:
                 logger.info("Loaded dataset from local JSON files")
                 return dataset
             except Exception as e:
-                logger.warning(f"Failed to load as JSON dataset: {e}")
+                logger.warning("Failed to load as JSON dataset: %s", e)
         
         # Try to load as a single JSON file
         if os.path.isfile(self.data_path) and self.data_path.endswith('.json'):
@@ -71,23 +71,23 @@ class SmolLM3Dataset:
                 logger.info("Loaded dataset from single JSON file")
                 return dataset
             except Exception as e:
-                logger.error(f"Failed to load JSON file: {e}")
+                logger.error("Failed to load JSON file: %s", e)
                 raise
         
         # Try to load as a Hugging Face dataset name
         try:
             dataset = load_dataset(self.data_path)
-            logger.info(f"Loaded Hugging Face dataset: {self.data_path}")
+            logger.info("Loaded Hugging Face dataset: %s", self.data_path)
             
             # Filter bad entries if requested
             if self.filter_bad_entries and self.bad_entry_field in dataset["train"].column_names:
-                logger.info(f"Filtering out bad entries using field: {self.bad_entry_field}")
+                logger.info("Filtering out bad entries using field: %s", self.bad_entry_field)
                 for split in dataset:
                     if self.bad_entry_field in dataset[split].column_names:
                         original_size = len(dataset[split])
                         dataset[split] = dataset[split].filter(lambda x: not x[self.bad_entry_field])
                         filtered_size = len(dataset[split])
-                        logger.info(f"Filtered {split}: {original_size} -> {filtered_size} samples")
+                        logger.info("Filtered %s: %d -> %d samples", split, original_size, filtered_size)
             
             # If only 'train' split exists, create validation and test splits
             if ("train" in dataset) and ("validation" not in dataset or "test" not in dataset):
@@ -102,7 +102,7 @@ class SmolLM3Dataset:
                 }
             return dataset
         except Exception as e:
-            logger.error(f"Failed to load dataset: {e}")
+            logger.error("Failed to load dataset: %s", e)
             raise
     
     def _process_dataset(self) -> Dataset:
@@ -166,7 +166,7 @@ class SmolLM3Dataset:
                     )
                     return {"text": text}
                 except Exception as e:
-                    logger.warning(f"Failed to apply chat template: {e}")
+                    logger.warning("Failed to apply chat template: %s", e)
                     # Fallback to plain text
                     return {"text": str(example)}
             else:
@@ -206,20 +206,20 @@ class SmolLM3Dataset:
             # Process each split individually
             processed_dataset = {}
             for split_name, split_dataset in self.dataset.items():
-                logger.info(f"Processing {split_name} split...")
+                logger.info("Processing %s split...", split_name)
                 
                 # Format the split
                 processed_split = split_dataset.map(
                     format_chat_template,
                     remove_columns=split_dataset.column_names,
-                    desc=f"Formatting {split_name} dataset"
+                    desc="Formatting {} dataset".format(split_name)
                 )
                 
                 # Tokenize the split
                 tokenized_split = processed_split.map(
                     tokenize_function,
                     remove_columns=processed_split.column_names,
-                    desc=f"Tokenizing {split_name} dataset",
+                    desc="Tokenizing {} dataset".format(split_name),
                     batched=True,
                 )
                 
@@ -242,13 +242,13 @@ class SmolLM3Dataset:
         
         # Log processing results
         if isinstance(processed_dataset, dict):
-            logger.info(f"Dataset processed. Train samples: {len(processed_dataset['train'])}")
+            logger.info("Dataset processed. Train samples: %d", len(processed_dataset['train']))
             if "validation" in processed_dataset:
-                logger.info(f"Validation samples: {len(processed_dataset['validation'])}")
+                logger.info("Validation samples: %d", len(processed_dataset['validation']))
             if "test" in processed_dataset:
-                logger.info(f"Test samples: {len(processed_dataset['test'])}")
+                logger.info("Test samples: %d", len(processed_dataset['test']))
         else:
-            logger.info(f"Dataset processed. Samples: {len(processed_dataset)}")
+            logger.info("Dataset processed. Samples: %d", len(processed_dataset))
         
         return processed_dataset
     
@@ -313,5 +313,5 @@ def create_sample_dataset(output_path: str = "my_dataset"):
     with open(os.path.join(output_path, "validation.json"), 'w', encoding='utf-8') as f:
         json.dump(validation_data, f, indent=2, ensure_ascii=False)
     
-    logger.info(f"Sample dataset created in {output_path}")
+    logger.info("Sample dataset created in %s", output_path)
     return output_path 

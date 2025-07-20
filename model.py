@@ -53,7 +53,7 @@ class SmolLM3Model:
         
     def _load_tokenizer(self):
         """Load the tokenizer"""
-        logger.info(f"Loading tokenizer from {self.model_name}")
+        logger.info("Loading tokenizer from %s", self.model_name)
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
@@ -65,15 +65,15 @@ class SmolLM3Model:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
                 
-            logger.info(f"Tokenizer loaded successfully. Vocab size: {self.tokenizer.vocab_size}")
+            logger.info("Tokenizer loaded successfully. Vocab size: %d", self.tokenizer.vocab_size)
             
         except Exception as e:
-            logger.error(f"Failed to load tokenizer: {e}")
+            logger.error("Failed to load tokenizer: %s", e)
             raise
     
     def _load_model(self):
         """Load the model"""
-        logger.info(f"Loading model from {self.model_name}")
+        logger.info("Loading model from %s", self.model_name)
         try:
             # Load model configuration
             model_config = AutoConfig.from_pretrained(
@@ -120,11 +120,11 @@ class SmolLM3Model:
             if self.config and self.config.use_gradient_checkpointing:
                 self.model.gradient_checkpointing_enable()
             
-            logger.info(f"Model loaded successfully. Parameters: {self.model.num_parameters():,}")
-            logger.info(f"Max sequence length: {self.max_seq_length}")
+            logger.info("Model loaded successfully. Parameters: {:,}".format(self.model.num_parameters()))
+            logger.info("Max sequence length: %d", self.max_seq_length)
             
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
+            logger.error("Failed to load model: %s", e)
             raise
     
     def get_training_arguments(self, output_dir: str, **kwargs) -> TrainingArguments:
@@ -201,9 +201,9 @@ class SmolLM3Model:
                 # Test if the parameter is supported by creating a dummy TrainingArguments
                 test_args = TrainingArguments(output_dir="/tmp/test", dataloader_prefetch_factor=2)
                 training_args["dataloader_prefetch_factor"] = self.config.dataloader_prefetch_factor
-                logger.info(f"Added dataloader_prefetch_factor: {self.config.dataloader_prefetch_factor}")
+                logger.info("Added dataloader_prefetch_factor: %d", self.config.dataloader_prefetch_factor)
             except Exception as e:
-                logger.warning(f"dataloader_prefetch_factor not supported in this transformers version: {e}")
+                logger.warning("dataloader_prefetch_factor not supported in this transformers version: %s", e)
                 # Remove the parameter if it's not supported
                 if "dataloader_prefetch_factor" in training_args:
                     del training_args["dataloader_prefetch_factor"]
@@ -218,7 +218,7 @@ class SmolLM3Model:
     
     def save_pretrained(self, path: str):
         """Save model and tokenizer"""
-        logger.info(f"Saving model and tokenizer to {path}")
+        logger.info("Saving model and tokenizer to %s", path)
         os.makedirs(path, exist_ok=True)
         
         self.model.save_pretrained(path)
@@ -234,7 +234,7 @@ class SmolLM3Model:
     
     def load_checkpoint(self, checkpoint_path: str):
         """Load model from checkpoint"""
-        logger.info(f"Loading checkpoint from {checkpoint_path}")
+        logger.info("Loading checkpoint from %s", checkpoint_path)
         try:
             self.model = AutoModelForCausalLM.from_pretrained(
                 checkpoint_path,
@@ -244,5 +244,5 @@ class SmolLM3Model:
             )
             logger.info("Checkpoint loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to load checkpoint: {e}")
+            logger.error("Failed to load checkpoint: %s", e)
             raise 

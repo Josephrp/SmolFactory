@@ -55,22 +55,22 @@ class SmolLM3Trainer:
         )
         
         # Debug: Print training arguments
-        logger.info(f"Training arguments keys: {list(training_args.__dict__.keys())}")
-        logger.info(f"Training arguments type: {type(training_args)}")
+        logger.info("Training arguments keys: %s", list(training_args.__dict__.keys()))
+        logger.info("Training arguments type: %s", type(training_args))
         
         # Get datasets
         logger.info("Getting train dataset...")
         train_dataset = self.dataset.get_train_dataset()
-        logger.info(f"Train dataset: {type(train_dataset)} with {len(train_dataset)} samples")
+        logger.info("Train dataset: %s with %d samples", type(train_dataset), len(train_dataset))
         
         logger.info("Getting eval dataset...")
         eval_dataset = self.dataset.get_eval_dataset()
-        logger.info(f"Eval dataset: {type(eval_dataset)} with {len(eval_dataset)} samples")
+        logger.info("Eval dataset: %s with %d samples", type(eval_dataset), len(eval_dataset))
         
         # Get data collator
         logger.info("Getting data collator...")
         data_collator = self.dataset.get_data_collator()
-        logger.info(f"Data collator: {type(data_collator)}")
+        logger.info("Data collator: %s", type(data_collator))
         
         # Add monitoring callbacks
         callbacks = []
@@ -89,7 +89,7 @@ class SmolLM3Trainer:
                     step = state.global_step if hasattr(state, 'global_step') else 'unknown'
                     loss = logs.get('loss', 'N/A')
                     lr = logs.get('learning_rate', 'N/A')
-                    print(f"Step {step}: loss={loss:.4f}, lr={lr}")
+                    print("Step {}: loss={:.4f}, lr={}".format(step, loss, lr))
             
             def on_train_begin(self, args, state, control, **kwargs):
                 print("🚀 Training started!")
@@ -99,13 +99,13 @@ class SmolLM3Trainer:
             
             def on_save(self, args, state, control, **kwargs):
                 step = state.global_step if hasattr(state, 'global_step') else 'unknown'
-                print(f"💾 Checkpoint saved at step {step}")
+                print("💾 Checkpoint saved at step {}".format(step))
             
             def on_evaluate(self, args, state, control, metrics=None, **kwargs):
                 if metrics and isinstance(metrics, dict):
                     step = state.global_step if hasattr(state, 'global_step') else 'unknown'
                     eval_loss = metrics.get('eval_loss', 'N/A')
-                    print(f"📊 Evaluation at step {step}: eval_loss={eval_loss}")
+                    print("📊 Evaluation at step {}: eval_loss={}".format(step, eval_loss))
         
         # Add console callback
         callbacks.append(SimpleConsoleCallback())
@@ -121,14 +121,14 @@ class SmolLM3Trainer:
                 else:
                     logger.warning("Failed to create Trackio callback")
             except Exception as e:
-                logger.error(f"Error creating Trackio callback: {e}")
+                logger.error("Error creating Trackio callback: %s", e)
                 logger.info("Continuing with console monitoring only")
         
-        logger.info(f"Total callbacks: {len(callbacks)}")
+        logger.info("Total callbacks: %d", len(callbacks))
         
         # Try SFTTrainer first (better for instruction tuning)
         logger.info("Creating SFTTrainer with training arguments...")
-        logger.info(f"Training args type: {type(training_args)}")
+        logger.info("Training args type: %s", type(training_args))
         try:
             trainer = SFTTrainer(
                 model=self.model.model,
@@ -140,8 +140,8 @@ class SmolLM3Trainer:
             )
             logger.info("Using SFTTrainer (optimized for instruction tuning)")
         except Exception as e:
-            logger.warning(f"SFTTrainer failed: {e}")
-            logger.error(f"SFTTrainer creation error details: {type(e).__name__}: {str(e)}")
+            logger.warning("SFTTrainer failed: %s", e)
+            logger.error("SFTTrainer creation error details: %s: %s", type(e).__name__, str(e))
             
             # Fallback to standard Trainer
             try:
@@ -156,14 +156,14 @@ class SmolLM3Trainer:
                 )
                 logger.info("Using standard Hugging Face Trainer (fallback)")
             except Exception as e2:
-                logger.error(f"Standard Trainer also failed: {e2}")
+                logger.error("Standard Trainer also failed: %s", e2)
                 raise e2
         
         return trainer
     
     def load_checkpoint(self, checkpoint_path: str):
         """Load checkpoint for resuming training"""
-        logger.info(f"Loading checkpoint from {checkpoint_path}")
+        logger.info("Loading checkpoint from %s", checkpoint_path)
         
         if self.init_from == "resume":
             # Load the model from checkpoint
@@ -192,7 +192,7 @@ class SmolLM3Trainer:
             # Log experiment URL
             experiment_url = self.monitor.get_experiment_url()
             if experiment_url:
-                logger.info(f"Trackio experiment URL: {experiment_url}")
+                logger.info("Trackio experiment URL: %s", experiment_url)
         
         # Load checkpoint if resuming
         if self.init_from == "resume":
@@ -200,7 +200,7 @@ class SmolLM3Trainer:
             if os.path.exists(checkpoint_path):
                 self.load_checkpoint(checkpoint_path)
             else:
-                logger.warning(f"Checkpoint path {checkpoint_path} not found, starting from scratch")
+                logger.warning("Checkpoint path %s not found, starting from scratch", checkpoint_path)
         
         # Start training
         try:
@@ -227,10 +227,10 @@ class SmolLM3Trainer:
                 self.monitor.close()
             
             logger.info("Training completed successfully!")
-            logger.info(f"Training metrics: {train_result.metrics}")
+            logger.info("Training metrics: %s", train_result.metrics)
             
         except Exception as e:
-            logger.error(f"Training failed: {e}")
+            logger.error("Training failed: %s", e)
             # Close monitoring on error
             if self.monitor and self.monitor.enable_tracking:
                 self.monitor.close()
@@ -247,17 +247,17 @@ class SmolLM3Trainer:
             with open(os.path.join(self.output_dir, "eval_results.json"), "w") as f:
                 json.dump(eval_results, f, indent=2)
             
-            logger.info(f"Evaluation completed: {eval_results}")
+            logger.info("Evaluation completed: %s", eval_results)
             return eval_results
             
         except Exception as e:
-            logger.error(f"Evaluation failed: {e}")
+            logger.error("Evaluation failed: %s", e)
             raise
     
     def save_model(self, path: Optional[str] = None):
         """Save the trained model"""
         save_path = path or self.output_dir
-        logger.info(f"Saving model to {save_path}")
+        logger.info("Saving model to %s", save_path)
         
         try:
             self.trainer.save_model(save_path)
@@ -273,7 +273,7 @@ class SmolLM3Trainer:
             logger.info("Model saved successfully!")
             
         except Exception as e:
-            logger.error(f"Failed to save model: {e}")
+            logger.error("Failed to save model: %s", e)
             raise
 
 class SmolLM3DPOTrainer:
@@ -342,8 +342,8 @@ class SmolLM3DPOTrainer:
                 json.dump(train_result.metrics, f, indent=2)
             
             logger.info("DPO training completed successfully!")
-            logger.info(f"Training metrics: {train_result.metrics}")
+            logger.info("Training metrics: %s", train_result.metrics)
             
         except Exception as e:
-            logger.error(f"DPO training failed: {e}")
+            logger.error("DPO training failed: %s", e)
             raise 

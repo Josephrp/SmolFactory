@@ -51,7 +51,7 @@ class SmolLM3Monitor:
         if self.enable_tracking:
             self._setup_trackio(trackio_url, trackio_token)
         
-        logger.info(f"Initialized monitoring for experiment: {experiment_name}")
+        logger.info("Initialized monitoring for experiment: %s", experiment_name)
     
     def _setup_trackio(self, trackio_url: Optional[str], trackio_token: Optional[str]):
         """Setup Trackio API client"""
@@ -69,7 +69,7 @@ class SmolLM3Monitor:
             # Create experiment
             create_result = self.trackio_client.create_experiment(
                 name=self.experiment_name,
-                description=f"SmolLM3 fine-tuning experiment started at {self.start_time}"
+                description="SmolLM3 fine-tuning experiment started at {}".format(self.start_time)
             )
             
             if "success" in create_result:
@@ -79,16 +79,16 @@ class SmolLM3Monitor:
                 match = re.search(r'exp_\d{8}_\d{6}', response_text)
                 if match:
                     self.experiment_id = match.group()
-                    logger.info(f"Trackio API client initialized. Experiment ID: {self.experiment_id}")
+                    logger.info("Trackio API client initialized. Experiment ID: %s", self.experiment_id)
                 else:
                     logger.error("Could not extract experiment ID from response")
                     self.enable_tracking = False
             else:
-                logger.error(f"Failed to create experiment: {create_result}")
+                logger.error("Failed to create experiment: %s", create_result)
                 self.enable_tracking = False
             
         except Exception as e:
-            logger.error(f"Failed to initialize Trackio API: {e}")
+            logger.error("Failed to initialize Trackio API: %s", e)
             self.enable_tracking = False
     
     def log_configuration(self, config: Dict[str, Any]):
@@ -105,17 +105,20 @@ class SmolLM3Monitor:
             
             if "success" in result:
                 # Also save config locally
-                config_path = f"config_{self.experiment_name}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
+                config_path = "config_{}_{}.json".format(
+                    self.experiment_name, 
+                    self.start_time.strftime('%Y%m%d_%H%M%S')
+                )
                 with open(config_path, 'w') as f:
                     json.dump(config, f, indent=2, default=str)
                 
                 self.artifacts.append(config_path)
-                logger.info(f"Configuration logged to Trackio and saved to {config_path}")
+                logger.info("Configuration logged to Trackio and saved to %s", config_path)
             else:
-                logger.error(f"Failed to log configuration: {result}")
+                logger.error("Failed to log configuration: %s", result)
             
         except Exception as e:
-            logger.error(f"Failed to log configuration: {e}")
+            logger.error("Failed to log configuration: %s", e)
     
     def log_config(self, config: Dict[str, Any]):
         """Alias for log_configuration for backward compatibility"""
@@ -142,12 +145,12 @@ class SmolLM3Monitor:
             if "success" in result:
                 # Store locally
                 self.metrics_history.append(metrics)
-                logger.debug(f"Metrics logged: {metrics}")
+                logger.debug("Metrics logged: %s", metrics)
             else:
-                logger.error(f"Failed to log metrics: {result}")
+                logger.error("Failed to log metrics: %s", result)
             
         except Exception as e:
-            logger.error(f"Failed to log metrics: {e}")
+            logger.error("Failed to log metrics: %s", e)
     
     def log_model_checkpoint(self, checkpoint_path: str, step: Optional[int] = None):
         """Log model checkpoint"""
@@ -170,12 +173,12 @@ class SmolLM3Monitor:
             
             if "success" in result:
                 self.artifacts.append(checkpoint_path)
-                logger.info(f"Checkpoint logged: {checkpoint_path}")
+                logger.info("Checkpoint logged: %s", checkpoint_path)
             else:
-                logger.error(f"Failed to log checkpoint: {result}")
+                logger.error("Failed to log checkpoint: %s", result)
             
         except Exception as e:
-            logger.error(f"Failed to log checkpoint: {e}")
+            logger.error("Failed to log checkpoint: %s", e)
     
     def log_evaluation_results(self, results: Dict[str, Any], step: Optional[int] = None):
         """Log evaluation results"""
@@ -189,15 +192,18 @@ class SmolLM3Monitor:
             self.log_metrics(eval_metrics, step)
             
             # Save evaluation results locally
-            eval_path = f"eval_results_step_{step}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
+            eval_path = "eval_results_step_{}_{}.json".format(
+                step or "unknown",
+                self.start_time.strftime('%Y%m%d_%H%M%S')
+            )
             with open(eval_path, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
             
             self.artifacts.append(eval_path)
-            logger.info(f"Evaluation results logged and saved to {eval_path}")
+            logger.info("Evaluation results logged and saved to %s", eval_path)
             
         except Exception as e:
-            logger.error(f"Failed to log evaluation results: {e}")
+            logger.error("Failed to log evaluation results: %s", e)
     
     def log_system_metrics(self, step: Optional[int] = None):
         """Log system metrics (GPU, memory, etc.)"""
@@ -210,9 +216,9 @@ class SmolLM3Monitor:
             # GPU metrics
             if torch.cuda.is_available():
                 for i in range(torch.cuda.device_count()):
-                    system_metrics[f'gpu_{i}_memory_allocated'] = torch.cuda.memory_allocated(i) / 1024**3  # GB
-                    system_metrics[f'gpu_{i}_memory_reserved'] = torch.cuda.memory_reserved(i) / 1024**3  # GB
-                    system_metrics[f'gpu_{i}_utilization'] = torch.cuda.utilization(i) if hasattr(torch.cuda, 'utilization') else 0
+                    system_metrics['gpu_{}_memory_allocated'.format(i)] = torch.cuda.memory_allocated(i) / 1024**3  # GB
+                    system_metrics['gpu_{}_memory_reserved'.format(i)] = torch.cuda.memory_reserved(i) / 1024**3  # GB
+                    system_metrics['gpu_{}_utilization'.format(i)] = torch.cuda.utilization(i) if hasattr(torch.cuda, 'utilization') else 0
             
             # CPU and memory metrics (basic)
             try:
@@ -225,7 +231,7 @@ class SmolLM3Monitor:
             self.log_metrics(system_metrics, step)
             
         except Exception as e:
-            logger.error(f"Failed to log system metrics: {e}")
+            logger.error("Failed to log system metrics: %s", e)
     
     def log_training_summary(self, summary: Dict[str, Any]):
         """Log training summary at the end"""
@@ -247,17 +253,20 @@ class SmolLM3Monitor:
             
             if "success" in result:
                 # Save summary locally
-                summary_path = f"training_summary_{self.experiment_name}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
+                summary_path = "training_summary_{}_{}.json".format(
+                    self.experiment_name,
+                    self.start_time.strftime('%Y%m%d_%H%M%S')
+                )
                 with open(summary_path, 'w') as f:
                     json.dump(summary, f, indent=2, default=str)
                 
                 self.artifacts.append(summary_path)
-                logger.info(f"Training summary logged and saved to {summary_path}")
+                logger.info("Training summary logged and saved to %s", summary_path)
             else:
-                logger.error(f"Failed to log training summary: {result}")
+                logger.error("Failed to log training summary: %s", result)
             
         except Exception as e:
-            logger.error(f"Failed to log training summary: {e}")
+            logger.error("Failed to log training summary: %s", e)
     
     def create_monitoring_callback(self):
         """Create a callback for integration with Hugging Face Trainer"""
@@ -274,7 +283,7 @@ class SmolLM3Monitor:
                 try:
                     logger.info("Training initialization completed")
                 except Exception as e:
-                    logger.error(f"Error in on_init_end: {e}")
+                    logger.error("Error in on_init_end: %s", e)
             
             def on_log(self, args, state, control, logs=None, **kwargs):
                 """Called when logs are created"""
@@ -284,18 +293,18 @@ class SmolLM3Monitor:
                         self.monitor.log_metrics(logs, step)
                         self.monitor.log_system_metrics(step)
                 except Exception as e:
-                    logger.error(f"Error in on_log: {e}")
+                    logger.error("Error in on_log: %s", e)
             
             def on_save(self, args, state, control, **kwargs):
                 """Called when a checkpoint is saved"""
                 try:
                     step = getattr(state, 'global_step', None)
                     if step is not None:
-                        checkpoint_path = os.path.join(args.output_dir, f"checkpoint-{step}")
+                        checkpoint_path = os.path.join(args.output_dir, "checkpoint-{}".format(step))
                         if os.path.exists(checkpoint_path):
                             self.monitor.log_model_checkpoint(checkpoint_path, step)
                 except Exception as e:
-                    logger.error(f"Error in on_save: {e}")
+                    logger.error("Error in on_save: %s", e)
             
             def on_evaluate(self, args, state, control, metrics=None, **kwargs):
                 """Called when evaluation is performed"""
@@ -304,14 +313,14 @@ class SmolLM3Monitor:
                         step = getattr(state, 'global_step', None)
                         self.monitor.log_evaluation_results(metrics, step)
                 except Exception as e:
-                    logger.error(f"Error in on_evaluate: {e}")
+                    logger.error("Error in on_evaluate: %s", e)
             
             def on_train_begin(self, args, state, control, **kwargs):
                 """Called when training begins"""
                 try:
                     logger.info("Training started")
                 except Exception as e:
-                    logger.error(f"Error in on_train_begin: {e}")
+                    logger.error("Error in on_train_begin: %s", e)
             
             def on_train_end(self, args, state, control, **kwargs):
                 """Called when training ends"""
@@ -320,7 +329,7 @@ class SmolLM3Monitor:
                     if self.monitor:
                         self.monitor.close()
                 except Exception as e:
-                    logger.error(f"Error in on_train_end: {e}")
+                    logger.error("Error in on_train_end: %s", e)
         
         callback = TrackioCallback(self)
         logger.info("TrackioCallback created successfully")
@@ -329,7 +338,7 @@ class SmolLM3Monitor:
     def get_experiment_url(self) -> Optional[str]:
         """Get the URL to view the experiment in Trackio"""
         if self.trackio_client and self.experiment_id:
-            return f"{self.trackio_client.space_url}?tab=view_experiments"
+            return "{}?tab=view_experiments".format(self.trackio_client.space_url)
         return None
     
     def close(self):
@@ -344,9 +353,9 @@ class SmolLM3Monitor:
                 if "success" in result:
                     logger.info("Monitoring session closed")
                 else:
-                    logger.error(f"Failed to close monitoring session: {result}")
+                    logger.error("Failed to close monitoring session: %s", result)
             except Exception as e:
-                logger.error(f"Failed to close monitoring session: {e}")
+                logger.error("Failed to close monitoring session: %s", e)
 
 # Utility function to create monitor from config
 def create_monitor_from_config(config, experiment_name: Optional[str] = None) -> SmolLM3Monitor:
