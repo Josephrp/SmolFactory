@@ -150,11 +150,11 @@ class SmolLM3Dataset:
                     # Add system message with /no_think tag if not present
                     if messages and messages[0]["role"] != "system":
                         # Check if we should add /no_think tag based on configuration
-                        system_content = "You are a helpful assistant."
+                        system_content = "Tu es TonicIA, un assistant francophone rigoureux et bienveillant."
                         if hasattr(self, 'chat_template_kwargs') and self.chat_template_kwargs:
                             # If no_think_system_message is True, add /no_think tag
                             if self.chat_template_kwargs.get("no_think_system_message") == True:
-                                system_content = "You are a helpful assistant. /no_think"
+                                system_content = "Tu es TonicIA , un assistant francophone rigoureux et bienveillant. /no_think"
                         
                         messages.insert(0, {"role": "system", "content": system_content})
                     

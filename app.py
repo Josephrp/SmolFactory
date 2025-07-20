@@ -10,6 +10,10 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 import requests
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+import numpy as np
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +101,28 @@ class TrackioSpace:
         if experiment_id in self.experiments:
             self.experiments[experiment_id]['status'] = status
             logger.info(f"Updated experiment {experiment_id} status to {status}")
+    
+    def get_metrics_dataframe(self, experiment_id: str) -> pd.DataFrame:
+        """Get metrics as a pandas DataFrame for plotting"""
+        if experiment_id not in self.experiments:
+            return pd.DataFrame()
+        
+        experiment = self.experiments[experiment_id]
+        if not experiment['metrics']:
+            return pd.DataFrame()
+        
+        # Convert metrics to DataFrame
+        data = []
+        for metric_entry in experiment['metrics']:
+            step = metric_entry.get('step', 0)
+            timestamp = metric_entry.get('timestamp', '')
+            metrics = metric_entry.get('metrics', {})
+            
+            row = {'step': step, 'timestamp': timestamp}
+            row.update(metrics)
+            data.append(row)
+        
+        return pd.DataFrame(data)
 
 # Initialize Trackio space
 trackio_space = TrackioSpace()
@@ -105,7 +131,7 @@ def create_experiment_interface(name: str, description: str) -> str:
     """Create a new experiment"""
     try:
         experiment = trackio_space.create_experiment(name, description)
-        return f"✅ Experiment created successfully!\nID: {experiment['id']}\nName: {experiment['name']}"
+        return f"✅ Experiment created successfully!\nID: {experiment['id']}\nName: {experiment['name']}\nStatus: {experiment['status']}"
     except Exception as e:
         return f"❌ Error creating experiment: {str(e)}"
 
@@ -115,7 +141,7 @@ def log_metrics_interface(experiment_id: str, metrics_json: str, step: str) -> s
         metrics = json.loads(metrics_json)
         step_int = int(step) if step else None
         trackio_space.log_metrics(experiment_id, metrics, step_int)
-        return f"✅ Metrics logged successfully for experiment {experiment_id}"
+        return f"✅ Metrics logged successfully for experiment {experiment_id}\nStep: {step_int}\nMetrics: {json.dumps(metrics, indent=2)}"
     except Exception as e:
         return f"❌ Error logging metrics: {str(e)}"
 
@@ -124,7 +150,7 @@ def log_parameters_interface(experiment_id: str, parameters_json: str) -> str:
     try:
         parameters = json.loads(parameters_json)
         trackio_space.log_parameters(experiment_id, parameters)
-        return f"✅ Parameters logged successfully for experiment {experiment_id}"
+        return f"✅ Parameters logged successfully for experiment {experiment_id}\nParameters: {json.dumps(parameters, indent=2)}"
     except Exception as e:
         return f"❌ Error logging parameters: {str(e)}"
 
@@ -133,17 +159,69 @@ def get_experiment_details(experiment_id: str) -> str:
     try:
         experiment = trackio_space.get_experiment(experiment_id)
         if experiment:
-            return json.dumps(experiment, indent=2)
+            # Format the output nicely
+            details = f"""
+📊 EXPERIMENT DETAILS
+====================
+ID: {experiment['id']}
+Name: {experiment['name']}
+Description: {experiment['description']}
+Status: {experiment['status']}
+Created: {experiment['created_at']}
+
+📈 METRICS COUNT: {len(experiment['metrics'])}
+📋 PARAMETERS COUNT: {len(experiment['parameters'])}
+📦 ARTIFACTS COUNT: {len(experiment['artifacts'])}
+
+🔧 PARAMETERS:
+{json.dumps(experiment['parameters'], indent=2)}
+
+📊 LATEST METRICS:
+"""
+            if experiment['metrics']:
+                latest_metrics = experiment['metrics'][-1]
+                details += f"Step: {latest_metrics.get('step', 'N/A')}\n"
+                details += f"Timestamp: {latest_metrics.get('timestamp', 'N/A')}\n"
+                details += f"Metrics: {json.dumps(latest_metrics.get('metrics', {}), indent=2)}"
+            else:
+                details += "No metrics logged yet."
+            
+            return details
         else:
             return f"❌ Experiment {experiment_id} not found"
     except Exception as e:
         return f"❌ Error getting experiment details: {str(e)}"
 
 def list_experiments_interface() -> str:
-    """List all experiments"""
+    """List all experiments with details"""
     try:
         experiments_info = trackio_space.list_experiments()
-        return json.dumps(experiments_info, indent=2)
+        experiments = trackio_space.experiments
+        
+        if not experiments:
+            return "📭 No experiments found. Create one first!"
+        
+        result = f"📋 EXPERIMENTS OVERVIEW\n{'='*50}\n"
+        result += f"Total Experiments: {len(experiments)}\n"
+        result += f"Current Experiment: {experiments_info['current_experiment']}\n\n"
+        
+        for exp_id, exp_data in experiments.items():
+            status_emoji = {
+                'running': '🟢',
+                'completed': '✅',
+                'failed': '❌',
+                'paused': '⏸️'
+            }.get(exp_data['status'], '❓')
+            
+            result += f"{status_emoji} {exp_id}\n"
+            result += f"   Name: {exp_data['name']}\n"
+            result += f"   Status: {exp_data['status']}\n"
+            result += f"   Created: {exp_data['created_at']}\n"
+            result += f"   Metrics: {len(exp_data['metrics'])} entries\n"
+            result += f"   Parameters: {len(exp_data['parameters'])} entries\n"
+            result += f"   Artifacts: {len(exp_data['artifacts'])} entries\n\n"
+        
+        return result
     except Exception as e:
         return f"❌ Error listing experiments: {str(e)}"
 
@@ -155,10 +233,112 @@ def update_experiment_status_interface(experiment_id: str, status: str) -> str:
     except Exception as e:
         return f"❌ Error updating experiment status: {str(e)}"
 
+def create_metrics_plot(experiment_id: str, metric_name: str = "loss") -> go.Figure:
+    """Create a plot for a specific metric"""
+    try:
+        df = trackio_space.get_metrics_dataframe(experiment_id)
+        if df.empty:
+            # Return empty plot
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No metrics data available",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False
+            )
+            return fig
+        
+        if metric_name not in df.columns:
+            # Show available metrics
+            available_metrics = [col for col in df.columns if col not in ['step', 'timestamp']]
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Available metrics: {', '.join(available_metrics)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False
+            )
+            return fig
+        
+        fig = px.line(df, x='step', y=metric_name, title=f'{metric_name} over time')
+        fig.update_layout(
+            xaxis_title="Training Step",
+            yaxis_title=metric_name.title(),
+            hovermode='x unified'
+        )
+        return fig
+    
+    except Exception as e:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Error creating plot: {str(e)}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+        return fig
+
+def create_experiment_comparison(experiment_ids: str) -> go.Figure:
+    """Compare multiple experiments"""
+    try:
+        exp_ids = [exp_id.strip() for exp_id in experiment_ids.split(',')]
+        
+        fig = go.Figure()
+        
+        for exp_id in exp_ids:
+            df = trackio_space.get_metrics_dataframe(exp_id)
+            if not df.empty and 'loss' in df.columns:
+                fig.add_trace(go.Scatter(
+                    x=df['step'],
+                    y=df['loss'],
+                    mode='lines+markers',
+                    name=f"{exp_id} - Loss",
+                    line=dict(width=2)
+                ))
+        
+        fig.update_layout(
+            title="Experiment Comparison - Loss",
+            xaxis_title="Training Step",
+            yaxis_title="Loss",
+            hovermode='x unified'
+        )
+        
+        return fig
+    
+    except Exception as e:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Error creating comparison: {str(e)}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+        return fig
+
+def simulate_training_data(experiment_id: str):
+    """Simulate training data for demonstration"""
+    try:
+        # Simulate some realistic training metrics
+        for step in range(0, 1000, 50):
+            # Simulate loss decreasing over time
+            loss = 2.0 * np.exp(-step / 500) + 0.1 * np.random.random()
+            accuracy = 0.3 + 0.6 * (1 - np.exp(-step / 300)) + 0.05 * np.random.random()
+            lr = 3.5e-6 * (0.9 ** (step // 200))
+            
+            metrics = {
+                "loss": round(loss, 4),
+                "accuracy": round(accuracy, 4),
+                "learning_rate": round(lr, 8),
+                "gpu_memory": round(20 + 5 * np.random.random(), 2),
+                "training_time": round(0.5 + 0.2 * np.random.random(), 3)
+            }
+            
+            trackio_space.log_metrics(experiment_id, metrics, step)
+        
+        return f"✅ Simulated training data for experiment {experiment_id}\nAdded 20 metric entries (steps 0-950)"
+    except Exception as e:
+        return f"❌ Error simulating data: {str(e)}"
+
 # Create Gradio interface
 with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🚀 Trackio Experiment Tracking")
-    gr.Markdown("Monitor and track your ML experiments with ease!")
+    gr.Markdown("# 🚀 Trackio Experiment Tracking & Monitoring")
+    gr.Markdown("Monitor and track your ML experiments with real-time visualization!")
     
     with gr.Tabs():
         # Create Experiment Tab
@@ -202,8 +382,8 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                     )
                     metrics_json = gr.Textbox(
                         label="Metrics (JSON)",
-                        placeholder='{"loss": 0.5, "accuracy": 0.85}',
-                        value='{"loss": 0.5, "accuracy": 0.85}'
+                        placeholder='{"loss": 0.5, "accuracy": 0.85, "learning_rate": 2e-5}',
+                        value='{"loss": 0.5, "accuracy": 0.85, "learning_rate": 2e-5, "gpu_memory": 22.5}'
                     )
                     metrics_step = gr.Textbox(
                         label="Step (optional)",
@@ -214,7 +394,7 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                 with gr.Column():
                     metrics_output = gr.Textbox(
                         label="Result",
-                        lines=3,
+                        lines=5,
                         interactive=False
                     )
             
@@ -236,14 +416,14 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                     parameters_json = gr.Textbox(
                         label="Parameters (JSON)",
                         placeholder='{"learning_rate": 2e-5, "batch_size": 4}',
-                        value='{"learning_rate": 2e-5, "batch_size": 4, "model_name": "HuggingFaceTB/SmolLM3-3B"}'
+                        value='{"learning_rate": 3.5e-6, "batch_size": 8, "model_name": "HuggingFaceTB/SmolLM3-3B", "max_iters": 18000, "mixed_precision": "bf16"}'
                     )
                     log_params_btn = gr.Button("Log Parameters", variant="primary")
                 
                 with gr.Column():
                     params_output = gr.Textbox(
                         label="Result",
-                        lines=3,
+                        lines=5,
                         interactive=False
                     )
             
@@ -268,7 +448,7 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                 with gr.Column():
                     view_output = gr.Textbox(
                         label="Experiment Details",
-                        lines=15,
+                        lines=20,
                         interactive=False
                     )
             
@@ -282,6 +462,74 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                 list_experiments_interface,
                 inputs=[],
                 outputs=view_output
+            )
+        
+        # Visualization Tab
+        with gr.Tab("📊 Visualizations"):
+            gr.Markdown("### Training Metrics Visualization")
+            with gr.Row():
+                with gr.Column():
+                    plot_exp_id = gr.Textbox(
+                        label="Experiment ID",
+                        placeholder="exp_20231201_143022"
+                    )
+                    metric_dropdown = gr.Dropdown(
+                        label="Metric to Plot",
+                        choices=["loss", "accuracy", "learning_rate", "gpu_memory", "training_time"],
+                        value="loss"
+                    )
+                    plot_btn = gr.Button("Create Plot", variant="primary")
+                
+                with gr.Column():
+                    plot_output = gr.Plot(label="Training Metrics")
+            
+            plot_btn.click(
+                create_metrics_plot,
+                inputs=[plot_exp_id, metric_dropdown],
+                outputs=plot_output
+            )
+            
+            gr.Markdown("### Experiment Comparison")
+            with gr.Row():
+                with gr.Column():
+                    comparison_exp_ids = gr.Textbox(
+                        label="Experiment IDs (comma-separated)",
+                        placeholder="exp_1,exp_2,exp_3"
+                    )
+                    comparison_btn = gr.Button("Compare Experiments", variant="primary")
+                
+                with gr.Column():
+                    comparison_plot = gr.Plot(label="Experiment Comparison")
+            
+            comparison_btn.click(
+                create_experiment_comparison,
+                inputs=[comparison_exp_ids],
+                outputs=comparison_plot
+            )
+        
+        # Demo Data Tab
+        with gr.Tab("🎯 Demo Data"):
+            gr.Markdown("### Generate Demo Training Data")
+            gr.Markdown("Use this to simulate training data for testing the interface")
+            with gr.Row():
+                with gr.Column():
+                    demo_exp_id = gr.Textbox(
+                        label="Experiment ID",
+                        placeholder="exp_20231201_143022"
+                    )
+                    demo_btn = gr.Button("Generate Demo Data", variant="primary")
+                
+                with gr.Column():
+                    demo_output = gr.Textbox(
+                        label="Result",
+                        lines=3,
+                        interactive=False
+                    )
+            
+            demo_btn.click(
+                simulate_training_data,
+                inputs=[demo_exp_id],
+                outputs=demo_output
             )
         
         # Update Status Tab
