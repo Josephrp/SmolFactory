@@ -41,7 +41,7 @@ config = SmolLM3Config(
     # Chat template configuration
     use_chat_template=True,
     chat_template_kwargs={
-        "enable_thinking": False,
-        "add_generation_prompt": True
+        "add_generation_prompt": True,
+        "no_think_system_message": True  # Set to True to add /no_think tag
     }
 ) 

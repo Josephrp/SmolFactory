@@ -89,8 +89,8 @@ class SmolLM3ConfigOpenHermesFR(SmolLM3Config):
     def __post_init__(self):
         if self.chat_template_kwargs is None:
             self.chat_template_kwargs = {
-                "enable_thinking": False,
-                "add_generation_prompt": True
+                "add_generation_prompt": True,
+                "no_think_system_message": True  # Set to True to add /no_think tag
             }
         
         # Validate configuration
