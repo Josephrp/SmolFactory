@@ -151,7 +151,7 @@ class SmolLM3Model:
             # Only enable DDP if multiple GPUs are available
             "ddp_backend": self.config.ddp_backend if torch.cuda.device_count() > 1 else None,
             "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False,
-            "report_to": "none",  # Disable external logging
+            "report_to": None,  # Enable external logging (default)
             "remove_unused_columns": False,
             "dataloader_pin_memory": False,
             "group_by_length": True,
@@ -172,17 +172,7 @@ class SmolLM3Model:
         # Override with kwargs
         training_args.update(kwargs)
         
-        # Debug: Check for any boolean values that might be causing issues
-        for key, value in training_args.items():
-            if isinstance(value, bool):
-                logger.info(f"Boolean argument: {key} = {value}")
-        
-        try:
-            return TrainingArguments(**training_args)
-        except Exception as e:
-            logger.error(f"Failed to create TrainingArguments: {e}")
-            logger.error(f"Training arguments: {training_args}")
-            raise
+        return TrainingArguments(**training_args)
     
     def save_pretrained(self, path: str):
         """Save model and tokenizer"""

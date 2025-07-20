@@ -98,19 +98,18 @@ class SmolLM3Trainer:
         callbacks.append(SimpleConsoleCallback())
         logger.info("Added simple console monitoring callback")
         
-        # Try to add Trackio callback if available (temporarily disabled for debugging)
-        logger.info("Skipping Trackio callback to debug training issue")
-        # if self.monitor and self.monitor.enable_tracking:
-        #     try:
-        #         trackio_callback = self.monitor.create_monitoring_callback()
-        #         if trackio_callback:
-        #         callbacks.append(trackio_callback)
-        #         logger.info("Added Trackio monitoring callback")
-        #     else:
-        #         logger.warning("Failed to create Trackio callback")
-        # except Exception as e:
-        #     logger.error(f"Error creating Trackio callback: {e}")
-        #     logger.info("Continuing with console monitoring only")
+        # Try to add Trackio callback if available
+        if self.monitor and self.monitor.enable_tracking:
+            try:
+                trackio_callback = self.monitor.create_monitoring_callback()
+                if trackio_callback:
+                    callbacks.append(trackio_callback)
+                    logger.info("Added Trackio monitoring callback")
+                else:
+                    logger.warning("Failed to create Trackio callback")
+            except Exception as e:
+                logger.error(f"Error creating Trackio callback: {e}")
+                logger.info("Continuing with console monitoring only")
         
         # Try standard Trainer first (more stable with callbacks)
         try:
