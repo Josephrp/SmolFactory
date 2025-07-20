@@ -489,113 +489,45 @@ echo "==========================================="
 cd ../..
 create_training_config "$CONFIG_FILE"
 
-# Step 13: Download and prepare dataset
-print_step "Step 13: Preparing Dataset"
-echo "==============================="
+# Step 13: Dataset preparation (handled by src/data.py during training)
+print_step "Step 13: Dataset Configuration"
+echo "=================================="
 
-python -c "
-from datasets import load_dataset
-import json
-import os
-import random
-
-# Load dataset
-print('Loading dataset: $DATASET_NAME')
-dataset = load_dataset('$DATASET_NAME')
-
-# Create dataset directory
-os.makedirs('training_dataset', exist_ok=True)
-
-# Convert to training format
-def convert_to_training_format(example):
-    # Handle different dataset formats
-    if 'prompt' in example and 'completion' in example:
-        return {
-            'prompt': example['prompt'],
-            'completion': example['completion']
-        }
-    elif 'instruction' in example and 'output' in example:
-        return {
-            'prompt': example['instruction'],
-            'completion': example['output']
-        }
-    elif 'messages' in example:
-        # Handle chat format
-        messages = example['messages']
-        if len(messages) >= 2:
-            return {
-                'prompt': messages[0]['content'],
-                'completion': messages[1]['content']
-            }
-    else:
-        # Fallback
-        return {
-            'prompt': str(example.get('input', '')),
-            'completion': str(example.get('output', ''))
-        }
-
-# Process train split
-train_data = []
-for example in dataset['train']:
-    training_example = convert_to_training_format(example)
-    if training_example['prompt'] and training_example['completion']:
-        train_data.append(training_example)
-
-# Apply dataset sampling for lightweight configuration
-if '$TRAINING_CONFIG_TYPE' == 'H100 Lightweight (Rapid)' and len(train_data) > ${DATASET_SAMPLE_SIZE:-0}:
-    print(f'Sampling {${DATASET_SAMPLE_SIZE:-80000}} random samples from {len(train_data)} total samples')
-    random.seed(42)  # For reproducibility
-    train_data = random.sample(train_data, ${DATASET_SAMPLE_SIZE:-80000})
-    print(f'Selected {len(train_data)} samples for lightweight training')
-
-# Process validation split if available
-val_data = []
-if 'validation' in dataset:
-    for example in dataset['validation']:
-        training_example = convert_to_training_format(example)
-        if training_example['prompt'] and training_example['completion']:
-            val_data.append(training_example)
-
-# For lightweight config, also sample validation if it's large
-if '$TRAINING_CONFIG_TYPE' == 'H100 Lightweight (Rapid)' and len(val_data) > 1000:
-    print(f'Sampling 1000 random validation samples from {len(val_data)} total')
-    random.seed(42)  # For reproducibility
-    val_data = random.sample(val_data, 1000)
-
-# Save to files
-with open('training_dataset/train.json', 'w') as f:
-    json.dump(train_data, f, indent=2)
-
-if val_data:
-    with open('training_dataset/validation.json', 'w') as f:
-        json.dump(val_data, f, indent=2)
-
-print(f'Dataset prepared: {len(train_data)} train samples, {len(val_data)} validation samples')
-"
+print_info "Dataset will be loaded directly by src/data.py during training"
+print_info "Dataset: $DATASET_NAME"
+if [ "$TRAINING_CONFIG_TYPE" = "H100 Lightweight (Rapid)" ]; then
+    print_info "Sample size: ${DATASET_SAMPLE_SIZE:-80000} (will be handled by data.py)"
+fi
 
 # Step 14: Calculate training parameters
 print_step "Step 14: Calculating Training Parameters"
 echo "============================================"
 
-TOTAL_SAMPLES=$(python -c "import json; data=json.load(open('training_dataset/train.json')); print(len(data))")
+# Estimate training steps
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS))
-STEPS_PER_EPOCH=$((TOTAL_SAMPLES / EFFECTIVE_BATCH_SIZE))
-MAX_STEPS=$((STEPS_PER_EPOCH * MAX_EPOCHS))
-
-echo "  Total samples: $TOTAL_SAMPLES"
 echo "  Effective batch size: $EFFECTIVE_BATCH_SIZE"
-echo "  Steps per epoch: $STEPS_PER_EPOCH"
-echo "  Total training steps: $MAX_STEPS"
+echo "  Learning rate: $LEARNING_RATE"
+echo "  Max epochs: $MAX_EPOCHS"
+echo "  Sequence length: $MAX_SEQ_LENGTH"
+echo "  Training steps will be calculated by the training script"
 
 # Step 15: Start training
 print_step "Step 15: Starting Training"
 echo "=============================="
 
-python src/train.py "$CONFIG_FILE" \
-    --dataset_dir training_dataset \
+print_info "Using existing scripts/training/train.py script with the following parameters:"
+echo "  Model: $MODEL_NAME"
+echo "  Dataset: $DATASET_NAME"
+echo "  Output: /output-checkpoint"
+echo "  Batch size: $BATCH_SIZE"
+echo "  Learning rate: $LEARNING_RATE"
+echo "  Sequence length: $MAX_SEQ_LENGTH"
+
+# Run the existing training script
+python scripts/training/train.py "$CONFIG_FILE" \
+    --dataset_dir "$DATASET_NAME" \
     --out_dir /output-checkpoint \
     --init_from scratch \
-    --max_iters $MAX_STEPS \
     --batch_size $BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
@@ -613,37 +545,22 @@ python src/train.py "$CONFIG_FILE" \
 print_step "Step 16: Pushing Model to HF Hub"
 echo "====================================="
 
+print_info "Using scripts/model_tonic/push_to_huggingface.py script"
+echo "  Checkpoint: /output-checkpoint"
+echo "  Repository: $REPO_NAME"
+
+# Run the existing push script
 python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME" \
     --token "$HF_TOKEN" \
     --trackio-url "$TRACKIO_URL" \
     --experiment-name "$EXPERIMENT_NAME" \
     --dataset-repo "$TRACKIO_DATASET_REPO"
 
-# Step 17: Test the uploaded model
-print_step "Step 17: Testing Uploaded Model"
-echo "==================================="
-
-python -c "
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
-
-print('Loading uploaded model...')
-model = AutoModelForCausalLM.from_pretrained('$REPO_NAME', torch_dtype=torch.float16, device_map='auto')
-tokenizer = AutoTokenizer.from_pretrained('$REPO_NAME')
-
-print('Testing model generation...')
-prompt = 'Hello, how are you?'
-inputs = tokenizer(prompt, return_tensors='pt').to(model.device)
-outputs = model.generate(**inputs, max_new_tokens=50, do_sample=True, temperature=0.7)
-response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print(f'Prompt: {prompt}')
-print(f'Response: {response}')
-print('✅ Model test completed successfully!')
-"
-
-# Step 18: Create summary report
-print_step "Step 18: Creating Summary Report"
+# Step 17: Create summary report
+print_step "Step 17: Creating Summary Report"
 echo "===================================="
+
+
 
 cat > training_summary.md << EOF
 # SmolLM3 Fine-tuning Summary
@@ -665,8 +582,6 @@ fi)
 - **Gradient Accumulation**: $GRADIENT_ACCUMULATION_STEPS
 - **Learning Rate**: $LEARNING_RATE
 - **Max Epochs**: $MAX_EPOCHS
-- **Max Steps**: $MAX_STEPS
-- **Total Samples**: $TOTAL_SAMPLES
 - **Sequence Length**: $MAX_SEQ_LENGTH
 
 ## Results
@@ -682,13 +597,16 @@ fi)
 
 ## Files Created
 - Training configuration: \`$CONFIG_FILE\`
-- Dataset: \`training_dataset/\`
 - Model checkpoint: \`/output-checkpoint/\`
 - Training logs: \`training.log\`
 - Summary report: \`training_summary.md\`
 EOF
 
 print_status "Summary report saved to: training_summary.md"
+
+# Clean up temporary files
+print_info "Cleaning up temporary files..."
+rm -f deploy_input.txt
 
 # Final summary
 echo ""

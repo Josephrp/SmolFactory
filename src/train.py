@@ -16,7 +16,17 @@ from typing import Optional, Dict, Any
 # Add the current directory to the path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from config import get_config
+# Add project root to path for config imports
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+try:
+    from config import get_config
+except ImportError:
+    # Fallback: try direct import
+    sys.path.insert(0, os.path.join(project_root, 'src'))
+    from config import get_config
 from model import SmolLM3Model
 from data import SmolLM3Dataset
 from trainer import SmolLM3Trainer

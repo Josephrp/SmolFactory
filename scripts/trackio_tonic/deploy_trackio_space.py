@@ -30,12 +30,20 @@ class TrackioSpaceDeployer:
             cmd = [
                 "huggingface-cli", "repo", "create",
                 f"{self.username}/{self.space_name}",
-                "--type", "space",
-                "--space-sdk", "gradio",
-                "--space-hardware", "cpu-basic"
+                "--type", "space"
             ]
             
+            # Try to create the space first
             result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                # Try alternative approach without space-specific flags
+                print("Retrying with basic space creation...")
+                cmd = [
+                    "huggingface-cli", "repo", "create",
+                    f"{self.username}/{self.space_name}"
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode == 0:
                 print(f"✅ Space created successfully: {self.space_url}")

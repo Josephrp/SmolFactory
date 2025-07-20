@@ -3,9 +3,27 @@ Configuration management for SmolLM3 fine-tuning
 """
 
 import os
+import sys
 import importlib.util
 from typing import Any
-from config.train_smollm3 import SmolLM3Config, get_config as get_default_config
+
+# Add the project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Add config directory to path
+config_dir = os.path.join(project_root, 'config')
+if config_dir not in sys.path:
+    sys.path.insert(0, config_dir)
+
+try:
+    from config.train_smollm3 import SmolLM3Config, get_config as get_default_config
+except ImportError:
+    # Fallback: try direct import
+    import sys
+    sys.path.insert(0, os.path.join(project_root, 'config'))
+    from train_smollm3 import SmolLM3Config, get_config as get_default_config
 
 def get_config(config_path: str) -> SmolLM3Config:
     """Load configuration from file or return default"""
