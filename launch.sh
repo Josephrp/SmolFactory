@@ -400,8 +400,29 @@ print_step "Step 7: Environment Setup"
 echo "============================"
 
 print_info "Installing system dependencies..."
-sudo apt-get update
-sudo apt-get install -y git curl wget unzip python3-pip python3-venv
+
+# Check if we're already root or if sudo is available
+if [ "$EUID" -eq 0 ]; then
+    # Already root, no need for sudo
+    print_info "Running as root, skipping sudo..."
+    apt-get update
+    apt-get install -y git curl wget unzip python3-pip python3-venv
+elif command -v sudo >/dev/null 2>&1; then
+    # sudo is available, use it
+    print_info "Using sudo for system dependencies..."
+    sudo apt-get update
+    sudo apt-get install -y git curl wget unzip python3-pip python3-venv
+else
+    # No sudo available, try without it
+    print_warning "sudo not available, attempting to install without sudo..."
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y git curl wget unzip python3-pip python3-venv
+    else
+        print_warning "apt-get not available, skipping system dependencies..."
+        print_info "Please ensure git, curl, wget, unzip, python3-pip, and python3-venv are installed"
+    fi
+fi
 
 print_info "Creating Python virtual environment..."
 python3 -m venv smollm3_env
