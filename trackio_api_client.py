@@ -258,6 +258,32 @@ class TrackioAPIClient:
         else:
             logger.error(f"Failed to simulate training data: {result}")
             return result
+    
+    def get_training_metrics(self, experiment_id: str) -> Dict[str, Any]:
+        """Get training metrics for an experiment"""
+        logger.info(f"Getting training metrics for experiment {experiment_id}")
+        
+        result = self._make_api_call("get_training_metrics", [experiment_id])
+        
+        if "success" in result:
+            logger.info(f"Training metrics retrieved: {result['data'][:100]}...")
+            return result
+        else:
+            logger.error(f"Failed to get training metrics: {result}")
+            return result
+    
+    def get_experiment_metrics_history(self, experiment_id: str) -> Dict[str, Any]:
+        """Get complete metrics history for an experiment"""
+        logger.info(f"Getting metrics history for experiment {experiment_id}")
+        
+        result = self._make_api_call("get_metrics_history", [experiment_id])
+        
+        if "success" in result:
+            logger.info(f"Metrics history retrieved: {result['data'][:100]}...")
+            return result
+        else:
+            logger.error(f"Failed to get metrics history: {result}")
+            return result
 
 def test_simple_connection():
     """Test basic connectivity to the Space"""

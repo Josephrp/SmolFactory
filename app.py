@@ -25,7 +25,38 @@ class TrackioSpace:
     def __init__(self):
         self.experiments = {}
         self.current_experiment = None
+        self.data_file = "trackio_experiments.json"
+        self._load_experiments()
         
+    def _load_experiments(self):
+        """Load experiments from file"""
+        try:
+            if os.path.exists(self.data_file):
+                with open(self.data_file, 'r') as f:
+                    data = json.load(f)
+                    self.experiments = data.get('experiments', {})
+                    self.current_experiment = data.get('current_experiment')
+                logger.info(f"Loaded {len(self.experiments)} experiments from {self.data_file}")
+            else:
+                logger.info("No existing experiment data found, starting fresh")
+        except Exception as e:
+            logger.error(f"Failed to load experiments: {e}")
+            self.experiments = {}
+    
+    def _save_experiments(self):
+        """Save experiments to file"""
+        try:
+            data = {
+                'experiments': self.experiments,
+                'current_experiment': self.current_experiment,
+                'last_updated': datetime.now().isoformat()
+            }
+            with open(self.data_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            logger.debug(f"Saved {len(self.experiments)} experiments to {self.data_file}")
+        except Exception as e:
+            logger.error(f"Failed to save experiments: {e}")
+    
     def create_experiment(self, name: str, description: str = "") -> Dict[str, Any]:
         """Create a new experiment"""
         experiment_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -44,6 +75,7 @@ class TrackioSpace:
         
         self.experiments[experiment_id] = experiment
         self.current_experiment = experiment_id
+        self._save_experiments()
         
         logger.info(f"Created experiment: {experiment_id} - {name}")
         return experiment
@@ -60,6 +92,7 @@ class TrackioSpace:
         }
         
         self.experiments[experiment_id]['metrics'].append(metric_entry)
+        self._save_experiments()
         logger.info(f"Logged metrics for experiment {experiment_id}: {metrics}")
     
     def log_parameters(self, experiment_id: str, parameters: Dict[str, Any]):
@@ -68,6 +101,7 @@ class TrackioSpace:
             raise ValueError(f"Experiment {experiment_id} not found")
         
         self.experiments[experiment_id]['parameters'].update(parameters)
+        self._save_experiments()
         logger.info(f"Logged parameters for experiment {experiment_id}: {parameters}")
     
     def log_artifact(self, experiment_id: str, artifact_name: str, artifact_data: str):
@@ -82,6 +116,7 @@ class TrackioSpace:
         }
         
         self.experiments[experiment_id]['artifacts'].append(artifact_entry)
+        self._save_experiments()
         logger.info(f"Logged artifact for experiment {experiment_id}: {artifact_name}")
     
     def get_experiment(self, experiment_id: str) -> Optional[Dict[str, Any]]:
@@ -100,6 +135,7 @@ class TrackioSpace:
         """Update experiment status"""
         if experiment_id in self.experiments:
             self.experiments[experiment_id]['status'] = status
+            self._save_experiments()
             logger.info(f"Updated experiment {experiment_id} status to {status}")
     
     def get_metrics_dataframe(self, experiment_id: str) -> pd.DataFrame:
@@ -126,6 +162,87 @@ class TrackioSpace:
 
 # Initialize Trackio space
 trackio_space = TrackioSpace()
+
+# Initialize API client for remote data
+api_client = None
+try:
+    from trackio_api_client import TrackioAPIClient
+    api_client = TrackioAPIClient("https://tonic-test-trackio-test.hf.space")
+    logger.info("✅ API client initialized for remote data access")
+except ImportError:
+    logger.warning("⚠️ API client not available, using local data only")
+
+def get_remote_experiment_data(experiment_id: str) -> Dict[str, Any]:
+    """Get experiment data from remote API"""
+    if api_client is None:
+        return None
+    
+    try:
+        # Get experiment details from API
+        details_result = api_client.get_experiment_details(experiment_id)
+        if "success" in details_result:
+            return {"remote": True, "data": details_result["data"]}
+        else:
+            logger.warning(f"Failed to get remote data for {experiment_id}: {details_result}")
+            return None
+    except Exception as e:
+        logger.error(f"Error getting remote data: {e}")
+        return None
+
+def parse_remote_metrics_data(experiment_details: str) -> pd.DataFrame:
+    """Parse metrics data from remote experiment details"""
+    try:
+        # Look for metrics in the experiment details
+        lines = experiment_details.split('\n')
+        metrics_data = []
+        
+        for line in lines:
+            if 'Step:' in line and 'Metrics:' in line:
+                # Extract step and metrics from the line
+                try:
+                    # Parse step number
+                    step_part = line.split('Step:')[1].split('Metrics:')[0].strip()
+                    step = int(step_part)
+                    
+                    # Parse metrics JSON
+                    metrics_part = line.split('Metrics:')[1].strip()
+                    metrics = json.loads(metrics_part)
+                    
+                    # Add timestamp
+                    row = {'step': step, 'timestamp': datetime.now().isoformat()}
+                    row.update(metrics)
+                    metrics_data.append(row)
+                    
+                except (ValueError, json.JSONDecodeError) as e:
+                    logger.warning(f"Failed to parse metrics line: {line} - {e}")
+                    continue
+        
+        if metrics_data:
+            return pd.DataFrame(metrics_data)
+        else:
+            return pd.DataFrame()
+            
+    except Exception as e:
+        logger.error(f"Error parsing remote metrics: {e}")
+        return pd.DataFrame()
+
+def get_metrics_dataframe(experiment_id: str) -> pd.DataFrame:
+    """Get metrics as a pandas DataFrame for plotting - tries remote first, then local"""
+    # Try to get remote data first
+    remote_data = get_remote_experiment_data(experiment_id)
+    if remote_data:
+        logger.info(f"Using remote data for {experiment_id}")
+        # Parse the remote experiment details to extract metrics
+        df = parse_remote_metrics_data(remote_data["data"])
+        if not df.empty:
+            logger.info(f"Found {len(df)} metrics entries from remote data")
+            return df
+        else:
+            logger.warning(f"No metrics found in remote data for {experiment_id}")
+    
+    # Fall back to local data
+    logger.info(f"Using local data for {experiment_id}")
+    return trackio_space.get_metrics_dataframe(experiment_id)
 
 def create_experiment_interface(name: str, description: str) -> str:
     """Create a new experiment"""
@@ -236,7 +353,7 @@ def update_experiment_status_interface(experiment_id: str, status: str) -> str:
 def create_metrics_plot(experiment_id: str, metric_name: str = "loss") -> go.Figure:
     """Create a plot for a specific metric"""
     try:
-        df = trackio_space.get_metrics_dataframe(experiment_id)
+        df = get_metrics_dataframe(experiment_id)
         if df.empty:
             # Return empty plot
             fig = go.Figure()
@@ -283,7 +400,7 @@ def create_experiment_comparison(experiment_ids: str) -> go.Figure:
         fig = go.Figure()
         
         for exp_id in exp_ids:
-            df = trackio_space.get_metrics_dataframe(exp_id)
+            df = get_metrics_dataframe(exp_id)
             if not df.empty and 'loss' in df.columns:
                 fig.add_trace(go.Scatter(
                     x=df['step'],
@@ -334,6 +451,35 @@ def simulate_training_data(experiment_id: str):
         return f"✅ Simulated training data for experiment {experiment_id}\nAdded 20 metric entries (steps 0-950)"
     except Exception as e:
         return f"❌ Error simulating data: {str(e)}"
+
+def create_demo_experiment():
+    """Create a demo experiment with training data"""
+    try:
+        # Create demo experiment
+        experiment = trackio_space.create_experiment(
+            "demo_smollm3_training",
+            "Demo experiment with simulated training data"
+        )
+        
+        experiment_id = experiment['id']
+        
+        # Add some demo parameters
+        parameters = {
+            "model_name": "HuggingFaceTB/SmolLM3-3B",
+            "batch_size": 8,
+            "learning_rate": 3.5e-6,
+            "max_iters": 18000,
+            "mixed_precision": "bf16",
+            "dataset": "legmlai/openhermes-fr"
+        }
+        trackio_space.log_parameters(experiment_id, parameters)
+        
+        # Add demo training data
+        simulate_training_data(experiment_id)
+        
+        return f"✅ Demo experiment created: {experiment_id}\nYou can now test the visualization with this experiment!"
+    except Exception as e:
+        return f"❌ Error creating demo experiment: {str(e)}"
 
 # Create Gradio interface
 with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as demo:
@@ -518,17 +664,24 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                         placeholder="exp_20231201_143022"
                     )
                     demo_btn = gr.Button("Generate Demo Data", variant="primary")
+                    create_demo_btn = gr.Button("Create Demo Experiment", variant="secondary")
                 
                 with gr.Column():
                     demo_output = gr.Textbox(
                         label="Result",
-                        lines=3,
+                        lines=5,
                         interactive=False
                     )
             
             demo_btn.click(
                 simulate_training_data,
                 inputs=[demo_exp_id],
+                outputs=demo_output
+            )
+            
+            create_demo_btn.click(
+                create_demo_experiment,
+                inputs=[],
                 outputs=demo_output
             )
         
