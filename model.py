@@ -124,6 +124,10 @@ class SmolLM3Model:
         if self.config is None:
             raise ValueError("Config is required to get training arguments")
         
+        # Debug: Print config attributes to identify the issue
+        logger.info(f"Config type: {type(self.config)}")
+        logger.info(f"Config attributes: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
+        
         # Merge config with kwargs
         training_args = {
             "output_dir": output_dir,
@@ -155,8 +159,8 @@ class SmolLM3Model:
             "ignore_data_skip": False,
             "seed": 42,
             "data_seed": 42,
-            "dataloader_num_workers": 4,
-            "max_grad_norm": 1.0,
+            "dataloader_num_workers": getattr(self.config, 'dataloader_num_workers', 4),
+            "max_grad_norm": getattr(self.config, 'max_grad_norm', 1.0),
             "optim": self.config.optimizer,
             "lr_scheduler_type": self.config.scheduler,
             "warmup_ratio": 0.1,
@@ -168,7 +172,15 @@ class SmolLM3Model:
         # Override with kwargs
         training_args.update(kwargs)
         
-        return TrainingArguments(**training_args)
+        # Debug: Print training args before creating TrainingArguments
+        logger.info(f"Training arguments keys: {list(training_args.keys())}")
+        
+        try:
+            return TrainingArguments(**training_args)
+        except Exception as e:
+            logger.error(f"Failed to create TrainingArguments: {e}")
+            logger.error(f"Training arguments: {training_args}")
+            raise
     
     def save_pretrained(self, path: str):
         """Save model and tokenizer"""
