@@ -129,45 +129,49 @@ class SmolLM3Model:
         logger.info(f"Config attributes: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
         
         # Merge config with kwargs
-        training_args = {
-            "output_dir": output_dir,
-            "per_device_train_batch_size": self.config.batch_size,
-            "per_device_eval_batch_size": self.config.batch_size,
-            "gradient_accumulation_steps": self.config.gradient_accumulation_steps,
-            "learning_rate": self.config.learning_rate,
-            "weight_decay": self.config.weight_decay,
-            "warmup_steps": self.config.warmup_steps,
-            "max_steps": self.config.max_iters,
-            "save_steps": self.config.save_steps,
-            "eval_steps": self.config.eval_steps,
-            "logging_steps": self.config.logging_steps,
-            "save_total_limit": self.config.save_total_limit,
-            "eval_strategy": self.config.eval_strategy,
-            "metric_for_best_model": self.config.metric_for_best_model,
-            "greater_is_better": self.config.greater_is_better,
-            "load_best_model_at_end": self.config.load_best_model_at_end,
-            "fp16": self.config.fp16,
-            "bf16": self.config.bf16,
-            # Only enable DDP if multiple GPUs are available
-            "ddp_backend": self.config.ddp_backend if torch.cuda.device_count() > 1 else None,
-            "ddp_find_unused_parameters": self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False,
-            "report_to": None,  # Enable external logging (default)
-            "remove_unused_columns": False,
-            "dataloader_pin_memory": False,
-            "group_by_length": True,
-            "length_column_name": "length",
-            "ignore_data_skip": False,
-            "seed": 42,
-            "data_seed": 42,
-            "dataloader_num_workers": getattr(self.config, 'dataloader_num_workers', 4),
-            "max_grad_norm": getattr(self.config, 'max_grad_norm', 1.0),
-            "optim": self.config.optimizer,
-            "lr_scheduler_type": self.config.scheduler,
-            "warmup_ratio": 0.1,
-            "save_strategy": "steps",
-            "logging_strategy": "steps",
-            "prediction_loss_only": True,
-        }
+        training_args = {}
+        
+        # Add arguments one by one with error checking
+        try:
+            training_args["output_dir"] = output_dir
+            training_args["per_device_train_batch_size"] = self.config.batch_size
+            training_args["per_device_eval_batch_size"] = self.config.batch_size
+            training_args["gradient_accumulation_steps"] = self.config.gradient_accumulation_steps
+            training_args["learning_rate"] = self.config.learning_rate
+            training_args["weight_decay"] = self.config.weight_decay
+            training_args["warmup_steps"] = self.config.warmup_steps
+            training_args["max_steps"] = self.config.max_iters
+            training_args["save_steps"] = self.config.save_steps
+            training_args["eval_steps"] = self.config.eval_steps
+            training_args["logging_steps"] = self.config.logging_steps
+            training_args["save_total_limit"] = self.config.save_total_limit
+            training_args["eval_strategy"] = self.config.eval_strategy
+            training_args["metric_for_best_model"] = self.config.metric_for_best_model
+            training_args["greater_is_better"] = self.config.greater_is_better
+            training_args["load_best_model_at_end"] = self.config.load_best_model_at_end
+            training_args["fp16"] = self.config.fp16
+            training_args["bf16"] = self.config.bf16
+            training_args["ddp_backend"] = self.config.ddp_backend if torch.cuda.device_count() > 1 else None
+            training_args["ddp_find_unused_parameters"] = self.config.ddp_find_unused_parameters if torch.cuda.device_count() > 1 else False
+            training_args["report_to"] = None
+            training_args["remove_unused_columns"] = False
+            training_args["dataloader_pin_memory"] = False
+            training_args["group_by_length"] = True
+            training_args["length_column_name"] = "length"
+            training_args["ignore_data_skip"] = False
+            training_args["seed"] = 42
+            training_args["data_seed"] = 42
+            training_args["dataloader_num_workers"] = getattr(self.config, 'dataloader_num_workers', 4)
+            training_args["max_grad_norm"] = getattr(self.config, 'max_grad_norm', 1.0)
+            training_args["optim"] = self.config.optimizer
+            training_args["lr_scheduler_type"] = self.config.scheduler
+            training_args["warmup_ratio"] = 0.1
+            training_args["save_strategy"] = "steps"
+            training_args["logging_strategy"] = "steps"
+            training_args["prediction_loss_only"] = True
+        except Exception as e:
+            logger.error(f"Error creating training arguments: {e}")
+            raise
         
         # Override with kwargs
         training_args.update(kwargs)
