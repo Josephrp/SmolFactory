@@ -72,12 +72,13 @@ def create_dataset_repository(username: str, dataset_name: str = "trackio-experi
             print(f"❌ Error creating dataset repository: {e}")
             return None
 
-def setup_trackio_dataset(dataset_name: str = None) -> bool:
+def setup_trackio_dataset(dataset_name: str = None, token: str = None) -> bool:
     """
     Set up Trackio dataset repository automatically.
     
     Args:
         dataset_name (str): Optional custom dataset name (default: trackio-experiments)
+        token (str): HF token for authentication
         
     Returns:
         bool: True if successful, False otherwise
@@ -85,8 +86,9 @@ def setup_trackio_dataset(dataset_name: str = None) -> bool:
     print("🚀 Setting up Trackio Dataset Repository")
     print("=" * 50)
     
-    # Get token from environment or command line
-    token = os.environ.get('HUGGING_FACE_HUB_TOKEN') or os.environ.get('HF_TOKEN')
+    # Get token from parameter, environment, or command line
+    if not token:
+        token = os.environ.get('HUGGING_FACE_HUB_TOKEN') or os.environ.get('HF_TOKEN')
     
     # If no token in environment, try command line argument
     if not token and len(sys.argv) > 1:
@@ -127,6 +129,13 @@ def setup_trackio_dataset(dataset_name: str = None) -> bool:
         print("✅ Successfully added initial experiment data")
     else:
         print("⚠️  Could not add initial experiment data (this is optional)")
+    
+    # Add dataset README
+    print("📝 Adding dataset README...")
+    if add_dataset_readme(repo_id, token):
+        print("✅ Successfully added dataset README")
+    else:
+        print("⚠️  Could not add dataset README (this is optional)")
     
     print(f"\n🎉 Dataset setup complete!")
     print(f"📊 Dataset URL: https://huggingface.co/datasets/{repo_id}")
@@ -403,7 +412,8 @@ def main():
     if len(sys.argv) > 2:
         dataset_name = sys.argv[2]
     
-    success = setup_trackio_dataset(dataset_name)
+    # Pass token to setup function
+    success = setup_trackio_dataset(dataset_name, token)
     sys.exit(0 if success else 1)
 
 if __name__ == "__main__":

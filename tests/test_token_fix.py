@@ -17,7 +17,7 @@ def test_token_validation():
     print("=" * 50)
     
     # Test token from user
-    test_token = ""
+    test_token = "xxx"
     
     print(f"Testing token: {'*' * 10}...{test_token[-4:]}")
     
@@ -51,7 +51,7 @@ def test_dataset_setup():
     print("=" * 50)
     
     # Test token from user
-    test_token = "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"
+    test_token = "xxxx"
     
     print(f"Testing dataset setup with token: {'*' * 10}...{test_token[-4:]}")
     
@@ -89,7 +89,7 @@ def test_space_deployment():
     print("=" * 50)
     
     # Test token from user
-    test_token = ""
+    test_token = "xxxx"
     
     print(f"Testing space deployment with token: {'*' * 10}...{test_token[-4:]}")
     

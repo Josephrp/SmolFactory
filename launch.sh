@@ -372,7 +372,11 @@ print_step "Step 3: Experiment Details"
 echo "=============================="
 
 get_input "Experiment name" "smollm3_finetune_$(date +%Y%m%d_%H%M%S)" EXPERIMENT_NAME
-get_input "Model repository name" "$HF_USERNAME/smollm3-finetuned-$(date +%Y%m%d)" REPO_NAME
+
+# Automatically generate model repository name
+print_info "Setting up model repository automatically..."
+REPO_NAME="$HF_USERNAME/smollm3-finetuned-$(date +%Y%m%d)"
+print_status "Model repository: $REPO_NAME"
 
 # Automatically create dataset repository
 print_info "Setting up Trackio dataset repository automatically..."
@@ -475,7 +479,7 @@ fi
 echo "  Epochs: $MAX_EPOCHS"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Learning Rate: $LEARNING_RATE"
-echo "  Model Repo: $REPO_NAME"
+echo "  Model Repo: $REPO_NAME (auto-generated)"
 echo "  Trackio Space: $TRACKIO_URL"
 echo "  HF Dataset: $TRACKIO_DATASET_REPO"
 echo ""
