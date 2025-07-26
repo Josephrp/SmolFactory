@@ -391,12 +391,12 @@ read -p "Choose option (1/2): " dataset_option
 
 if [ "$dataset_option" = "2" ]; then
     get_input "Custom dataset name (without username)" "trackio-experiments" CUSTOM_DATASET_NAME
-    if python3 scripts/dataset_tonic/setup_hf_dataset.py "$CUSTOM_DATASET_NAME" 2>/dev/null; then
+    if python3 scripts/dataset_tonic/setup_hf_dataset.py "$HF_TOKEN" "$CUSTOM_DATASET_NAME" 2>/dev/null; then
         TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
         print_status "Custom dataset repository created successfully"
     else
         print_warning "Custom dataset creation failed, using default"
-        if python3 scripts/dataset_tonic/setup_hf_dataset.py 2>/dev/null; then
+        if python3 scripts/dataset_tonic/setup_hf_dataset.py "$HF_TOKEN" 2>/dev/null; then
             TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
             print_status "Default dataset repository created successfully"
         else
@@ -405,7 +405,7 @@ if [ "$dataset_option" = "2" ]; then
         fi
     fi
 else
-    if python3 scripts/dataset_tonic/setup_hf_dataset.py 2>/dev/null; then
+    if python3 scripts/dataset_tonic/setup_hf_dataset.py "$HF_TOKEN" 2>/dev/null; then
         TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
         print_status "Dataset repository created successfully"
     else
