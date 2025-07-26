@@ -42,7 +42,10 @@ def test_basic_model_card():
         "author_name": "Test User",
         "model_name_slug": "test_smollm3_model",
         "quantized_models": False,
-        "dataset_sample_size": "80000"
+        "dataset_sample_size": "800000",
+        "training_loss": "2.1",
+        "validation_loss": "2.3",
+        "perplexity": "9.8"
     }
     
     try:
@@ -65,6 +68,13 @@ def test_basic_model_card():
         assert "Quantized Models" not in content
         assert "int8" not in content
         assert "int4" not in content
+        
+        # Check that metadata fields are present
+        assert "library_name: transformers" in content
+        assert "pipeline_tag: text-generation" in content
+        assert "base_model: HuggingFaceTB/SmolLM3-3B" in content
+        assert "datasets:" in content
+        assert "model-index:" in content
         
         print("✅ Basic model card generation test passed")
         return True
@@ -100,7 +110,10 @@ def test_quantized_model_card():
         "author_name": "Test User",
         "model_name_slug": "test_smollm3_model",
         "quantized_models": True,
-        "dataset_sample_size": "80000"
+        "dataset_sample_size": "800000",
+        "training_loss": "2.1",
+        "validation_loss": "2.3",
+        "perplexity": "9.8"
     }
     
     try:
@@ -124,6 +137,14 @@ def test_quantized_model_card():
         assert "int4" in content
         assert "test-user/test-model/int8" in content
         assert "test-user/test-model/int4" in content
+        
+        # Check that metadata fields are present
+        assert "library_name: transformers" in content
+        assert "pipeline_tag: text-generation" in content
+        assert "base_model: HuggingFaceTB/SmolLM3-3B" in content
+        assert "datasets:" in content
+        assert "model-index:" in content
+        assert "quantization_types:" in content
         
         print("✅ Quantized model card generation test passed")
         return True
@@ -198,8 +219,11 @@ def test_file_saving():
                 "dataset_format": "Chat format",
                 "author_name": "Test User",
                 "model_name_slug": "test_model",
-                "quantized_models": False,
-                "dataset_sample_size": None
+                        "quantized_models": False,
+        "dataset_sample_size": None,
+        "training_loss": "N/A",
+        "validation_loss": "N/A",
+        "perplexity": "N/A"
             }
             
             # Generate and save

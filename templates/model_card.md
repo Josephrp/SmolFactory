@@ -3,12 +3,138 @@ language:
 - en
 - fr
 license: apache-2.0
+library_name: transformers
 tags:
 - smollm3
 - fine-tuned
 - causal-lm
 - text-generation
 - {{#if quantized_models}}quantized{{/if}}
+- {{#if dataset_name}}dataset:{{dataset_name}}{{/if}}
+- {{#if training_config_type}}config:{{training_config_type}}{{/if}}
+pipeline_tag: text-generation
+base_model: {{base_model}}
+{{#if dataset_name}}
+datasets:
+- {{dataset_name}}
+{{/if}}
+{{#if quantized_models}}
+model-index:
+- name: {{model_name}}
+  results:
+  - task:
+      type: text-generation
+    dataset:
+      name: {{dataset_name}}
+      type: {{dataset_name}}
+    metrics:
+    - name: Training Loss
+      type: loss
+      value: "{{training_loss|default:'N/A'}}"
+    - name: Validation Loss
+      type: loss
+      value: "{{validation_loss|default:'N/A'}}"
+    - name: Perplexity
+      type: perplexity
+      value: "{{perplexity|default:'N/A'}}"
+  - name: {{model_name}} (int8 quantized)
+    results:
+    - task:
+        type: text-generation
+      dataset:
+        name: {{dataset_name}}
+        type: {{dataset_name}}
+      metrics:
+      - name: Memory Reduction
+        type: memory_efficiency
+        value: "~50%"
+      - name: Inference Speed
+        type: speed
+        value: "Faster"
+  - name: {{model_name}} (int4 quantized)
+    results:
+    - task:
+        type: text-generation
+      dataset:
+        name: {{dataset_name}}
+        type: {{dataset_name}}
+      metrics:
+      - name: Memory Reduction
+        type: memory_efficiency
+        value: "~75%"
+      - name: Inference Speed
+        type: speed
+        value: "Significantly Faster"
+{{else}}
+model-index:
+- name: {{model_name}}
+  results:
+  - task:
+      type: text-generation
+    dataset:
+      name: {{dataset_name}}
+      type: {{dataset_name}}
+    metrics:
+    - name: Training Loss
+      type: loss
+      value: "{{training_loss|default:'N/A'}}"
+    - name: Validation Loss
+      type: loss
+      value: "{{validation_loss|default:'N/A'}}"
+    - name: Perplexity
+      type: perplexity
+      value: "{{perplexity|default:'N/A'}}"
+{{/if}}
+{{#if author_name}}
+author: {{author_name}}
+{{/if}}
+{{#if experiment_name}}
+experiment_name: {{experiment_name}}
+{{/if}}
+{{#if trackio_url}}
+trackio_url: {{trackio_url}}
+{{/if}}
+{{#if dataset_repo}}
+dataset_repo: {{dataset_repo}}
+{{/if}}
+{{#if hardware_info}}
+hardware: {{hardware_info}}
+{{/if}}
+{{#if training_config_type}}
+training_config: {{training_config_type}}
+{{/if}}
+{{#if trainer_type}}
+trainer_type: {{trainer_type}}
+{{/if}}
+{{#if batch_size}}
+batch_size: {{batch_size}}
+{{/if}}
+{{#if learning_rate}}
+learning_rate: {{learning_rate}}
+{{/if}}
+{{#if max_epochs}}
+max_epochs: {{max_epochs}}
+{{/if}}
+{{#if max_seq_length}}
+max_seq_length: {{max_seq_length}}
+{{/if}}
+{{#if dataset_sample_size}}
+dataset_sample_size: {{dataset_sample_size}}
+{{/if}}
+{{#if dataset_size}}
+dataset_size: {{dataset_size}}
+{{/if}}
+{{#if dataset_format}}
+dataset_format: {{dataset_format}}
+{{/if}}
+{{#if gradient_accumulation_steps}}
+gradient_accumulation_steps: {{gradient_accumulation_steps}}
+{{/if}}
+{{#if quantized_models}}
+quantization_types:
+- int8_weight_only
+- int4_weight_only
+{{/if}}
 ---
 
 # {{model_name}}

@@ -151,7 +151,10 @@ class HuggingFacePusher:
                 "author_name": training_config.get('author_name', 'Your Name'),
                 "model_name_slug": self.repo_name.split('/')[-1].lower().replace('-', '_'),
                 "quantized_models": False,  # Will be updated if quantized models are added
-                "dataset_sample_size": training_config.get('dataset_sample_size')
+                "dataset_sample_size": training_config.get('dataset_sample_size'),
+                "training_loss": results.get('train_loss', 'N/A'),
+                "validation_loss": results.get('eval_loss', 'N/A'),
+                "perplexity": results.get('perplexity', 'N/A')
             }
             
             # Create generator and generate model card

@@ -105,7 +105,10 @@ def create_default_variables() -> Dict[str, Any]:
         "author_name": "Your Name",
         "model_name_slug": "smollm3-fine-tuned",
         "quantized_models": False,
-        "dataset_sample_size": None
+        "dataset_sample_size": None,
+        "training_loss": "N/A",
+        "validation_loss": "N/A",
+        "perplexity": "N/A"
     }
 
 def parse_args():
@@ -133,6 +136,9 @@ def parse_args():
     parser.add_argument("--quantized-models", action="store_true", 
                        help="Include quantized models")
     parser.add_argument("--dataset-sample-size", help="Dataset sample size")
+    parser.add_argument("--training-loss", help="Training loss value")
+    parser.add_argument("--validation-loss", help="Validation loss value")
+    parser.add_argument("--perplexity", help="Perplexity value")
     
     return parser.parse_args()
 
@@ -186,6 +192,12 @@ def main():
             variables["quantized_models"] = True
         if args.dataset_sample_size:
             variables["dataset_sample_size"] = args.dataset_sample_size
+        if args.training_loss:
+            variables["training_loss"] = args.training_loss
+        if args.validation_loss:
+            variables["validation_loss"] = args.validation_loss
+        if args.perplexity:
+            variables["perplexity"] = args.perplexity
         
         # Generate model card
         print("🔄 Generating model card...")
