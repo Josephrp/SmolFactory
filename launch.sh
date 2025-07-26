@@ -381,6 +381,9 @@ print_status "Model repository: $REPO_NAME"
 # Automatically create dataset repository
 print_info "Setting up Trackio dataset repository automatically..."
 
+# Set default dataset repository
+TRACKIO_DATASET_REPO="$HF_USERNAME/trackio-experiments"
+
 # Ask if user wants to customize dataset name
 echo ""
 echo "Dataset repository options:"
@@ -392,6 +395,7 @@ read -p "Choose option (1/2): " dataset_option
 if [ "$dataset_option" = "2" ]; then
     get_input "Custom dataset name (without username)" "trackio-experiments" CUSTOM_DATASET_NAME
     if python3 scripts/dataset_tonic/setup_hf_dataset.py "$HF_TOKEN" "$CUSTOM_DATASET_NAME" 2>/dev/null; then
+        # Update with the actual repository name from the script
         TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
         print_status "Custom dataset repository created successfully"
     else
@@ -400,8 +404,8 @@ if [ "$dataset_option" = "2" ]; then
             TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
             print_status "Default dataset repository created successfully"
         else
-            print_warning "Automatic dataset creation failed, using manual input"
-            get_input "Trackio dataset repository" "$HF_USERNAME/trackio-experiments" TRACKIO_DATASET_REPO
+            print_warning "Automatic dataset creation failed, using default"
+            TRACKIO_DATASET_REPO="$HF_USERNAME/trackio-experiments"
         fi
     fi
 else
@@ -409,9 +413,15 @@ else
         TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
         print_status "Dataset repository created successfully"
     else
-        print_warning "Automatic dataset creation failed, using manual input"
-        get_input "Trackio dataset repository" "$HF_USERNAME/trackio-experiments" TRACKIO_DATASET_REPO
+        print_warning "Automatic dataset creation failed, using default"
+        TRACKIO_DATASET_REPO="$HF_USERNAME/trackio-experiments"
     fi
+fi
+
+# Ensure TRACKIO_DATASET_REPO is always set
+if [ -z "$TRACKIO_DATASET_REPO" ]; then
+    TRACKIO_DATASET_REPO="$HF_USERNAME/trackio-experiments"
+    print_warning "Dataset repository not set, using default: $TRACKIO_DATASET_REPO"
 fi
 
 # Step 3.5: Select trainer type

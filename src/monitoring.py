@@ -19,6 +19,14 @@ except ImportError:
     TRACKIO_AVAILABLE = False
     print("Warning: Trackio API client not available. Install with: pip install requests")
 
+# Check if there's a conflicting trackio package installed
+try:
+    import trackio
+    print(f"Warning: Found installed trackio package at {trackio.__file__}")
+    print("This may conflict with our custom TrackioAPIClient. Using custom implementation only.")
+except ImportError:
+    pass  # No conflicting package found
+
 logger = logging.getLogger(__name__)
 
 class SmolLM3Monitor:
@@ -45,6 +53,11 @@ class SmolLM3Monitor:
         # HF Datasets configuration
         self.hf_token = hf_token or os.environ.get('HF_TOKEN')
         self.dataset_repo = dataset_repo or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        
+        # Ensure dataset repository is properly set
+        if not self.dataset_repo or self.dataset_repo.strip() == '':
+            logger.warning("⚠️ Dataset repository not set, using default")
+            self.dataset_repo = 'tonic/trackio-experiments'
         
         # Initialize experiment metadata first
         self.experiment_id = None
@@ -98,49 +111,51 @@ class SmolLM3Monitor:
             
             self.trackio_client = TrackioAPIClient(url)
             
-            # Test the connection first
-            test_result = self.trackio_client._make_api_call("list_experiments_interface", [])
-            if "error" in test_result:
-                logger.warning(f"Trackio Space not accessible: {test_result['error']}")
+            # Test connection to Trackio Space
+            try:
+                # Try to list experiments to test connection
+                result = self.trackio_client.list_experiments()
+                if result.get('error'):
+                    logger.warning(f"Trackio Space not accessible: {result['error']}")
+                    logger.info("Continuing with HF Datasets only")
+                    self.enable_tracking = False
+                    return
+                logger.info("✅ Trackio Space connection successful")
+                
+            except Exception as e:
+                logger.warning(f"Trackio Space not accessible: {e}")
                 logger.info("Continuing with HF Datasets only")
                 self.enable_tracking = False
                 return
-            
-            # Create experiment
-            create_result = self.trackio_client.create_experiment(
-                name=self.experiment_name,
-                description="SmolLM3 fine-tuning experiment started at {}".format(self.start_time)
-            )
-            
-            if "success" in create_result:
-                # Extract experiment ID from response
-                import re
-                response_text = create_result['data']
-                match = re.search(r'exp_\d{8}_\d{6}', response_text)
-                if match:
-                    self.experiment_id = match.group()
-                    logger.info("Trackio API client initialized. Experiment ID: %s", self.experiment_id)
-                else:
-                    logger.error("Could not extract experiment ID from response")
-                    self.enable_tracking = False
-            else:
-                logger.error("Failed to create experiment: %s", create_result)
-                self.enable_tracking = False
-            
+                
         except Exception as e:
-            logger.error("Failed to initialize Trackio API: %s", e)
-            logger.info("Continuing with HF Datasets only")
+            logger.error(f"Failed to setup Trackio: {e}")
             self.enable_tracking = False
     
     def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
         """Save experiment data to HF Dataset"""
-        if not self.hf_dataset_client:
+        if not self.hf_dataset_client or not self.dataset_repo:
+            logger.warning("⚠️ HF Datasets not available or dataset repo not set")
             return False
         
         try:
-            # Convert experiment data to dataset format
+            # Ensure dataset repository is not empty
+            if not self.dataset_repo or self.dataset_repo.strip() == '':
+                logger.error("❌ Dataset repository is empty")
+                return False
+            
+            # Validate dataset repository format
+            if '/' not in self.dataset_repo:
+                logger.error(f"❌ Invalid dataset repository format: {self.dataset_repo}")
+                return False
+            
+            Dataset = self.hf_dataset_client['Dataset']
+            api = self.hf_dataset_client['api']
+            
+            # Create dataset from experiment data with correct structure
+            # Match the structure used in setup_hf_dataset.py
             dataset_data = [{
-                'experiment_id': self.experiment_id or "exp_{}".format(datetime.now().strftime('%Y%m%d_%H%M%S')),
+                'experiment_id': self.experiment_id or f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 'name': self.experiment_name,
                 'description': "SmolLM3 fine-tuning experiment",
                 'created_at': self.start_time.isoformat(),
@@ -152,22 +167,21 @@ class SmolLM3Monitor:
                 'last_updated': datetime.now().isoformat()
             }]
             
-            # Create dataset
-            Dataset = self.hf_dataset_client['Dataset']
+            # Create dataset from the experiment data
             dataset = Dataset.from_list(dataset_data)
             
-            # Push to HF Hub
+            # Push to hub
             dataset.push_to_hub(
                 self.dataset_repo,
                 token=self.hf_token,
                 private=True
             )
             
-            logger.info("✅ Saved experiment data to %s", self.dataset_repo)
+            logger.info(f"✅ Experiment data saved to HF Dataset: {self.dataset_repo}")
             return True
             
         except Exception as e:
-            logger.error("Failed to save to HF Dataset: %s", e)
+            logger.error(f"Failed to save to HF Dataset: {e}")
             return False
     
     def log_configuration(self, config: Dict[str, Any]):

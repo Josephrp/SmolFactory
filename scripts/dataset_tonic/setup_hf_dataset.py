@@ -32,7 +32,7 @@ def get_username_from_token(token: str) -> Optional[str]:
         user_info = api.whoami()
         username = user_info.get("name", user_info.get("username"))
         
-        return username
+            return username
     except Exception as e:
         print(f"❌ Error getting username from token: {e}")
         return None
@@ -71,7 +71,7 @@ def create_dataset_repository(username: str, dataset_name: str = "trackio-experi
         else:
             print(f"❌ Error creating dataset repository: {e}")
             return None
-
+            
 def setup_trackio_dataset(dataset_name: str = None, token: str = None) -> bool:
     """
     Set up Trackio dataset repository automatically.
@@ -162,20 +162,20 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
         if not token:
             print("⚠️  No token available for uploading data")
             return False
-        
-        # Initial experiment data
-        initial_experiments = [
-            {
+    
+    # Initial experiment data
+    initial_experiments = [
+        {
                 'experiment_id': f'exp_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
                 'name': 'smollm3-finetune-demo',
                 'description': 'SmolLM3 fine-tuning experiment demo with comprehensive metrics tracking',
                 'created_at': datetime.now().isoformat(),
                 'status': 'completed',
-                'metrics': json.dumps([
-                    {
+            'metrics': json.dumps([
+                {
                         'timestamp': datetime.now().isoformat(),
-                        'step': 100,
-                        'metrics': {
+                    'step': 100,
+                    'metrics': {
                             'loss': 1.15,
                             'grad_norm': 10.5,
                             'learning_rate': 5e-6,
@@ -191,13 +191,13 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
                             'gpu_memory_allocated': 15.2,
                             'gpu_memory_reserved': 70.1,
                             'gpu_utilization': 85.2,
-                            'cpu_percent': 2.7,
-                            'memory_percent': 10.1
-                        }
+                        'cpu_percent': 2.7,
+                        'memory_percent': 10.1
                     }
-                ]),
-                'parameters': json.dumps({
-                    'model_name': 'HuggingFaceTB/SmolLM3-3B',
+                }
+            ]),
+            'parameters': json.dumps({
+                'model_name': 'HuggingFaceTB/SmolLM3-3B',
                     'max_seq_length': 4096,
                     'batch_size': 2,
                     'learning_rate': 5e-6,
@@ -208,8 +208,8 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
                     'mixed_precision': True,
                     'gradient_checkpointing': True,
                     'flash_attention': True
-                }),
-                'artifacts': json.dumps([]),
+            }),
+            'artifacts': json.dumps([]),
                 'logs': json.dumps([
                     {
                         'timestamp': datetime.now().isoformat(),
@@ -227,10 +227,10 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
                         'message': 'Dataset loaded and preprocessed'
                     }
                 ]),
-                'last_updated': datetime.now().isoformat()
-            }
-        ]
-        
+            'last_updated': datetime.now().isoformat()
+        }
+    ]
+    
         # Create dataset and upload
         from datasets import Dataset
         

@@ -212,7 +212,7 @@ class TrackioAPIClient:
         """Get experiment details"""
         logger.info(f"Getting details for experiment {experiment_id}")
         
-        result = self._make_api_call("get_experiment_details_interface", [experiment_id])
+        result = self._make_api_call("get_experiment_details", [experiment_id])
         
         if "success" in result:
             logger.info(f"Experiment details retrieved: {result['data']}")
@@ -251,7 +251,7 @@ class TrackioAPIClient:
         """Simulate training data for testing"""
         logger.info(f"Simulating training data for experiment {experiment_id}")
         
-        result = self._make_api_call("simulate_training_data_interface", [experiment_id])
+        result = self._make_api_call("simulate_training_data", [experiment_id])
         
         if "success" in result:
             logger.info(f"Training data simulated successfully: {result['data']}")
