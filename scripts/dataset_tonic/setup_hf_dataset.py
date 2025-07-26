@@ -32,7 +32,7 @@ def get_username_from_token(token: str) -> Optional[str]:
         user_info = api.whoami()
         username = user_info.get("name", user_info.get("username"))
         
-            return username
+        return username
     except Exception as e:
         print(f"❌ Error getting username from token: {e}")
         return None
@@ -162,20 +162,20 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
         if not token:
             print("⚠️  No token available for uploading data")
             return False
-    
-    # Initial experiment data
-    initial_experiments = [
-        {
+        
+        # Initial experiment data
+        initial_experiments = [
+            {
                 'experiment_id': f'exp_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
                 'name': 'smollm3-finetune-demo',
                 'description': 'SmolLM3 fine-tuning experiment demo with comprehensive metrics tracking',
                 'created_at': datetime.now().isoformat(),
                 'status': 'completed',
-            'metrics': json.dumps([
-                {
+                'metrics': json.dumps([
+                    {
                         'timestamp': datetime.now().isoformat(),
-                    'step': 100,
-                    'metrics': {
+                        'step': 100,
+                        'metrics': {
                             'loss': 1.15,
                             'grad_norm': 10.5,
                             'learning_rate': 5e-6,
@@ -191,13 +191,13 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
                             'gpu_memory_allocated': 15.2,
                             'gpu_memory_reserved': 70.1,
                             'gpu_utilization': 85.2,
-                        'cpu_percent': 2.7,
-                        'memory_percent': 10.1
+                            'cpu_percent': 2.7,
+                            'memory_percent': 10.1
+                        }
                     }
-                }
-            ]),
-            'parameters': json.dumps({
-                'model_name': 'HuggingFaceTB/SmolLM3-3B',
+                ]),
+                'parameters': json.dumps({
+                    'model_name': 'HuggingFaceTB/SmolLM3-3B',
                     'max_seq_length': 4096,
                     'batch_size': 2,
                     'learning_rate': 5e-6,
@@ -208,8 +208,8 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
                     'mixed_precision': True,
                     'gradient_checkpointing': True,
                     'flash_attention': True
-            }),
-            'artifacts': json.dumps([]),
+                }),
+                'artifacts': json.dumps([]),
                 'logs': json.dumps([
                     {
                         'timestamp': datetime.now().isoformat(),
@@ -227,10 +227,10 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
                         'message': 'Dataset loaded and preprocessed'
                     }
                 ]),
-            'last_updated': datetime.now().isoformat()
-        }
-    ]
-    
+                'last_updated': datetime.now().isoformat()
+            }
+        ]
+        
         # Create dataset and upload
         from datasets import Dataset
         
@@ -347,21 +347,19 @@ This dataset is public by default for easier sharing and collaboration. Only non
 ```json
 {{
   "experiment_id": "exp_20250720_130853",
-  "name": "smollm3_finetune",
-  "description": "SmolLM3 fine-tuning experiment with comprehensive metrics",
-  "created_at": "2025-07-20T11:20:01.780908",
-  "status": "running",
-  "metrics": "[{{\"timestamp\": \"2025-07-20T11:20:01.780908\", \"step\": 25, \"metrics\": {{\"loss\": 1.1659, \"accuracy\": 0.759, \"total_tokens\": 1642080.0, \"throughput\": 3284160.0, \"train/gate_ortho\": 0.0234, \"train/center\": 0.0156}}}}]",
-  "parameters": "{{\"model_name\": \"HuggingFaceTB/SmolLM3-3B\", \"batch_size\": 8, \"learning_rate\": 3.5e-06, \"max_seq_length\": 12288}}",
+  "name": "smollm3-finetune-demo",
+  "description": "SmolLM3 fine-tuning experiment demo",
+  "created_at": "2025-07-20T13:08:53",
+  "status": "completed",
+  "metrics": "{{...}}",
+  "parameters": "{{...}}",
   "artifacts": "[]",
-  "logs": "[]",
-  "last_updated": "2025-07-20T11:20:01.780908"
+  "logs": "{{...}}",
+  "last_updated": "2025-07-20T13:08:53"
 }}
 ```
 
-## License
-
-This dataset is part of the Trackio experiment tracking system and follows the same license as the main project.
+This dataset is maintained by the Trackio monitoring system and automatically updated during training runs.
 """
         
         # Upload README to the dataset repository
