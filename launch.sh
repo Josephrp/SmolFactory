@@ -89,13 +89,44 @@ validate_hf_token_and_get_username() {
         return 1
     fi
     
-    # Test the token and get username
-    export HF_TOKEN="$token"
-    if hf whoami >/dev/null 2>&1; then
-        # Get username from whoami command
-        HF_USERNAME=$(hf whoami | head -n1 | tr -d '\n')
-        return 0
+    # Use Python script for validation
+    local result
+    if result=$(python3 scripts/validate_hf_token.py "$token" 2>/dev/null); then
+        # Parse JSON result using a more robust approach
+        local success=$(echo "$result" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('success', False))
+except:
+    print('False')
+")
+        local username=$(echo "$result" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('username', ''))
+except:
+    print('')
+")
+        local error=$(echo "$result" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('error', 'Unknown error'))
+except:
+    print('Failed to parse response')
+")
+        
+        if [ "$success" = "True" ] && [ -n "$username" ]; then
+            HF_USERNAME="$username"
+            return 0
+        else
+            print_error "Token validation failed: $error"
+            return 1
+        fi
     else
+        print_error "Failed to run token validation script. Make sure huggingface_hub is installed."
         return 1
     fi
 }
