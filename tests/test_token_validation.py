@@ -13,7 +13,8 @@ def test_token_validation():
     """Test the token validation function."""
     
     # Test with a valid token (you can replace this with your own token for testing)
-    test_token = "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"
+    # Note: This test will fail if the token is invalid - replace with your own token for testing
+    test_token = "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"
     
     print("Testing token validation...")
     print(f"Token: {test_token[:10]}...")

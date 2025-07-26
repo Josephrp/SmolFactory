@@ -373,7 +373,42 @@ echo "=============================="
 
 get_input "Experiment name" "smollm3_finetune_$(date +%Y%m%d_%H%M%S)" EXPERIMENT_NAME
 get_input "Model repository name" "$HF_USERNAME/smollm3-finetuned-$(date +%Y%m%d)" REPO_NAME
-get_input "Trackio dataset repository" "$HF_USERNAME/trackio-experiments" TRACKIO_DATASET_REPO
+
+# Automatically create dataset repository
+print_info "Setting up Trackio dataset repository automatically..."
+
+# Ask if user wants to customize dataset name
+echo ""
+echo "Dataset repository options:"
+echo "1. Use default name (trackio-experiments)"
+echo "2. Customize dataset name"
+echo ""
+read -p "Choose option (1/2): " dataset_option
+
+if [ "$dataset_option" = "2" ]; then
+    get_input "Custom dataset name (without username)" "trackio-experiments" CUSTOM_DATASET_NAME
+    if python3 scripts/dataset_tonic/setup_hf_dataset.py "$CUSTOM_DATASET_NAME" 2>/dev/null; then
+        TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+        print_status "Custom dataset repository created successfully"
+    else
+        print_warning "Custom dataset creation failed, using default"
+        if python3 scripts/dataset_tonic/setup_hf_dataset.py 2>/dev/null; then
+            TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+            print_status "Default dataset repository created successfully"
+        else
+            print_warning "Automatic dataset creation failed, using manual input"
+            get_input "Trackio dataset repository" "$HF_USERNAME/trackio-experiments" TRACKIO_DATASET_REPO
+        fi
+    fi
+else
+    if python3 scripts/dataset_tonic/setup_hf_dataset.py 2>/dev/null; then
+        TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+        print_status "Dataset repository created successfully"
+    else
+        print_warning "Automatic dataset creation failed, using manual input"
+        get_input "Trackio dataset repository" "$HF_USERNAME/trackio-experiments" TRACKIO_DATASET_REPO
+    fi
+fi
 
 # Step 3.5: Select trainer type
 print_step "Step 3.5: Trainer Type Selection"

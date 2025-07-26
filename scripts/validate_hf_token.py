@@ -26,11 +26,8 @@ def validate_hf_token(token: str) -> Tuple[bool, Optional[str], Optional[str]]:
             - error_message: Error message if validation failed
     """
     try:
-        # Set the token as environment variable
-        os.environ["HUGGING_FACE_HUB_TOKEN"] = token
-        
-        # Create API client
-        api = HfApi()
+        # Create API client with token directly
+        api = HfApi(token=token)
         
         # Try to get user info - this will fail if token is invalid
         user_info = api.whoami()

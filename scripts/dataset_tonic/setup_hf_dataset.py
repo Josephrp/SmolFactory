@@ -4,398 +4,396 @@ Setup script for Hugging Face Dataset repository for Trackio experiments
 """
 
 import os
+import sys
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from datasets import Dataset
+from typing import Optional, Dict, Any
 from huggingface_hub import HfApi, create_repo
 import subprocess
 
-def get_username_from_token(token: str) -> str:
-    """Get username from HF token with fallback to CLI"""
+def get_username_from_token(token: str) -> Optional[str]:
+    """
+    Get username from HF token using the API.
+    
+    Args:
+        token (str): Hugging Face token
+        
+    Returns:
+        Optional[str]: Username if successful, None otherwise
+    """
     try:
-        # Try API first
+        # Create API client with token directly
         api = HfApi(token=token)
+        
+        # Get user info
         user_info = api.whoami()
+        username = user_info.get("name", user_info.get("username"))
         
-        # Handle different possible response formats
-        if isinstance(user_info, dict):
-            # Try different possible keys for username
-            username = (
-                user_info.get('name') or 
-                user_info.get('username') or 
-                user_info.get('user') or 
-                None
-            )
-        elif isinstance(user_info, str):
-            # If whoami returns just the username as string
-            username = user_info
-        else:
-            username = None
-            
-        if username:
-            print(f"✅ Got username from API: {username}")
-            return username
-        else:
-            print("⚠️  Could not get username from API, trying CLI...")
-            return get_username_from_cli(token)
-            
+        return username
     except Exception as e:
-        print(f"⚠️  API whoami failed: {e}")
-        print("⚠️  Trying CLI fallback...")
-        return get_username_from_cli(token)
-
-def get_username_from_cli(token: str) -> str:
-    """Fallback method to get username using CLI"""
-    try:
-        # Set HF token for CLI
-        os.environ['HF_TOKEN'] = token
-        
-        # Get username using CLI
-        result = subprocess.run(
-            ["hf", "whoami"],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode == 0:
-            username = result.stdout.strip()
-            if username:
-                print(f"✅ Got username from CLI: {username}")
-                return username
-            else:
-                print("⚠️  CLI returned empty username")
-                return None
-        else:
-            print(f"⚠️  CLI whoami failed: {result.stderr}")
-            return None
-            
-    except Exception as e:
-        print(f"⚠️  CLI fallback failed: {e}")
+        print(f"❌ Error getting username from token: {e}")
         return None
 
-def setup_trackio_dataset():
-    """Set up the Trackio experiments dataset on Hugging Face Hub"""
+def create_dataset_repository(username: str, dataset_name: str = "trackio-experiments", token: str = None) -> str:
+    """
+    Create a dataset repository on Hugging Face.
     
-    # Configuration - get from environment variables with fallbacks
-    hf_token = os.environ.get('HF_TOKEN')
+    Args:
+        username (str): HF username
+        dataset_name (str): Name for the dataset repository
+        token (str): HF token for authentication
+        
+    Returns:
+        str: Full repository name (username/dataset_name)
+    """
+    repo_id = f"{username}/{dataset_name}"
     
-    if not hf_token:
-        print("❌ HF_TOKEN not found. Please set the HF_TOKEN environment variable.")
-        print("You can get your token from: https://huggingface.co/settings/tokens")
+    try:
+        # Create the dataset repository
+        create_repo(
+            repo_id=repo_id,
+            repo_type="dataset",
+            token=token,
+            exist_ok=True,
+            private=False  # Public dataset for easier sharing
+        )
+        
+        print(f"✅ Successfully created dataset repository: {repo_id}")
+        return repo_id
+        
+    except Exception as e:
+        if "already exists" in str(e).lower():
+            print(f"ℹ️  Dataset repository already exists: {repo_id}")
+            return repo_id
+        else:
+            print(f"❌ Error creating dataset repository: {e}")
+            return None
+
+def setup_trackio_dataset(dataset_name: str = None) -> bool:
+    """
+    Set up Trackio dataset repository automatically.
+    
+    Args:
+        dataset_name (str): Optional custom dataset name (default: trackio-experiments)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    print("🚀 Setting up Trackio Dataset Repository")
+    print("=" * 50)
+    
+    # Get token from environment or command line
+    token = os.environ.get('HUGGING_FACE_HUB_TOKEN') or os.environ.get('HF_TOKEN')
+    
+    # If no token in environment, try command line argument
+    if not token and len(sys.argv) > 1:
+        token = sys.argv[1]
+    
+    if not token:
+        print("❌ No HF token found. Please set HUGGING_FACE_HUB_TOKEN environment variable or provide as argument.")
         return False
     
-    username = get_username_from_token(hf_token)
+    # Get username from token
+    print("🔍 Getting username from token...")
+    username = get_username_from_token(token)
     if not username:
         print("❌ Could not determine username from token. Please check your token.")
         return False
     
     print(f"✅ Authenticated as: {username}")
     
-    # Use username in dataset repository if not specified
-    dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', f'{username}/trackio-experiments')
+    # Use provided dataset name or default
+    if not dataset_name:
+        dataset_name = "trackio-experiments"
     
-    print(f"🚀 Setting up Trackio dataset: {dataset_repo}")
-    print(f"🔧 Using dataset repository: {dataset_repo}")
+    # Create dataset repository
+    print(f"🔧 Creating dataset repository: {username}/{dataset_name}")
+    repo_id = create_dataset_repository(username, dataset_name, token)
     
-    # Initial experiment data
-    initial_experiments = [
-        {
-            'experiment_id': 'exp_20250720_130853',
-            'name': 'petite-elle-l-aime-3',
-            'description': 'SmolLM3 fine-tuning experiment',
-            'created_at': '2025-07-20T11:20:01.780908',
-            'status': 'running',
-            'metrics': json.dumps([
-                {
-                    'timestamp': '2025-07-20T11:20:01.780908',
-                    'step': 25,
-                    'metrics': {
-                        'loss': 1.1659,
-                        'grad_norm': 10.3125,
-                        'learning_rate': 7e-08,
-                        'num_tokens': 1642080.0,
-                        'mean_token_accuracy': 0.75923578992486,
-                        'epoch': 0.004851130919895701
-                    }
-                },
-                {
-                    'timestamp': '2025-07-20T11:26:39.042155',
-                    'step': 50,
-                    'metrics': {
-                        'loss': 1.165,
-                        'grad_norm': 10.75,
-                        'learning_rate': 1.4291666666666667e-07,
-                        'num_tokens': 3324682.0,
-                        'mean_token_accuracy': 0.7577659255266189,
-                        'epoch': 0.009702261839791402
-                    }
-                },
-                {
-                    'timestamp': '2025-07-20T11:33:16.203045',
-                    'step': 75,
-                    'metrics': {
-                        'loss': 1.1639,
-                        'grad_norm': 10.6875,
-                        'learning_rate': 2.1583333333333334e-07,
-                        'num_tokens': 4987941.0,
-                        'mean_token_accuracy': 0.7581205774843692,
-                        'epoch': 0.014553392759687101
-                    }
-                },
-                {
-                    'timestamp': '2025-07-20T11:39:53.453917',
-                    'step': 100,
-                    'metrics': {
-                        'loss': 1.1528,
-                        'grad_norm': 10.75,
-                        'learning_rate': 2.8875e-07,
-                        'num_tokens': 6630190.0,
-                        'mean_token_accuracy': 0.7614579878747463,
-                        'epoch': 0.019404523679582803
-                    }
-                }
-            ]),
-            'parameters': json.dumps({
-                'model_name': 'HuggingFaceTB/SmolLM3-3B',
-                'max_seq_length': 12288,
-                'use_flash_attention': True,
-                'use_gradient_checkpointing': False,
-                'batch_size': 8,
-                'gradient_accumulation_steps': 16,
-                'learning_rate': 3.5e-06,
-                'weight_decay': 0.01,
-                'warmup_steps': 1200,
-                'max_iters': 18000,
-                'eval_interval': 1000,
-                'log_interval': 25,
-                'save_interval': 2000,
-                'optimizer': 'adamw_torch',
-                'beta1': 0.9,
-                'beta2': 0.999,
-                'eps': 1e-08,
-                'scheduler': 'cosine',
-                'min_lr': 3.5e-07,
-                'fp16': False,
-                'bf16': True,
-                'ddp_backend': 'nccl',
-                'ddp_find_unused_parameters': False,
-                'save_steps': 2000,
-                'eval_steps': 1000,
-                'logging_steps': 25,
-                'save_total_limit': 5,
-                'eval_strategy': 'steps',
-                'metric_for_best_model': 'eval_loss',
-                'greater_is_better': False,
-                'load_best_model_at_end': True,
-                'data_dir': None,
-                'train_file': None,
-                'validation_file': None,
-                'test_file': None,
-                'use_chat_template': True,
-                'chat_template_kwargs': {'add_generation_prompt': True, 'no_think_system_message': True},
-                'enable_tracking': True,
-                'trackio_url': 'https://tonic-test-trackio-test.hf.space',
-                'trackio_token': None,
-                'log_artifacts': True,
-                'log_metrics': True,
-                'log_config': True,
-                'experiment_name': 'petite-elle-l-aime-3',
-                'dataset_name': 'legmlai/openhermes-fr',
-                'dataset_split': 'train',
-                'input_field': 'prompt',
-                'target_field': 'accepted_completion',
-                'filter_bad_entries': True,
-                'bad_entry_field': 'bad_entry',
-                'packing': False,
-                'max_prompt_length': 12288,
-                'max_completion_length': 8192,
-                'truncation': True,
-                'dataloader_num_workers': 10,
-                'dataloader_pin_memory': True,
-                'dataloader_prefetch_factor': 3,
-                'max_grad_norm': 1.0,
-                'group_by_length': True
-            }),
-            'artifacts': json.dumps([]),
-            'logs': json.dumps([]),
-            'last_updated': datetime.now().isoformat()
-        },
-        {
-            'experiment_id': 'exp_20250720_134319',
-            'name': 'petite-elle-l-aime-3-1',
-            'description': 'SmolLM3 fine-tuning experiment',
-            'created_at': '2025-07-20T11:54:31.993219',
-            'status': 'running',
-            'metrics': json.dumps([
-                {
-                    'timestamp': '2025-07-20T11:54:31.993219',
-                    'step': 25,
-                    'metrics': {
-                        'loss': 1.166,
-                        'grad_norm': 10.375,
-                        'learning_rate': 7e-08,
-                        'num_tokens': 1642080.0,
-                        'mean_token_accuracy': 0.7590958896279335,
-                        'epoch': 0.004851130919895701
-                    }
-                },
-                {
-                    'timestamp': '2025-07-20T11:54:33.589487',
-                    'step': 25,
-                    'metrics': {
-                        'gpu_0_memory_allocated': 17.202261447906494,
-                        'gpu_0_memory_reserved': 75.474609375,
-                        'gpu_0_utilization': 0,
-                        'cpu_percent': 2.7,
-                        'memory_percent': 10.1
-                    }
-                }
-            ]),
-            'parameters': json.dumps({
-                'model_name': 'HuggingFaceTB/SmolLM3-3B',
-                'max_seq_length': 12288,
-                'use_flash_attention': True,
-                'use_gradient_checkpointing': False,
-                'batch_size': 8,
-                'gradient_accumulation_steps': 16,
-                'learning_rate': 3.5e-06,
-                'weight_decay': 0.01,
-                'warmup_steps': 1200,
-                'max_iters': 18000,
-                'eval_interval': 1000,
-                'log_interval': 25,
-                'save_interval': 2000,
-                'optimizer': 'adamw_torch',
-                'beta1': 0.9,
-                'beta2': 0.999,
-                'eps': 1e-08,
-                'scheduler': 'cosine',
-                'min_lr': 3.5e-07,
-                'fp16': False,
-                'bf16': True,
-                'ddp_backend': 'nccl',
-                'ddp_find_unused_parameters': False,
-                'save_steps': 2000,
-                'eval_steps': 1000,
-                'logging_steps': 25,
-                'save_total_limit': 5,
-                'eval_strategy': 'steps',
-                'metric_for_best_model': 'eval_loss',
-                'greater_is_better': False,
-                'load_best_model_at_end': True,
-                'data_dir': None,
-                'train_file': None,
-                'validation_file': None,
-                'test_file': None,
-                'use_chat_template': True,
-                'chat_template_kwargs': {'add_generation_prompt': True, 'no_think_system_message': True},
-                'enable_tracking': True,
-                'trackio_url': 'https://tonic-test-trackio-test.hf.space',
-                'trackio_token': None,
-                'log_artifacts': True,
-                'log_metrics': True,
-                'log_config': True,
-                'experiment_name': 'petite-elle-l-aime-3-1',
-                'dataset_name': 'legmlai/openhermes-fr',
-                'dataset_split': 'train',
-                'input_field': 'prompt',
-                'target_field': 'accepted_completion',
-                'filter_bad_entries': True,
-                'bad_entry_field': 'bad_entry',
-                'packing': False,
-                'max_prompt_length': 12288,
-                'max_completion_length': 8192,
-                'truncation': True,
-                'dataloader_num_workers': 10,
-                'dataloader_pin_memory': True,
-                'dataloader_prefetch_factor': 3,
-                'max_grad_norm': 1.0,
-                'group_by_length': True
-            }),
-            'artifacts': json.dumps([]),
-            'logs': json.dumps([]),
-            'last_updated': datetime.now().isoformat()
-        }
-    ]
+    if not repo_id:
+        print("❌ Failed to create dataset repository")
+        return False
     
+    # Set environment variable for other scripts
+    os.environ['TRACKIO_DATASET_REPO'] = repo_id
+    print(f"✅ Set TRACKIO_DATASET_REPO={repo_id}")
+    
+    # Add initial experiment data
+    print("📊 Adding initial experiment data...")
+    if add_initial_experiment_data(repo_id, token):
+        print("✅ Successfully added initial experiment data")
+    else:
+        print("⚠️  Could not add initial experiment data (this is optional)")
+    
+    print(f"\n🎉 Dataset setup complete!")
+    print(f"📊 Dataset URL: https://huggingface.co/datasets/{repo_id}")
+    print(f"🔧 Repository ID: {repo_id}")
+    
+    return True
+
+def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
+    """
+    Add initial experiment data to the dataset.
+    
+    Args:
+        repo_id (str): Dataset repository ID
+        token (str): HF token for authentication
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     try:
-        # Initialize HF API
-        api = HfApi(token=hf_token)
+        # Get token from parameter or environment
+        if not token:
+            token = os.environ.get('HUGGING_FACE_HUB_TOKEN') or os.environ.get('HF_TOKEN')
         
-        # First, try to create the dataset repository
-        print(f"Creating dataset repository: {dataset_repo}")
-        try:
-            create_repo(
-                repo_id=dataset_repo,
-                token=hf_token,
-                repo_type="dataset",
-                exist_ok=True,
-                private=True  # Make it private for security
-            )
-            print(f"✅ Dataset repository created: {dataset_repo}")
-        except Exception as e:
-            print(f"⚠️  Repository creation failed (may already exist): {e}")
+        if not token:
+            print("⚠️  No token available for uploading data")
+            return False
         
-        # Create dataset
+        # Initial experiment data
+        initial_experiments = [
+            {
+                'experiment_id': f'exp_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
+                'name': 'smollm3-finetune-demo',
+                'description': 'SmolLM3 fine-tuning experiment demo with comprehensive metrics tracking',
+                'created_at': datetime.now().isoformat(),
+                'status': 'completed',
+                'metrics': json.dumps([
+                    {
+                        'timestamp': datetime.now().isoformat(),
+                        'step': 100,
+                        'metrics': {
+                            'loss': 1.15,
+                            'grad_norm': 10.5,
+                            'learning_rate': 5e-6,
+                            'num_tokens': 1000000.0,
+                            'mean_token_accuracy': 0.76,
+                            'epoch': 0.1,
+                            'total_tokens': 1000000.0,
+                            'throughput': 2000000.0,
+                            'step_time': 0.5,
+                            'batch_size': 2,
+                            'seq_len': 4096,
+                            'token_acc': 0.76,
+                            'gpu_memory_allocated': 15.2,
+                            'gpu_memory_reserved': 70.1,
+                            'gpu_utilization': 85.2,
+                            'cpu_percent': 2.7,
+                            'memory_percent': 10.1
+                        }
+                    }
+                ]),
+                'parameters': json.dumps({
+                    'model_name': 'HuggingFaceTB/SmolLM3-3B',
+                    'max_seq_length': 4096,
+                    'batch_size': 2,
+                    'learning_rate': 5e-6,
+                    'epochs': 3,
+                    'dataset': 'OpenHermes-FR',
+                    'trainer_type': 'SFTTrainer',
+                    'hardware': 'GPU (H100/A100)',
+                    'mixed_precision': True,
+                    'gradient_checkpointing': True,
+                    'flash_attention': True
+                }),
+                'artifacts': json.dumps([]),
+                'logs': json.dumps([
+                    {
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'INFO',
+                        'message': 'Training started successfully'
+                    },
+                    {
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'INFO',
+                        'message': 'Model loaded and configured'
+                    },
+                    {
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'INFO',
+                        'message': 'Dataset loaded and preprocessed'
+                    }
+                ]),
+                'last_updated': datetime.now().isoformat()
+            }
+        ]
+        
+        # Create dataset and upload
+        from datasets import Dataset
+        
+        # Create dataset from the initial experiments
         dataset = Dataset.from_list(initial_experiments)
         
-        # Get the project root directory (2 levels up from this script)
-        project_root = Path(__file__).parent.parent.parent
-        templates_dir = project_root / "templates" / "datasets"
-        readme_path = templates_dir / "readme.md"
-        
-        # Read README content if it exists
-        readme_content = None
-        if readme_path.exists():
-            with open(readme_path, 'r', encoding='utf-8') as f:
-                readme_content = f.read()
-            print(f"✅ Found README template: {readme_path}")
-        
-        # Push to HF Hub
-        print("Pushing dataset to HF Hub...")
+        # Push to hub
         dataset.push_to_hub(
-            dataset_repo,
-            token=hf_token,
-            private=False  # Make it private for security
+            repo_id,
+            token=token,
+            private=False,
+            commit_message="Add initial experiment data"
         )
         
-        # Create README separately if available
-        if readme_content:
-            try:
-                print("Uploading README.md...")
-                api.upload_file(
-                    path_or_fileobj=readme_content.encode('utf-8'),
-                    path_in_repo="README.md",
-                    repo_id=dataset_repo,
-                    repo_type="dataset",
-                    token=hf_token
-                )
-                print("📝 Uploaded README.md successfully")
-            except Exception as e:
-                print(f"⚠️  Could not upload README: {e}")
+        print(f"✅ Successfully uploaded initial experiment data to {repo_id}")
         
-        print(f"✅ Successfully created dataset: {dataset_repo}")
-        print(f"📊 Added {len(initial_experiments)} experiments")
-        if readme_content:
-            print("📝 Included README from templates")
-        print("🔓 Dataset is public (accessible to everyone)")
-        print(f"👤 Created by: {username}")
-        print("\n🎯 Next steps:")
-        print("1. Set HF_TOKEN in your Hugging Face Space environment")
-        print("2. Deploy the updated app.py to your Space")
-        print("3. The app will now load experiments from the dataset")
+        # Add README template
+        add_dataset_readme(repo_id, token)
         
         return True
         
     except Exception as e:
-        print(f"❌ Failed to create dataset: {e}")
-        print("\nTroubleshooting:")
-        print("1. Check that your HF token has write permissions")
-        print("2. Verify the dataset repository name is available")
-        print("3. Try creating the dataset manually on HF first")
+        print(f"⚠️  Could not add initial experiment data: {e}")
         return False
 
+def add_dataset_readme(repo_id: str, token: str) -> bool:
+    """
+    Add README template to the dataset repository.
+    
+    Args:
+        repo_id (str): Dataset repository ID
+        token (str): HF token
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Read the README template
+        template_path = os.path.join(os.path.dirname(__file__), '..', '..', 'templates', 'datasets', 'readme.md')
+        
+        if os.path.exists(template_path):
+            with open(template_path, 'r', encoding='utf-8') as f:
+                readme_content = f.read()
+        else:
+            # Create a basic README if template doesn't exist
+            readme_content = f"""---
+dataset_info:
+  features:
+  - name: experiment_id
+    dtype: string
+  - name: name
+    dtype: string
+  - name: description
+    dtype: string
+  - name: created_at
+    dtype: string
+  - name: status
+    dtype: string
+  - name: metrics
+    dtype: string
+  - name: parameters
+    dtype: string
+  - name: artifacts
+    dtype: string
+  - name: logs
+    dtype: string
+  - name: last_updated
+    dtype: string
+tags:
+- trackio
+- experiment tracking
+- smollm3
+- fine-tuning
+---
+
+# Trackio Experiments Dataset
+
+This dataset stores experiment tracking data for ML training runs, particularly focused on SmolLM3 fine-tuning experiments with comprehensive metrics tracking.
+
+## Dataset Structure
+
+The dataset contains the following columns:
+
+- **experiment_id**: Unique identifier for each experiment
+- **name**: Human-readable name for the experiment
+- **description**: Detailed description of the experiment
+- **created_at**: Timestamp when the experiment was created
+- **status**: Current status (running, completed, failed, paused)
+- **metrics**: JSON string containing training metrics over time
+- **parameters**: JSON string containing experiment configuration
+- **artifacts**: JSON string containing experiment artifacts
+- **logs**: JSON string containing experiment logs
+- **last_updated**: Timestamp of last update
+
+## Usage
+
+This dataset is automatically used by the Trackio monitoring system to store and retrieve experiment data. It provides persistent storage for experiment tracking across different training runs.
+
+## Integration
+
+The dataset is used by:
+- Trackio Spaces for experiment visualization
+- Training scripts for logging metrics and parameters
+- Monitoring systems for experiment tracking
+- SmolLM3 fine-tuning pipeline for comprehensive metrics capture
+
+## Privacy
+
+This dataset is public by default for easier sharing and collaboration. Only non-sensitive experiment data is stored.
+
+## Examples
+
+### Sample Experiment Entry
+```json
+{{
+  "experiment_id": "exp_20250720_130853",
+  "name": "smollm3_finetune",
+  "description": "SmolLM3 fine-tuning experiment with comprehensive metrics",
+  "created_at": "2025-07-20T11:20:01.780908",
+  "status": "running",
+  "metrics": "[{{\"timestamp\": \"2025-07-20T11:20:01.780908\", \"step\": 25, \"metrics\": {{\"loss\": 1.1659, \"accuracy\": 0.759, \"total_tokens\": 1642080.0, \"throughput\": 3284160.0, \"train/gate_ortho\": 0.0234, \"train/center\": 0.0156}}}}]",
+  "parameters": "{{\"model_name\": \"HuggingFaceTB/SmolLM3-3B\", \"batch_size\": 8, \"learning_rate\": 3.5e-06, \"max_seq_length\": 12288}}",
+  "artifacts": "[]",
+  "logs": "[]",
+  "last_updated": "2025-07-20T11:20:01.780908"
+}}
+```
+
+## License
+
+This dataset is part of the Trackio experiment tracking system and follows the same license as the main project.
+"""
+        
+        # Upload README to the dataset repository
+        from huggingface_hub import upload_file
+        
+        # Create a temporary file with the README content
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8') as f:
+            f.write(readme_content)
+            temp_file = f.name
+        
+        try:
+            upload_file(
+                path_or_fileobj=temp_file,
+                path_in_repo="README.md",
+                repo_id=repo_id,
+                repo_type="dataset",
+                token=token,
+                commit_message="Add dataset README"
+            )
+            print(f"✅ Successfully added README to {repo_id}")
+            return True
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+        
+    except Exception as e:
+        print(f"⚠️  Could not add README to dataset: {e}")
+        return False
+
+def main():
+    """Main function to set up the dataset."""
+    
+    # Get dataset name from command line or use default
+    dataset_name = None
+    if len(sys.argv) > 2:
+        dataset_name = sys.argv[2]
+    
+    success = setup_trackio_dataset(dataset_name)
+    sys.exit(0 if success else 1)
+
 if __name__ == "__main__":
-    setup_trackio_dataset() 
+    main() 
