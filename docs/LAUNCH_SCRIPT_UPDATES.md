@@ -92,9 +92,9 @@ validate_hf_token_and_get_username() {
     
     # Test the token and get username
     export HF_TOKEN="$token"
-    if huggingface-cli whoami >/dev/null 2>&1; then
-        # Get username from whoami command
-        HF_USERNAME=$(huggingface-cli whoami | head -n1 | tr -d '\n')
+    if hf whoami >/dev/null 2>&1; then
+    # Get username from whoami command
+    HF_USERNAME=$(hf whoami | head -n1 | tr -d '\n')
         return 0
     else
         return 1

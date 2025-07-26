@@ -11,6 +11,9 @@ from typing import Optional
 class SmolLM3Config:
     """Configuration for SmolLM3 fine-tuning"""
     
+    # Trainer type selection
+    trainer_type: str = "sft"  # "sft" or "dpo"
+    
     # Model configuration
     model_name: str = "HuggingFaceTB/SmolLM3-3B"
     max_seq_length: int = 4096

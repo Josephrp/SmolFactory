@@ -12,6 +12,7 @@ tokenizers>=0.13.0
 # Training and optimization
 flash-attn>=2.0.0
 bitsandbytes>=0.41.0
+torchao>=0.10.0
 
 # Basic utilities
 numpy>=1.24.0

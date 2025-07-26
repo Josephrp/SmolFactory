@@ -213,7 +213,12 @@ class SmolLM3Monitor:
         return self.log_configuration(config)
     
     def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None):
-        """Log training metrics"""
+        """
+        Log training metrics. Supports advanced metrics such as:
+        - total_tokens, truncated_tokens, padding_tokens
+        - throughput, step_time, batch_size, seq_len
+        - token_acc, train/gate_ortho, train/center, etc.
+        """
         if not self.enable_tracking or not self.log_metrics_enabled:
             return
         
@@ -381,11 +386,18 @@ class SmolLM3Monitor:
         from transformers import TrainerCallback
         
         class TrackioCallback(TrainerCallback):
+            """
+            Trainer callback for logging metrics, including advanced metrics:
+            - total_tokens, truncated_tokens, padding_tokens
+            - throughput, step_time, batch_size, seq_len
+            - token_acc, train/gate_ortho, train/center, etc.
+            """
             def __init__(self, monitor):
                 super().__init__()
                 self.monitor = monitor
                 logger.info("TrackioCallback initialized")
-            
+                self.last_step_time = None
+
             def on_init_end(self, args, state, control, **kwargs):
                 """Called when training initialization is complete"""
                 try:
@@ -395,11 +407,41 @@ class SmolLM3Monitor:
             
             def on_log(self, args, state, control, logs=None, **kwargs):
                 """Called when logs are created"""
+                import time
                 try:
-                    if logs and isinstance(logs, dict):
-                        step = getattr(state, 'global_step', None)
-                        self.monitor.log_metrics(logs, step)
-                        self.monitor.log_system_metrics(step)
+                    step = getattr(state, 'global_step', None)
+                    # Timing and throughput
+                    now = time.time()
+                    if self.last_step_time is not None:
+                        step_time = now - self.last_step_time
+                        logs['step_time'] = step_time
+                        # Throughput: tokens/sec if total_tokens is available
+                        if hasattr(self, 'last_total_tokens') and self.last_total_tokens is not None:
+                            throughput = (logs.get('total_tokens', 0) / step_time) if step_time > 0 else 0
+                            logs['throughput'] = throughput
+                    self.last_step_time = now
+
+                    # Token stats from batch (if available in kwargs)
+                    batch = kwargs.get('inputs', None)
+                    if batch is not None:
+                        for key in ['total_tokens', 'padding_tokens', 'truncated_tokens', 'batch_size', 'seq_len']:
+                            if key in batch:
+                                logs[key] = batch[key]
+                        self.last_total_tokens = batch.get('total_tokens', None)
+                    else:
+                        self.last_total_tokens = None
+
+                    # Token accuracy (if possible)
+                    if 'labels' in logs and 'predictions' in logs:
+                        labels = logs['labels']
+                        preds = logs['predictions']
+                        if hasattr(labels, 'shape') and hasattr(preds, 'shape'):
+                            correct = (preds == labels).sum().item()
+                            total = labels.numel()
+                            logs['token_acc'] = correct / total if total > 0 else 0.0
+
+                    self.monitor.log_metrics(logs, step)
+                    self.monitor.log_system_metrics(step)
                 except Exception as e:
                     logger.error("Error in on_log: %s", e)
             

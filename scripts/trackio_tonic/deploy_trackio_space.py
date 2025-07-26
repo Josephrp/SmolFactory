@@ -87,7 +87,7 @@ class TrackioSpaceDeployer:
             
             # Get username using CLI
             result = subprocess.run(
-                ["huggingface-cli", "whoami"],
+                ["hf", "whoami"],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -155,7 +155,7 @@ class TrackioSpaceDeployer:
             
             # Create space using Hugging Face CLI
             cmd = [
-                "huggingface-cli", "repo", "create",
+                "hf", "repo", "create",
                 f"{self.username}/{self.space_name}",
                 "--type", "space"
             ]
@@ -168,7 +168,7 @@ class TrackioSpaceDeployer:
                 # Try alternative approach without space-specific flags
                 print("Retrying with basic space creation...")
                 cmd = [
-                    "huggingface-cli", "repo", "create",
+                    "hf", "repo", "create",
                     f"{self.username}/{self.space_name}"
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)

@@ -51,7 +51,7 @@ def get_username_from_cli(token: str) -> str:
         
         # Get username using CLI
         result = subprocess.run(
-            ["huggingface-cli", "whoami"],
+            ["hf", "whoami"],
             capture_output=True,
             text=True,
             timeout=30

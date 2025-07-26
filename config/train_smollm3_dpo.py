@@ -12,6 +12,9 @@ from config.train_smollm3 import SmolLM3Config
 class SmolLM3DPOConfig(SmolLM3Config):
     """Configuration for SmolLM3 DPO fine-tuning"""
     
+    # Trainer type selection
+    trainer_type: str = "dpo"  # Override default to use DPO trainer
+    
     # DPO-specific configuration
     beta: float = 0.1
     max_prompt_length: int = 2048

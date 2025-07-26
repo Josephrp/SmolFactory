@@ -221,7 +221,12 @@ class TrackioSpace:
                             'learning_rate': 7e-08,
                             'num_tokens': 1642080.0,
                             'mean_token_accuracy': 0.7590958896279335,
-                            'epoch': 0.004851130919895701
+                            'epoch': 0.004851130919895701,
+                            'gpu_0_memory_allocated': 17.202261447906494,
+                            'gpu_0_memory_reserved': 75.474609375,
+                            'gpu_0_utilization': 0,
+                            'cpu_percent': 2.7,
+                            'memory_percent': 10.1
                         }
                     },
                     {
@@ -766,7 +771,7 @@ def update_experiment_status_interface(experiment_id: str, status: str) -> str:
         return f"❌ Error updating experiment status: {str(e)}"
 
 def create_metrics_plot(experiment_id: str, metric_name: str = "loss") -> go.Figure:
-    """Create a plot for a specific metric"""
+    """Create a plot for a specific metric (supports all logged metrics, including new ones)"""
     try:
         df = get_metrics_dataframe(experiment_id)
         if df.empty:
@@ -846,23 +851,44 @@ def create_experiment_comparison(experiment_ids: str) -> go.Figure:
 def simulate_training_data(experiment_id: str):
     """Simulate training data for demonstration"""
     try:
-        # Simulate some realistic training metrics
+        import random
+        import time
+        last_time = time.time()
         for step in range(0, 1000, 50):
             # Simulate loss decreasing over time
             loss = 2.0 * np.exp(-step / 500) + 0.1 * np.random.random()
             accuracy = 0.3 + 0.6 * (1 - np.exp(-step / 300)) + 0.05 * np.random.random()
             lr = 3.5e-6 * (0.9 ** (step // 200))
-            
+            batch_size = 8
+            seq_len = 2048
+            total_tokens = batch_size * seq_len
+            padding_tokens = random.randint(0, batch_size * 32)
+            truncated_tokens = random.randint(0, batch_size * 8)
+            now = time.time()
+            step_time = random.uniform(0.4, 0.7)
+            throughput = total_tokens / step_time
+            token_acc = accuracy
+            gate_ortho = random.uniform(0.01, 0.05)
+            center = random.uniform(0.01, 0.05)
             metrics = {
                 "loss": round(loss, 4),
                 "accuracy": round(accuracy, 4),
                 "learning_rate": round(lr, 8),
                 "gpu_memory": round(20 + 5 * np.random.random(), 2),
-                "training_time": round(0.5 + 0.2 * np.random.random(), 3)
+                "training_time": round(0.5 + 0.2 * np.random.random(), 3),
+                "total_tokens": total_tokens,
+                "padding_tokens": padding_tokens,
+                "truncated_tokens": truncated_tokens,
+                "throughput": throughput,
+                "step_time": step_time,
+                "batch_size": batch_size,
+                "seq_len": seq_len,
+                "token_acc": token_acc,
+                "train/gate_ortho": gate_ortho,
+                "train/center": center
             }
-            
             trackio_space.log_metrics(experiment_id, metrics, step)
-        
+            last_time = now
         return f"✅ Simulated training data for experiment {experiment_id}\nAdded 20 metric entries (steps 0-950)"
     except Exception as e:
         return f"❌ Error simulating data: {str(e)}"
@@ -1113,7 +1139,11 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                     )
                     metric_dropdown = gr.Dropdown(
                         label="Metric to Plot",
-                        choices=["loss", "accuracy", "learning_rate", "gpu_memory", "training_time"],
+                        choices=[
+                            "loss", "accuracy", "learning_rate", "gpu_memory", "training_time",
+                            "total_tokens", "truncated_tokens", "padding_tokens", "throughput", "step_time",
+                            "batch_size", "seq_len", "token_acc", "train/gate_ortho", "train/center"
+                        ],
                         value="loss"
                     )
                     plot_btn = gr.Button("Create Plot", variant="primary")

@@ -191,7 +191,7 @@ python scripts/trackio_tonic/configure_trackio.py
 
 1. **Check token permissions**:
    ```bash
-   huggingface-cli whoami
+   hf whoami
    ```
 
 2. **Test dataset access**:

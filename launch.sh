@@ -91,9 +91,9 @@ validate_hf_token_and_get_username() {
     
     # Test the token and get username
     export HF_TOKEN="$token"
-    if huggingface-cli whoami >/dev/null 2>&1; then
+    if hf whoami >/dev/null 2>&1; then
         # Get username from whoami command
-        HF_USERNAME=$(huggingface-cli whoami | head -n1 | tr -d '\n')
+        HF_USERNAME=$(hf whoami | head -n1 | tr -d '\n')
         return 0
     else
         return 1
@@ -229,6 +229,9 @@ Optimized for: $TRAINING_CONFIG_TYPE
 from config.train_smollm3 import SmolLM3Config
 
 config = SmolLM3Config(
+    # Trainer type selection
+    trainer_type="$TRAINER_TYPE",
+    
     # Model configuration
     model_name="$MODEL_NAME",
     max_seq_length=$MAX_SEQ_LENGTH,
@@ -341,6 +344,24 @@ get_input "Experiment name" "smollm3_finetune_$(date +%Y%m%d_%H%M%S)" EXPERIMENT
 get_input "Model repository name" "$HF_USERNAME/smollm3-finetuned-$(date +%Y%m%d)" REPO_NAME
 get_input "Trackio dataset repository" "$HF_USERNAME/trackio-experiments" TRACKIO_DATASET_REPO
 
+# Step 3.5: Select trainer type
+print_step "Step 3.5: Trainer Type Selection"
+echo "===================================="
+
+echo "Select the type of training to perform:"
+echo "1. SFT (Supervised Fine-tuning) - Standard instruction tuning"
+echo "   - Uses SFTTrainer for instruction following"
+echo "   - Suitable for most fine-tuning tasks"
+echo "   - Optimized for instruction datasets"
+echo ""
+echo "2. DPO (Direct Preference Optimization) - Preference-based training"
+echo "   - Uses DPOTrainer for preference learning"
+echo "   - Requires preference datasets (chosen/rejected pairs)"
+echo "   - Optimizes for human preferences"
+echo ""
+
+select_option "Select trainer type:" "SFT" "DPO" TRAINER_TYPE
+
 # Step 4: Training parameters
 print_step "Step 4: Training Parameters"
 echo "==============================="
@@ -348,6 +369,7 @@ echo "==============================="
 echo "Current configuration:"
 echo "  Model: $MODEL_NAME"
 echo "  Dataset: $DATASET_NAME"
+echo "  Trainer Type: $TRAINER_TYPE"
 if [ "$TRAINING_CONFIG_TYPE" = "H100 Lightweight (Rapid)" ]; then
     echo "  Dataset Sample Size: ${DATASET_SAMPLE_SIZE:-80000}"
 fi
@@ -380,6 +402,7 @@ echo "  Experiment: $EXPERIMENT_NAME"
 echo "  Model: $MODEL_NAME"
 echo "  Dataset: $DATASET_NAME"
 echo "  Training Config: $TRAINING_CONFIG_TYPE"
+echo "  Trainer Type: $TRAINER_TYPE"
 if [ "$TRAINING_CONFIG_TYPE" = "H100 Lightweight (Rapid)" ]; then
     echo "  Dataset Sample Size: ${DATASET_SAMPLE_SIZE:-80000}"
 fi
@@ -453,9 +476,9 @@ export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 
 # Login to Hugging Face with token
 print_info "Logging in to Hugging Face..."
-if huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential; then
+if hf login --token "$HF_TOKEN" --add-to-git-credential; then
     print_status "Successfully logged in to Hugging Face"
-    print_info "Username: $(huggingface-cli whoami)"
+    print_info "Username: $(hf whoami)"
 else
     print_error "Failed to login to Hugging Face"
     print_error "Please check your token and try again"
@@ -502,7 +525,7 @@ python deploy_trackio_space.py << EOF
 $TRACKIO_SPACE_NAME
 $HF_TOKEN
 $GIT_EMAIL
-$HF_USERNAME
+
 EOF
 
 print_status "Trackio Space deployed: $TRACKIO_URL"
@@ -569,7 +592,8 @@ python scripts/training/train.py \
     --config "$CONFIG_FILE" \
     --experiment-name "$EXPERIMENT_NAME" \
     --output-dir /output-checkpoint \
-    --trackio-url "$TRACKIO_URL"
+    --trackio-url "$TRACKIO_URL" \
+    --trainer-type "$TRAINER_TYPE"
 
 # Step 16: Push model to Hugging Face Hub
 print_step "Step 16: Pushing Model to HF Hub"
@@ -584,6 +608,72 @@ python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME
     --trackio-url "$TRACKIO_URL" \
     --experiment-name "$EXPERIMENT_NAME" \
     --dataset-repo "$TRACKIO_DATASET_REPO"
+
+# Step 16.5: Quantization Options
+print_step "Step 16.5: Model Quantization Options"
+echo "=========================================="
+
+print_info "Would you like to create quantized versions of your model?"
+print_info "Quantization reduces model size and improves inference speed."
+
+# Ask about quantization
+get_input "Create quantized models? (y/n)" "y" "CREATE_QUANTIZED"
+
+if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
+    print_info "Quantization options:"
+    print_info "1. int8_weight_only (GPU optimized, ~50% memory reduction)"
+    print_info "2. int4_weight_only (CPU optimized, ~75% memory reduction)"
+    print_info "3. Both int8 and int4 versions"
+    
+    select_option "Select quantization type:" "int8_weight_only" "int4_weight_only" "both" "QUANT_TYPE"
+    
+    if [ "$QUANT_TYPE" = "both" ]; then
+        # Create both int8 and int4 versions in the same repository
+        print_info "Creating int8 (GPU) quantized model..."
+        python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
+            --quant-type "int8_weight_only" \
+            --device "auto" \
+            --token "$HF_TOKEN" \
+            --trackio-url "$TRACKIO_URL" \
+            --experiment-name "${EXPERIMENT_NAME}-int8" \
+            --dataset-repo "$TRACKIO_DATASET_REPO"
+        
+        print_info "Creating int4 (CPU) quantized model..."
+        python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
+            --quant-type "int4_weight_only" \
+            --device "cpu" \
+            --token "$HF_TOKEN" \
+            --trackio-url "$TRACKIO_URL" \
+            --experiment-name "${EXPERIMENT_NAME}-int4" \
+            --dataset-repo "$TRACKIO_DATASET_REPO"
+        
+        print_status "✅ Both quantized models created in the same repository:"
+        print_info "Main model: https://huggingface.co/$REPO_NAME"
+        print_info "int8 (GPU): https://huggingface.co/$REPO_NAME/int8"
+        print_info "int4 (CPU): https://huggingface.co/$REPO_NAME/int4"
+        
+    else
+        # Create single quantized version in the same repository
+        print_info "Creating ${QUANT_TYPE} quantized model..."
+        
+        DEVICE="auto"
+        if [ "$QUANT_TYPE" = "int4_weight_only" ]; then
+            DEVICE="cpu"
+        fi
+        
+        python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
+            --quant-type "$QUANT_TYPE" \
+            --device "$DEVICE" \
+            --token "$HF_TOKEN" \
+            --trackio-url "$TRACKIO_URL" \
+            --experiment-name "${EXPERIMENT_NAME}-${QUANT_TYPE}" \
+            --dataset-repo "$TRACKIO_DATASET_REPO"
+        
+        print_status "✅ Quantized model created: https://huggingface.co/$REPO_NAME/${QUANT_TYPE//_/-}"
+    fi
+else
+    print_info "Skipping quantization"
+fi
 
 # Step 17: Create summary report
 print_step "Step 17: Creating Summary Report"
@@ -600,6 +690,7 @@ cat > training_summary.md << EOF
 - **Trackio Space**: $TRACKIO_URL
 - **HF Dataset**: $TRACKIO_DATASET_REPO
 - **Training Config**: $TRAINING_CONFIG_TYPE
+- **Trainer Type**: $TRAINER_TYPE
 $(if [ "$TRAINING_CONFIG_TYPE" = "H100 Lightweight (Rapid)" ]; then
 echo "- **Dataset Sample Size**: ${DATASET_SAMPLE_SIZE:-80000}"
 fi)
@@ -615,6 +706,15 @@ fi)
 - **Model Repository**: https://huggingface.co/$REPO_NAME
 - **Trackio Monitoring**: $TRACKIO_URL
 - **Experiment Data**: https://huggingface.co/datasets/$TRACKIO_DATASET_REPO
+$(if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
+echo "- **Quantization**: $QUANT_TYPE"
+if [ "$QUANT_TYPE" = "both" ]; then
+echo "- **int8 Model (GPU)**: https://huggingface.co/$REPO_NAME/int8"
+echo "- **int4 Model (CPU)**: https://huggingface.co/$REPO_NAME/int4"
+else
+echo "- **Quantized Model**: https://huggingface.co/$REPO_NAME/${QUANT_TYPE//_/-}"
+fi
+fi)
 
 ## Next Steps
 1. Monitor training progress in your Trackio Space
@@ -640,6 +740,16 @@ echo "📊 Model: https://huggingface.co/$REPO_NAME"
 echo "📈 Trackio: $TRACKIO_URL"
 echo "📋 Experiment: $EXPERIMENT_NAME"
 echo "📊 Dataset: https://huggingface.co/datasets/$TRACKIO_DATASET_REPO"
+$(if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
+echo ""
+echo "🔧 Quantized Models:"
+if [ "$QUANT_TYPE" = "both" ]; then
+echo "   📊 int8 (GPU): https://huggingface.co/$REPO_NAME/int8"
+echo "   📊 int4 (CPU): https://huggingface.co/$REPO_NAME/int4"
+else
+echo "   📊 $QUANT_TYPE: https://huggingface.co/$REPO_NAME/${QUANT_TYPE//_/-}"
+fi
+fi)
 echo ""
 echo "📋 Summary report saved to: training_summary.md"
 echo ""

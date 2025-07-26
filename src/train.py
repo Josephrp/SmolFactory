@@ -29,7 +29,7 @@ except ImportError:
     from config import get_config
 from model import SmolLM3Model
 from data import SmolLM3Dataset
-from trainer import SmolLM3Trainer
+from trainer import SmolLM3Trainer, SmolLM3DPOTrainer
 from monitoring import create_monitor_from_config
 
 def setup_logging():
@@ -102,6 +102,10 @@ def parse_args():
                        help='Hugging Face token for dataset access')
     parser.add_argument('--dataset_repo', type=str, default=None,
                        help='HF Dataset repository for experiment storage')
+    
+    # Trainer type selection
+    parser.add_argument('--trainer_type', type=str, choices=['sft', 'dpo'], default=None,
+                       help='Trainer type: sft (Supervised Fine-tuning) or dpo (Direct Preference Optimization)')
     
     return parser.parse_args()
 
@@ -198,14 +202,31 @@ def main():
         sample_seed=getattr(config, 'sample_seed', 42)
     )
     
-    # Initialize trainer
-    trainer = SmolLM3Trainer(
-        model=model,
-        dataset=dataset,
-        config=config,
-        output_dir=output_path,
-        init_from=args.init_from
-    )
+    # Determine trainer type (command line overrides config)
+    trainer_type = args.trainer_type or getattr(config, 'trainer_type', 'sft')
+    logger.info(f"Using trainer type: {trainer_type}")
+    
+    # Import the appropriate trainer class
+    # from trainer import SmolLM3Trainer, SmolLM3DPOTrainer # This line is removed as per the edit hint
+    
+    # Initialize trainer based on type
+    if trainer_type.lower() == 'dpo':
+        logger.info("Initializing DPO trainer...")
+        trainer = SmolLM3DPOTrainer(
+            model=model,
+            dataset=dataset,
+            config=config,
+            output_dir=output_path
+        )
+    else:
+        logger.info("Initializing SFT trainer...")
+        trainer = SmolLM3Trainer(
+            model=model,
+            dataset=dataset,
+            config=config,
+            output_dir=output_path,
+            init_from=args.init_from
+        )
     
     # Start training
     try:

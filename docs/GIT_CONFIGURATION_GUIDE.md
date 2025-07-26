@@ -40,10 +40,10 @@ git config user.name
 **✅ Correct Authentication:**
 ```bash
 # Login with token and add to git credentials
-huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential
+hf login --token "$HF_TOKEN" --add-to-git-credential
 
 # Verify login
-huggingface-cli whoami
+hf whoami
 ```
 
 ### **3. Error Handling**
@@ -97,9 +97,9 @@ export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 
 # Login to Hugging Face with token
 print_info "Logging in to Hugging Face..."
-if huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential; then
+if hf login --token "$HF_TOKEN" --add-to-git-credential; then
     print_status "Successfully logged in to Hugging Face"
-    print_info "Username: $(huggingface-cli whoami)"
+    print_info "Username: $(hf whoami)"
 else
     print_error "Failed to login to Hugging Face"
     print_error "Please check your token and try again"
@@ -200,11 +200,11 @@ git config user.name "your-username"
 #### **2. Authentication Issues**
 ```bash
 # Check HF login status
-huggingface-cli whoami
+hf whoami
 
 # Re-login if needed
-huggingface-cli logout
-huggingface-cli login --token "your-token"
+hf logout
+hf login --token "your-token"
 ```
 
 #### **3. Space Deployment Fails**

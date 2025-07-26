@@ -209,7 +209,7 @@ After running the pipeline, you'll have:
 
 1. **HF Token Issues**
    ```bash
-   huggingface-cli whoami
+   hf whoami
    ```
 
 2. **CUDA Issues**

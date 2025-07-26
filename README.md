@@ -10,6 +10,7 @@ SmolLM3 is a 3B-parameter transformer decoder model optimized for efficiency, lo
 - **Direct Preference Optimization (DPO)**: Improve model alignment
 - **Long-context fine-tuning**: Support for up to 128k tokens
 - **Tool calling**: Fine-tune for function calling capabilities
+- **Model Quantization**: Create int8 (GPU) and int4 (CPU) quantized versions
 
 ## Quick Start
 
@@ -265,6 +266,100 @@ messages = [{"role": "user", "content": "Explain gravity in simple terms."}]
 outputs = pipe(messages)
 print(outputs[0]["generated_text"][-1]["content"])
 ```
+
+## Model Quantization
+
+The pipeline includes built-in quantization support using torchao for creating optimized model versions with a unified repository structure:
+
+### Repository Structure
+
+All models (main and quantized) are stored in a single repository:
+
+```
+your-username/model-name/
+├── README.md (unified model card)
+├── config.json
+├── pytorch_model.bin
+├── tokenizer.json
+├── int8/ (quantized model for GPU)
+└── int4/ (quantized model for CPU)
+```
+
+### Quantization Types
+
+- **int8_weight_only**: GPU optimized, ~50% memory reduction
+- **int4_weight_only**: CPU optimized, ~75% memory reduction
+
+### Automatic Quantization
+
+When using the interactive pipeline (`launch.sh`), you'll be prompted to create quantized versions after training:
+
+```bash
+./launch.sh
+# ... training completes ...
+# Choose quantization options when prompted
+```
+
+### Standalone Quantization
+
+Quantize existing models independently:
+
+```bash
+# Quantize and push to HF Hub (same repository)
+python scripts/model_tonic/quantize_standalone.py /path/to/model your-username/model-name \
+    --quant-type int8_weight_only \
+    --token YOUR_HF_TOKEN
+
+# Quantize and save locally
+python scripts/model_tonic/quantize_standalone.py /path/to/model your-username/model-name \
+    --quant-type int4_weight_only \
+    --device cpu \
+    --save-only
+```
+
+### Loading Quantized Models
+
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Load main model
+model = AutoModelForCausalLM.from_pretrained(
+    "your-username/model-name",
+    device_map="auto",
+    torch_dtype=torch.bfloat16
+)
+tokenizer = AutoTokenizer.from_pretrained("your-username/model-name")
+
+# Load int8 quantized model (GPU)
+model = AutoModelForCausalLM.from_pretrained(
+    "your-username/model-name/int8",
+    device_map="auto",
+    torch_dtype=torch.bfloat16
+)
+tokenizer = AutoTokenizer.from_pretrained("your-username/model-name/int8")
+
+# Load int4 quantized model (CPU)
+model = AutoModelForCausalLM.from_pretrained(
+    "your-username/model-name/int4",
+    device_map="cpu",
+    torch_dtype=torch.bfloat16
+)
+tokenizer = AutoTokenizer.from_pretrained("your-username/model-name/int4")
+```
+
+For detailed quantization documentation, see [QUANTIZATION_GUIDE.md](docs/QUANTIZATION_GUIDE.md).
+
+### Unified Model Cards
+
+The system generates comprehensive model cards that include information about all model variants:
+
+- **Single README**: One comprehensive model card for the entire repository
+- **Conditional Sections**: Quantized model information appears when available
+- **Usage Examples**: Complete examples for all model variants
+- **Performance Information**: Memory and speed benefits for each quantization type
+
+For detailed information about the unified model card system, see [UNIFIED_MODEL_CARD_GUIDE.md](docs/UNIFIED_MODEL_CARD_GUIDE.md).
 
 ## Deployment
 

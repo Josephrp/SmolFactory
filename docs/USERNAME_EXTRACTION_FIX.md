@@ -70,7 +70,7 @@ def get_username_from_cli(token: str) -> str:
         
         # Get username using CLI
         result = subprocess.run(
-            ["huggingface-cli", "whoami"],
+            ["hf", "whoami"],
             capture_output=True,
             text=True,
             timeout=30
@@ -203,7 +203,7 @@ If username extraction still fails:
 
 1. **Check Token**: Ensure HF_TOKEN is valid and has proper permissions
 2. **Check Network**: Ensure internet connection is stable
-3. **Check CLI**: Ensure `huggingface-cli` is installed and working
+3. **Check CLI**: Ensure `hf` is installed and working
 4. **Manual Override**: Can manually set username in scripts if needed
 
 ## 📋 **Summary**

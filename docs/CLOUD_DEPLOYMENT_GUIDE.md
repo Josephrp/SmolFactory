@@ -114,7 +114,7 @@ pip install accelerate>=0.20.0
 export HF_TOKEN="your_huggingface_token_here"
 
 # Login to Hugging Face
-huggingface-cli login --token $HF_TOKEN
+hf login --token $HF_TOKEN
 ```
 
 ### Step 6: Create Configuration Files

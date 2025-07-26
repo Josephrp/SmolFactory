@@ -234,10 +234,10 @@ git config --global user.name "Your Name"
 #### **2. Permission Issues**
 ```bash
 # Check HF token permissions
-huggingface-cli whoami
+hf whoami
 
 # Verify token has write access
-huggingface-cli repo create test-repo --type space
+hf repo create test-repo --type space
 ```
 
 #### **3. Space Creation Fails**

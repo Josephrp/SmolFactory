@@ -298,13 +298,43 @@ class SmolLM3Dataset:
     def get_data_collator(self):
         """Get data collator for training"""
         from transformers import DataCollatorForLanguageModeling
-        
-        return DataCollatorForLanguageModeling(
+        import torch
+
+        base_collator = DataCollatorForLanguageModeling(
             tokenizer=self.tokenizer,
-            mlm=False,  # We're doing causal LM, not masked LM
-            pad_to_multiple_of=8,  # Pad to multiple of 8 for efficiency
-            return_tensors="pt",  # Ensure we return PyTorch tensors
+            mlm=False,  
+            pad_to_multiple_of=8,  
+            return_tensors="pt",  
         )
+
+        def collator_with_stats(features):
+            batch = base_collator(features)
+            # Calculate token stats
+            input_ids = batch["input_ids"]
+            attention_mask = batch.get("attention_mask", None)
+            labels = batch.get("labels", None)
+            pad_token_id = self.tokenizer.pad_token_id
+            if pad_token_id is None:
+                pad_token_id = self.tokenizer.eos_token_id
+
+            total_tokens = int((input_ids != pad_token_id).sum().item())
+            padding_tokens = int((input_ids == pad_token_id).sum().item())
+            batch_size, seq_len = input_ids.shape
+            # Truncated tokens: count tokens that were cut off due to max_seq_length
+            # (Assume all input is truncated to max_seq_length, so count tokens at max length)
+            truncated_tokens = 0
+            for f in features:
+                if "length" in f and f["length"] >= self.max_seq_length:
+                    truncated_tokens += f["length"] - self.max_seq_length + 1
+
+            batch["total_tokens"] = total_tokens
+            batch["padding_tokens"] = padding_tokens
+            batch["truncated_tokens"] = truncated_tokens
+            batch["batch_size"] = batch_size
+            batch["seq_len"] = seq_len
+            return batch
+
+        return collator_with_stats
 
 def create_sample_dataset(output_path: str = "my_dataset"):
     """Create a sample dataset for testing"""

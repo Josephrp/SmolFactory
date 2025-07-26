@@ -10,7 +10,7 @@ Based on the [Hugging Face Hub repository code](https://github.com/huggingface/h
 
 **Before**: Using CLI commands
 ```python
-cmd = ["huggingface-cli", "repo", "create", f"{username}/{space_name}", "--type", "space"]
+cmd = ["hf", "repo", "create", f"{username}/{space_name}", "--type", "space"]
 ```
 
 **After**: Using Python API

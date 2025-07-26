@@ -11,10 +11,6 @@ This repository provides a complete end-to-end pipeline for fine-tuning SmolLM3 
 python setup_launch.py
 ```
 
-This will prompt you for:
-- Your Hugging Face username
-- Your Hugging Face token
-- Optional model and dataset customizations
 
 ### 2. Check Requirements
 
@@ -30,6 +26,9 @@ python check_requirements.py
 chmod +x launch.sh
 ./launch.sh
 ```
+This will prompt you for:
+- Your Hugging Face token
+- Optional model and dataset customizations
 
 ## 📋 What the Pipeline Does
 
@@ -182,7 +181,7 @@ The pipeline creates these online resources:
 1. **HF Token Issues**
    ```bash
    # Verify your token is correct
-   huggingface-cli whoami
+   hf whoami
    ```
 
 2. **CUDA Issues**

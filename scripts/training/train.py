@@ -59,6 +59,12 @@ def main():
         default="my_dataset",
         help="Dataset directory path"
     )
+    parser.add_argument(
+        "--trainer-type",
+        type=str,
+        choices=['sft', 'dpo'],
+        help="Trainer type: sft (Supervised Fine-tuning) or dpo (Direct Preference Optimization)"
+    )
     
     args = parser.parse_args()
     
@@ -122,6 +128,7 @@ def main():
     print(f"Max iterations: {config.max_iters}")
     print(f"Max sequence length: {config.max_seq_length}")
     print(f"Mixed precision: {'bf16' if config.bf16 else 'fp16'}")
+    print(f"Trainer type: {getattr(config, 'trainer_type', 'sft')}")
     if hasattr(config, 'dataset_name') and config.dataset_name:
         print(f"Dataset: {config.dataset_name}")
         if hasattr(config, 'sample_size') and config.sample_size:
@@ -167,6 +174,10 @@ def main():
         
         # Add dataset directory argument
         train_args.extend(["--dataset_dir", args.dataset_dir])
+        
+        # Add trainer type argument if provided
+        if args.trainer_type:
+            train_args.extend(["--trainer_type", args.trainer_type])
         
         # Override sys.argv for the training script
         original_argv = sys.argv
