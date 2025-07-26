@@ -432,6 +432,9 @@ echo ""
 
 select_option "Select trainer type:" "SFT" "DPO" TRAINER_TYPE
 
+# Convert trainer type to lowercase for the training script
+TRAINER_TYPE_LOWER=$(echo "$TRAINER_TYPE" | tr '[:upper:]' '[:lower:]')
+
 # Step 4: Training parameters
 print_step "Step 4: Training Parameters"
 echo "==============================="
@@ -696,7 +699,7 @@ python scripts/training/train.py \
     --experiment-name "$EXPERIMENT_NAME" \
     --output-dir /output-checkpoint \
     --trackio-url "$TRACKIO_URL" \
-    --trainer-type "$TRAINER_TYPE"
+    --trainer-type "$TRAINER_TYPE_LOWER"
 
 # Step 16: Push model to Hugging Face Hub
 print_step "Step 16: Pushing Model to HF Hub"
