@@ -387,6 +387,17 @@ This dataset is part of the Trackio experiment tracking system and follows the s
 def main():
     """Main function to set up the dataset."""
     
+    # Get token from environment first
+    token = os.environ.get('HUGGING_FACE_HUB_TOKEN') or os.environ.get('HF_TOKEN')
+    
+    # If no token in environment, try command line argument
+    if not token and len(sys.argv) > 1:
+        token = sys.argv[1]
+    
+    if not token:
+        print("❌ No HF token found. Please set HUGGING_FACE_HUB_TOKEN environment variable or provide as argument.")
+        sys.exit(1)
+    
     # Get dataset name from command line or use default
     dataset_name = None
     if len(sys.argv) > 2:

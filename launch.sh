@@ -515,9 +515,23 @@ else
     fi
 fi
 
+# Set environment variables before creating virtual environment
+print_info "Setting up environment variables..."
+export HF_TOKEN="$HF_TOKEN"
+export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
+
 print_info "Creating Python virtual environment..."
 python3 -m venv smollm3_env
 source smollm3_env/bin/activate
+
+# Re-export environment variables in the virtual environment
+print_info "Configuring environment variables in virtual environment..."
+export HF_TOKEN="$HF_TOKEN"
+export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
 
 print_info "Installing PyTorch with CUDA support..."
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -537,16 +551,19 @@ pip install requests>=2.31.0
 print_step "Step 8: Authentication Setup"
 echo "================================"
 
-export HF_TOKEN="$HF_TOKEN"
-export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+print_info "Setting up Hugging Face token for Python API..."
+print_status "HF token configured for Python API usage"
+print_info "Username: $HF_USERNAME (auto-detected from token)"
+print_info "Token available in environment: ${HF_TOKEN:0:10}...${HF_TOKEN: -4}"
 
-# Login to Hugging Face with token
-print_info "Logging in to Hugging Face..."
-if hf login --token "$HF_TOKEN" --add-to-git-credential; then
-    print_status "Successfully logged in to Hugging Face"
-    print_info "Username: $(hf whoami)"
+# Verify token is available in the virtual environment
+print_info "Verifying token availability in virtual environment..."
+if [ -n "$HF_TOKEN" ] && [ -n "$HUGGING_FACE_HUB_TOKEN" ]; then
+    print_status "✅ Token properly configured in virtual environment"
+    print_info "  HF_TOKEN: ${HF_TOKEN:0:10}...${HF_TOKEN: -4}"
+    print_info "  HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:0:10}...${HUGGING_FACE_HUB_TOKEN: -4}"
 else
-    print_error "Failed to login to Hugging Face"
+    print_error "❌ Token not properly configured in virtual environment"
     print_error "Please check your token and try again"
     exit 1
 fi
@@ -586,13 +603,13 @@ print_info "Space name: $TRACKIO_SPACE_NAME"
 print_info "Username will be auto-detected from token"
 print_info "Secrets will be set automatically via API"
 
-# Run deployment script with automated features
-python deploy_trackio_space.py << EOF
-$TRACKIO_SPACE_NAME
-$HF_TOKEN
-$GIT_EMAIL
+# Ensure environment variables are available for the script
+export HF_TOKEN="$HF_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
 
-EOF
+# Run deployment script with automated features
+python deploy_trackio_space.py "$TRACKIO_SPACE_NAME" "$HF_TOKEN" "$GIT_EMAIL"
 
 print_status "Trackio Space deployed: $TRACKIO_URL"
 
@@ -605,7 +622,12 @@ print_info "Setting up HF Dataset with automated features..."
 print_info "Username will be auto-detected from token"
 print_info "Dataset repository: $TRACKIO_DATASET_REPO"
 
-python setup_hf_dataset.py
+# Ensure environment variables are available for the script
+export HF_TOKEN="$HF_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
+
+python setup_hf_dataset.py "$HF_TOKEN"
 
 # Step 11: Configure Trackio (automated)
 print_step "Step 11: Configuring Trackio"
@@ -614,6 +636,11 @@ echo "================================="
 cd ../trackio_tonic
 print_info "Configuring Trackio ..."
 print_info "Username will be auto-detected from token"
+
+# Ensure environment variables are available for the script
+export HF_TOKEN="$HF_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
 
 python configure_trackio.py
 
@@ -653,6 +680,12 @@ print_info "Experiment: $EXPERIMENT_NAME"
 print_info "Output: /output-checkpoint"
 print_info "Trackio: $TRACKIO_URL"
 
+# Ensure environment variables are available for training
+export HF_TOKEN="$HF_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
+export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+
 # Run the simpler training script
 python scripts/training/train.py \
     --config "$CONFIG_FILE" \
@@ -667,6 +700,12 @@ echo "====================================="
 
 print_info "Pushing model to: $REPO_NAME"
 print_info "Checkpoint: /output-checkpoint"
+
+# Ensure environment variables are available for model push
+export HF_TOKEN="$HF_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
+export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 
 # Run the push script
 python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME" \
@@ -696,6 +735,13 @@ if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
     if [ "$QUANT_TYPE" = "both" ]; then
         # Create both int8 and int4 versions in the same repository
         print_info "Creating int8 (GPU) quantized model..."
+        
+        # Ensure environment variables are available for quantization
+        export HF_TOKEN="$HF_TOKEN"
+        export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+        export HF_USERNAME="$HF_USERNAME"
+        export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+        
         python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
             --quant-type "int8_weight_only" \
             --device "auto" \
@@ -705,6 +751,13 @@ if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
             --dataset-repo "$TRACKIO_DATASET_REPO"
         
         print_info "Creating int4 (CPU) quantized model..."
+        
+        # Ensure environment variables are available for quantization
+        export HF_TOKEN="$HF_TOKEN"
+        export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+        export HF_USERNAME="$HF_USERNAME"
+        export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+        
         python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
             --quant-type "int4_weight_only" \
             --device "cpu" \
@@ -726,6 +779,12 @@ if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
         if [ "$QUANT_TYPE" = "int4_weight_only" ]; then
             DEVICE="cpu"
         fi
+        
+        # Ensure environment variables are available for quantization
+        export HF_TOKEN="$HF_TOKEN"
+        export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+        export HF_USERNAME="$HF_USERNAME"
+        export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
         
         python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
             --quant-type "$QUANT_TYPE" \

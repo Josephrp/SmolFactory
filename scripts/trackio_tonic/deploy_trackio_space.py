@@ -413,13 +413,27 @@ def main():
     print("Trackio Space Deployment Script")
     print("=" * 40)
     
-    # Get user input (no username needed - will be extracted from token)
-    space_name = input("Enter Space name (e.g., trackio-monitoring): ").strip()
-    token = input("Enter your Hugging Face token: ").strip()
-    
-    # Get git configuration (optional)
-    git_email = input("Enter your git email (optional, press Enter for default): ").strip()
-    git_name = input("Enter your git name (optional, press Enter for default): ").strip()
+    # Check if arguments are provided
+    if len(sys.argv) >= 3:
+        # Use command line arguments
+        space_name = sys.argv[1]
+        token = sys.argv[2]
+        git_email = sys.argv[3] if len(sys.argv) > 3 else None
+        git_name = sys.argv[4] if len(sys.argv) > 4 else None
+        
+        print(f"Using provided arguments:")
+        print(f"  Space name: {space_name}")
+        print(f"  Token: {'*' * 10}...{token[-4:]}")
+        print(f"  Git email: {git_email or 'default'}")
+        print(f"  Git name: {git_name or 'default'}")
+    else:
+        # Get user input (no username needed - will be extracted from token)
+        space_name = input("Enter Space name (e.g., trackio-monitoring): ").strip()
+        token = input("Enter your Hugging Face token: ").strip()
+        
+        # Get git configuration (optional)
+        git_email = input("Enter your git email (optional, press Enter for default): ").strip()
+        git_name = input("Enter your git name (optional, press Enter for default): ").strip()
     
     if not space_name or not token:
         print("❌ Space name and token are required")
