@@ -22,12 +22,12 @@ def test_trackio_space_initialization():
     
     # Test 2: Custom initialization
     print("\n2. Testing custom initialization...")
-    trackio_custom = app.TrackioSpace(
+    trackio_custom_config = app.TrackioSpace(
         hf_token="test_token_123",
         dataset_repo="test-user/test-dataset"
     )
-    print(f"   Dataset repo: {trackio_custom.dataset_repo}")
-    print(f"   HF token set: {'Yes' if trackio_custom.hf_token else 'No'}")
+    print(f"   Dataset repo: {trackio_custom_config.dataset_repo}")
+    print(f"   HF token set: {'Yes' if trackio_custom_config.hf_token else 'No'}")
     
     # Test 3: Partial custom initialization
     print("\n3. Testing partial custom initialization...")
