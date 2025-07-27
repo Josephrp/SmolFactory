@@ -46,7 +46,9 @@ class HuggingFacePusher:
         trackio_url: Optional[str] = None,
         experiment_name: Optional[str] = None,
         dataset_repo: Optional[str] = None,
-        hf_token: Optional[str] = None
+        hf_token: Optional[str] = None,
+        author_name: Optional[str] = None,
+        model_description: Optional[str] = None
     ):
         self.model_path = Path(model_path)
         self.repo_name = repo_name
@@ -54,6 +56,8 @@ class HuggingFacePusher:
         self.private = private
         self.trackio_url = trackio_url
         self.experiment_name = experiment_name
+        self.author_name = author_name
+        self.model_description = model_description
         
         # HF Datasets configuration
         self.dataset_repo = dataset_repo or os.getenv('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
@@ -131,7 +135,7 @@ class HuggingFacePusher:
             # Create variables for the template
             variables = {
                 "model_name": f"{self.repo_name.split('/')[-1]} - Fine-tuned SmolLM3",
-                "model_description": "A fine-tuned version of SmolLM3-3B for improved text generation and conversation capabilities.",
+                "model_description": self.model_description or "A fine-tuned version of SmolLM3-3B for improved text generation and conversation capabilities.",
                 "repo_name": self.repo_name,
                 "base_model": "HuggingFaceTB/SmolLM3-3B",
                 "dataset_name": training_config.get('dataset_name', 'OpenHermes-FR'),
@@ -148,7 +152,7 @@ class HuggingFacePusher:
                 "dataset_repo": self.dataset_repo,
                 "dataset_size": training_config.get('dataset_size', '~80K samples'),
                 "dataset_format": training_config.get('dataset_format', 'Chat format'),
-                "author_name": training_config.get('author_name', 'Your Name'),
+                "author_name": self.author_name or training_config.get('author_name', 'Your Name'),
                 "model_name_slug": self.repo_name.split('/')[-1].lower().replace('-', '_'),
                 "quantized_models": False,  # Will be updated if quantized models are added
                 "dataset_sample_size": training_config.get('dataset_sample_size'),
@@ -522,6 +526,8 @@ def parse_args():
     parser.add_argument('--trackio-url', type=str, default=None, help='Trackio Space URL for logging')
     parser.add_argument('--experiment-name', type=str, default=None, help='Experiment name for Trackio')
     parser.add_argument('--dataset-repo', type=str, default=None, help='HF Dataset repository for experiment storage')
+    parser.add_argument('--author-name', type=str, default=None, help='Author name for model card')
+    parser.add_argument('--model-description', type=str, default=None, help='Model description for model card')
     
     return parser.parse_args()
 
@@ -547,7 +553,9 @@ def main():
             trackio_url=args.trackio_url,
             experiment_name=args.experiment_name,
             dataset_repo=args.dataset_repo,
-            hf_token=args.hf_token
+            hf_token=args.hf_token,
+            author_name=args.author_name,
+            model_description=args.model_description
         )
         
         # Push model

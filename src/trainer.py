@@ -135,6 +135,23 @@ class SmolLM3Trainer:
         
         logger.info("Total callbacks: %d", len(callbacks))
         
+        # Initialize trackio for TRL compatibility
+        try:
+            import trackio
+            # Initialize trackio with our configuration
+            experiment_id = trackio.init(
+                project_name=self.config.experiment_name,
+                experiment_name=self.config.experiment_name,
+                trackio_url=getattr(self.config, 'trackio_url', None),
+                trackio_token=getattr(self.config, 'trackio_token', None),
+                hf_token=getattr(self.config, 'hf_token', None),
+                dataset_repo=getattr(self.config, 'dataset_repo', None)
+            )
+            logger.info(f"Trackio initialized with experiment ID: {experiment_id}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize trackio: {e}")
+            logger.info("Continuing without trackio integration")
+        
         # Try SFTTrainer first (better for instruction tuning)
         logger.info("Creating SFTTrainer with training arguments...")
         logger.info("Training args type: %s", type(training_args))
@@ -235,6 +252,14 @@ class SmolLM3Trainer:
                 self.monitor.log_training_summary(summary)
                 self.monitor.close()
             
+            # Finish trackio experiment
+            try:
+                import trackio
+                trackio.finish()
+                logger.info("Trackio experiment finished")
+            except Exception as e:
+                logger.warning(f"Failed to finish trackio experiment: {e}")
+            
             logger.info("Training completed successfully!")
             logger.info("Training metrics: %s", train_result.metrics)
             
@@ -243,6 +268,14 @@ class SmolLM3Trainer:
             # Close monitoring on error
             if self.monitor and self.monitor.enable_tracking:
                 self.monitor.close()
+            
+            # Finish trackio experiment on error
+            try:
+                import trackio
+                trackio.finish()
+            except Exception as finish_error:
+                logger.warning(f"Failed to finish trackio experiment on error: {finish_error}")
+            
             raise
     
     def evaluate(self):

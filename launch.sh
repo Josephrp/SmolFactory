@@ -493,6 +493,7 @@ echo "  Epochs: $MAX_EPOCHS"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Learning Rate: $LEARNING_RATE"
 echo "  Model Repo: $REPO_NAME (auto-generated)"
+echo "  Author: $AUTHOR_NAME"
 echo "  Trackio Space: $TRACKIO_URL"
 echo "  HF Dataset: $TRACKIO_DATASET_REPO"
 echo ""
@@ -608,6 +609,16 @@ else
     print_error "Failed to configure git"
     exit 1
 fi
+
+# Step 8.2: Author Information for Model Card
+print_step "Step 8.2: Author Information"
+echo "================================="
+
+print_info "This information will be used in the model card and citation."
+get_input "Author name for model card" "$HF_USERNAME" AUTHOR_NAME
+
+print_info "Model description will be used in the model card and repository."
+get_input "Model description" "A fine-tuned version of SmolLM3-3B for improved french language text generation and conversation capabilities." MODEL_DESCRIPTION
 
 # Step 9: Deploy Trackio Space (automated)
 print_step "Step 9: Deploying Trackio Space"
@@ -729,7 +740,9 @@ python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME
     --token "$HF_TOKEN" \
     --trackio-url "$TRACKIO_URL" \
     --experiment-name "$EXPERIMENT_NAME" \
-    --dataset-repo "$TRACKIO_DATASET_REPO"
+    --dataset-repo "$TRACKIO_DATASET_REPO" \
+    --author-name "$AUTHOR_NAME" \
+    --model-description "$MODEL_DESCRIPTION"
 
 # Step 16.5: Quantization Options
 print_step "Step 16.5: Model Quantization Options"
