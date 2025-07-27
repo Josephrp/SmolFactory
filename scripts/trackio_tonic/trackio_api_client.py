@@ -54,17 +54,31 @@ class TrackioAPIClient:
     def _resolve_space_url(self) -> Optional[str]:
         """Resolve Space URL using Hugging Face Hub API"""
         try:
+            # Clean the space_id - remove any URL prefixes
+            clean_space_id = self.space_id
+            if clean_space_id.startswith('http'):
+                # Extract space ID from URL
+                if '/spaces/' in clean_space_id:
+                    clean_space_id = clean_space_id.split('/spaces/')[-1]
+                else:
+                    # Try to extract from URL format
+                    clean_space_id = clean_space_id.replace('https://', '').replace('http://', '')
+                    if '.hf.space' in clean_space_id:
+                        clean_space_id = clean_space_id.replace('.hf.space', '').replace('-', '/')
+            
+            logger.info(f"🔧 Resolving Space URL for ID: {clean_space_id}")
+            
             if not HF_HUB_AVAILABLE:
                 logger.warning("⚠️ Hugging Face Hub not available, using default URL format")
                 # Fallback to default URL format
-                space_name = self.space_id.replace('/', '-')
+                space_name = clean_space_id.replace('/', '-')
                 return f"https://{space_name}.hf.space"
             
             # Use Hugging Face Hub API to get Space info
             api = HfApi(token=self.hf_token)
             
             # Get Space info
-            space_info = api.space_info(self.space_id)
+            space_info = api.space_info(clean_space_id)
             if space_info and hasattr(space_info, 'host'):
                 # Use the host directly from space_info
                 space_url = space_info.host
@@ -72,7 +86,7 @@ class TrackioAPIClient:
                 return space_url
             else:
                 # Fallback to default URL format
-                space_name = self.space_id.replace('/', '-')
+                space_name = clean_space_id.replace('/', '-')
                 space_url = f"https://{space_name}.hf.space"
                 logger.info(f"✅ Using fallback Space URL: {space_url}")
                 return space_url
