@@ -77,6 +77,10 @@ class SmolLM3Monitor:
         
         logger.info("Initialized monitoring for experiment: %s", experiment_name)
         logger.info("Dataset repository: %s", self.dataset_repo)
+        
+        # Create experiment in Trackio if tracking is enabled
+        if self.enable_tracking and self.trackio_client:
+            self._create_experiment()
     
     def _setup_hf_datasets(self):
         """Setup HF Datasets client for persistent storage"""
@@ -102,21 +106,24 @@ class SmolLM3Monitor:
         """Setup Trackio API client"""
         try:
             # Get Trackio configuration from environment or parameters
-            url = trackio_url or os.getenv('TRACKIO_URL')
+            space_id = trackio_url or os.getenv('TRACKIO_SPACE_ID')
             
-            if not url:
-                logger.warning("Trackio URL not provided. Set TRACKIO_URL environment variable.")
-                self.enable_tracking = False
-                return
+            if not space_id:
+                # Use the deployed Trackio Space ID
+                space_id = "Tonic/trackio-monitoring-20250727"
+                logger.info(f"Using default Trackio Space ID: {space_id}")
             
-            self.trackio_client = TrackioAPIClient(url)
+            # Get HF token for Space resolution
+            hf_token = self.hf_token or trackio_token or os.getenv('HF_TOKEN')
+            
+            self.trackio_client = TrackioAPIClient(space_id, hf_token)
             
             # Test connection to Trackio Space
             try:
-                # Try to list experiments to test connection
-                result = self.trackio_client.list_experiments()
-                if result.get('error'):
-                    logger.warning(f"Trackio Space not accessible: {result['error']}")
+                # Test connection first
+                connection_test = self.trackio_client.test_connection()
+                if connection_test.get('error'):
+                    logger.warning(f"Trackio Space not accessible: {connection_test['error']}")
                     logger.info("Continuing with HF Datasets only")
                     self.enable_tracking = False
                     return
@@ -131,6 +138,50 @@ class SmolLM3Monitor:
         except Exception as e:
             logger.error(f"Failed to setup Trackio: {e}")
             self.enable_tracking = False
+    
+    def _create_experiment(self):
+        """Create experiment in Trackio and set experiment_id"""
+        try:
+            if not self.trackio_client:
+                logger.warning("Trackio client not available, skipping experiment creation")
+                return
+            
+            # Create experiment with timestamp to ensure uniqueness
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            experiment_name = f"{self.experiment_name}_{timestamp}"
+            
+            result = self.trackio_client.create_experiment(
+                name=experiment_name,
+                description=f"SmolLM3 fine-tuning experiment: {self.experiment_name}"
+            )
+            
+            if result.get('success'):
+                # Extract experiment ID from the response
+                response_data = result.get('data', '')
+                if 'ID: ' in response_data:
+                    # Extract ID from response like "✅ Experiment created successfully!\nID: exp_20250727_151252\nName: test_experiment_api_fix\nStatus: running"
+                    lines = response_data.split('\n')
+                    for line in lines:
+                        if line.startswith('ID: '):
+                            self.experiment_id = line.replace('ID: ', '').strip()
+                            break
+                
+                if not self.experiment_id:
+                    # Fallback: generate experiment ID
+                    self.experiment_id = f"exp_{timestamp}"
+                
+                logger.info(f"✅ Experiment created successfully: {self.experiment_id}")
+            else:
+                logger.warning(f"Failed to create experiment: {result}")
+                # Fallback: generate experiment ID
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                self.experiment_id = f"exp_{timestamp}"
+                
+        except Exception as e:
+            logger.error(f"Failed to create experiment: {e}")
+            # Fallback: generate experiment ID
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.experiment_id = f"exp_{timestamp}"
     
     def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
         """Save experiment data to HF Dataset"""

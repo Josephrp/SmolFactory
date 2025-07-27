@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trackio API Client for Hugging Face Spaces
-Connects to the Trackio Space using the actual API endpoints
+Uses gradio_client for proper API communication with automatic Space URL resolution
 """
 
 import requests
@@ -15,160 +15,99 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+try:
+    from gradio_client import Client
+    GRADIO_CLIENT_AVAILABLE = True
+except ImportError:
+    GRADIO_CLIENT_AVAILABLE = False
+    logger.warning("gradio_client not available. Install with: pip install gradio_client")
+
+try:
+    from huggingface_hub import HfApi
+    HF_HUB_AVAILABLE = True
+except ImportError:
+    HF_HUB_AVAILABLE = False
+    logger.warning("huggingface_hub not available. Install with: pip install huggingface-hub")
+
 class TrackioAPIClient:
-    """API client for Trackio Space"""
+    """API client for Trackio Space using gradio_client with automatic Space URL resolution"""
     
-    def __init__(self, space_url: str):
-        self.space_url = space_url.rstrip('/')
-        # For Gradio Spaces, we need to use the direct function endpoints
-        self.base_url = f"{self.space_url}/gradio_api/call"
+    def __init__(self, space_id: str, hf_token: Optional[str] = None):
+        self.space_id = space_id
+        self.hf_token = hf_token
+        self.client = None
         
-    def _make_api_call(self, endpoint: str, data: list, max_retries: int = 3) -> Dict[str, Any]:
-        """Make an API call to the Trackio Space"""
-        url = f"{self.base_url}/{endpoint}"
+        # Auto-resolve Space URL
+        self.space_url = self._resolve_space_url()
         
-        payload = {
-            "data": data
-        }
-        
-        for attempt in range(max_retries):
+        # Initialize gradio client
+        if GRADIO_CLIENT_AVAILABLE and self.space_url:
             try:
-                logger.debug(f"Attempt {attempt + 1}: Making POST request to {url}")
-                
-                # POST request to get EVENT_ID
-                response = requests.post(
-                    url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=30
-                )
-                
-                if response.status_code != 200:
-                    logger.error(f"POST request failed: {response.status_code} - {response.text}")
-                    if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)  # Exponential backoff
-                        continue
-                    return {"error": f"POST failed: {response.status_code}"}
-                
-                # Extract EVENT_ID from response
-                response_data = response.json()
-                logger.debug(f"POST response: {response_data}")
-                
-                # Check for event_id (correct field name)
-                if "event_id" in response_data:
-                    event_id = response_data["event_id"]
-                elif "hash" in response_data:
-                    event_id = response_data["hash"]
-                else:
-                    logger.error(f"No event_id or hash in response: {response_data}")
-                    return {"error": "No EVENT_ID in response"}
-                
-                # GET request to get results
-                get_url = f"{url}/{event_id}"
-                logger.debug(f"Making GET request to: {get_url}")
-                
-                # Wait a bit for the processing to complete
-                time.sleep(1)
-                
-                get_response = requests.get(get_url, timeout=30)
-                
-                if get_response.status_code != 200:
-                    logger.error(f"GET request failed: {get_response.status_code} - {get_response.text}")
-                    if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)
-                        continue
-                    return {"error": f"GET failed: {get_response.status_code}"}
-                
-                # Check if response is empty
-                if not get_response.content:
-                    logger.warning(f"Empty response from GET request (attempt {attempt + 1})")
-                    if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)
-                        continue
-                    return {"error": "Empty response from server"}
-                
-                # Parse the response - handle both JSON and SSE formats
-                response_text = get_response.text.strip()
-                logger.debug(f"Raw response: {response_text}")
-                
-                # Try to parse as JSON first
-                try:
-                    result_data = get_response.json()
-                    logger.debug(f"Parsed as JSON: {result_data}")
-                    
-                    if "data" in result_data and len(result_data["data"]) > 0:
-                        return {"success": True, "data": result_data["data"][0]}
-                    else:
-                        logger.warning(f"No data in JSON response (attempt {attempt + 1}): {result_data}")
-                        if attempt < max_retries - 1:
-                            time.sleep(2 ** attempt)
-                            continue
-                        return {"error": "No data in JSON response", "raw": result_data}
-                        
-                except json.JSONDecodeError:
-                    # Try to parse as Server-Sent Events (SSE) format
-                    logger.debug("Response is not JSON, trying SSE format")
-                    
-                    # Parse SSE format: "event: complete\ndata: [\"message\"]"
-                    lines = response_text.split('\n')
-                    data_line = None
-                    
-                    for line in lines:
-                        if line.startswith('data: '):
-                            data_line = line[6:]  # Remove 'data: ' prefix
-                            break
-                    
-                    if data_line:
-                        try:
-                            # Parse the data array from SSE
-                            import ast
-                            data_array = ast.literal_eval(data_line)
-                            
-                            if isinstance(data_array, list) and len(data_array) > 0:
-                                result_message = data_array[0]
-                                logger.debug(f"Parsed SSE data: {result_message}")
-                                return {"success": True, "data": result_message}
-                            else:
-                                logger.warning(f"Invalid SSE data format (attempt {attempt + 1}): {data_array}")
-                                if attempt < max_retries - 1:
-                                    time.sleep(2 ** attempt)
-                                    continue
-                                return {"error": "Invalid SSE data format", "raw": data_array}
-                                
-                        except (ValueError, SyntaxError) as e:
-                            logger.error(f"Failed to parse SSE data: {e}")
-                            logger.debug(f"Raw SSE data: {data_line}")
-                            if attempt < max_retries - 1:
-                                time.sleep(2 ** attempt)
-                                continue
-                            return {"error": f"Failed to parse SSE data: {e}"}
-                    else:
-                        logger.error(f"No data line found in SSE response")
-                        if attempt < max_retries - 1:
-                            time.sleep(2 ** attempt)
-                            continue
-                        return {"error": "No data line in SSE response", "raw": response_text}
-                    
-            except requests.exceptions.RequestException as e:
-                logger.error(f"API call failed (attempt {attempt + 1}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
-                    continue
-                return {"error": f"Request failed: {e}"}
+                self.client = Client(self.space_url)
+                logger.info(f"✅ Connected to Trackio Space: {self.space_id}")
             except Exception as e:
-                logger.error(f"Unexpected error (attempt {attempt + 1}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
-                    continue
-                return {"error": f"Unexpected error: {e}"}
+                logger.error(f"❌ Failed to connect to Trackio Space: {e}")
+                self.client = None
+        else:
+            logger.error("❌ gradio_client not available. Install with: pip install gradio_client")
+    
+    def _resolve_space_url(self) -> Optional[str]:
+        """Resolve Space URL using Hugging Face Hub API"""
+        try:
+            if not HF_HUB_AVAILABLE:
+                logger.warning("⚠️ Hugging Face Hub not available, using default URL format")
+                # Fallback to default URL format
+                space_name = self.space_id.replace('/', '-')
+                return f"https://{space_name}.hf.space"
+            
+            # Use Hugging Face Hub API to get Space info
+            api = HfApi(token=self.hf_token)
+            
+            # Get Space info
+            space_info = api.space_info(self.space_id)
+            if space_info and hasattr(space_info, 'host'):
+                # Use the host directly from space_info
+                space_url = space_info.host
+                logger.info(f"✅ Resolved Space URL: {space_url}")
+                return space_url
+            else:
+                # Fallback to default URL format
+                space_name = self.space_id.replace('/', '-')
+                space_url = f"https://{space_name}.hf.space"
+                logger.info(f"✅ Using fallback Space URL: {space_url}")
+                return space_url
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to resolve Space URL: {e}")
+            # Fallback to default URL format
+            space_name = self.space_id.replace('/', '-')
+            space_url = f"https://{space_name}.hf.space"
+            logger.info(f"✅ Using fallback Space URL: {space_url}")
+            return space_url
+    
+    def _make_api_call(self, api_name: str, *args) -> Dict[str, Any]:
+        """Make an API call to the Trackio Space using gradio_client"""
+        if not self.client:
+            return {"error": "Client not available"}
         
-        return {"error": f"Failed after {max_retries} attempts"}
+        try:
+            logger.debug(f"Making API call to {api_name} with args: {args}")
+            
+            # Use gradio_client to make the prediction
+            result = self.client.predict(*args, api_name=api_name)
+            
+            logger.debug(f"API call result: {result}")
+            return {"success": True, "data": result}
+            
+        except Exception as e:
+            logger.error(f"API call failed for {api_name}: {e}")
+            return {"error": f"API call failed: {str(e)}"}
     
     def create_experiment(self, name: str, description: str = "") -> Dict[str, Any]:
         """Create a new experiment"""
         logger.info(f"Creating experiment: {name}")
         
-        result = self._make_api_call("create_experiment_interface", [name, description])
+        result = self._make_api_call("/create_experiment_interface", name, description)
         
         if "success" in result:
             logger.info(f"Experiment created successfully: {result['data']}")
@@ -184,7 +123,7 @@ class TrackioAPIClient:
         
         logger.info(f"Logging metrics for experiment {experiment_id} at step {step}")
         
-        result = self._make_api_call("log_metrics_interface", [experiment_id, metrics_json, step_str])
+        result = self._make_api_call("/log_metrics_interface", experiment_id, metrics_json, step_str)
         
         if "success" in result:
             logger.info(f"Metrics logged successfully: {result['data']}")
@@ -199,7 +138,7 @@ class TrackioAPIClient:
         
         logger.info(f"Logging parameters for experiment {experiment_id}")
         
-        result = self._make_api_call("log_parameters_interface", [experiment_id, parameters_json])
+        result = self._make_api_call("/log_parameters_interface", experiment_id, parameters_json)
         
         if "success" in result:
             logger.info(f"Parameters logged successfully: {result['data']}")
@@ -212,7 +151,7 @@ class TrackioAPIClient:
         """Get experiment details"""
         logger.info(f"Getting details for experiment {experiment_id}")
         
-        result = self._make_api_call("get_experiment_details", [experiment_id])
+        result = self._make_api_call("/get_experiment_details", experiment_id)
         
         if "success" in result:
             logger.info(f"Experiment details retrieved: {result['data']}")
@@ -225,7 +164,7 @@ class TrackioAPIClient:
         """List all experiments"""
         logger.info("Listing experiments")
         
-        result = self._make_api_call("list_experiments_interface", [])
+        result = self._make_api_call("/list_experiments_interface")
         
         if "success" in result:
             logger.info(f"Experiments listed successfully: {result['data']}")
@@ -238,7 +177,7 @@ class TrackioAPIClient:
         """Update experiment status"""
         logger.info(f"Updating experiment {experiment_id} status to {status}")
         
-        result = self._make_api_call("update_experiment_status_interface", [experiment_id, status])
+        result = self._make_api_call("/update_experiment_status_interface", experiment_id, status)
         
         if "success" in result:
             logger.info(f"Experiment status updated successfully: {result['data']}")
@@ -251,7 +190,7 @@ class TrackioAPIClient:
         """Simulate training data for testing"""
         logger.info(f"Simulating training data for experiment {experiment_id}")
         
-        result = self._make_api_call("simulate_training_data", [experiment_id])
+        result = self._make_api_call("/simulate_training_data", experiment_id)
         
         if "success" in result:
             logger.info(f"Training data simulated successfully: {result['data']}")
@@ -264,7 +203,7 @@ class TrackioAPIClient:
         """Get training metrics for an experiment"""
         logger.info(f"Getting training metrics for experiment {experiment_id}")
         
-        result = self._make_api_call("get_training_metrics_interface", [experiment_id])
+        result = self._make_api_call("/get_experiment_details", experiment_id)
         
         if "success" in result:
             logger.info(f"Training metrics retrieved: {result['data']}")
@@ -273,15 +212,67 @@ class TrackioAPIClient:
             logger.error(f"Failed to get training metrics: {result}")
             return result
     
-    def get_experiment_metrics_history(self, experiment_id: str) -> Dict[str, Any]:
-        """Get experiment metrics history"""
-        logger.info(f"Getting metrics history for experiment {experiment_id}")
+    def create_metrics_plot(self, experiment_id: str, metric_name: str = "loss") -> Dict[str, Any]:
+        """Create a metrics plot for an experiment"""
+        logger.info(f"Creating metrics plot for experiment {experiment_id}, metric: {metric_name}")
         
-        result = self._make_api_call("get_experiment_metrics_history_interface", [experiment_id])
+        result = self._make_api_call("/create_metrics_plot", experiment_id, metric_name)
         
         if "success" in result:
-            logger.info(f"Metrics history retrieved: {result['data']}")
+            logger.info(f"Metrics plot created successfully")
             return result
         else:
-            logger.error(f"Failed to get metrics history: {result}")
-            return result 
+            logger.error(f"Failed to create metrics plot: {result}")
+            return result
+    
+    def create_experiment_comparison(self, experiment_ids: str) -> Dict[str, Any]:
+        """Compare multiple experiments"""
+        logger.info(f"Creating experiment comparison for: {experiment_ids}")
+        
+        result = self._make_api_call("/create_experiment_comparison", experiment_ids)
+        
+        if "success" in result:
+            logger.info(f"Experiment comparison created successfully")
+            return result
+        else:
+            logger.error(f"Failed to create experiment comparison: {result}")
+            return result
+    
+    def test_connection(self) -> Dict[str, Any]:
+        """Test connection to the Trackio Space"""
+        logger.info("Testing connection to Trackio Space")
+        
+        try:
+            # Try to list experiments as a connection test
+            result = self.list_experiments()
+            if "success" in result:
+                return {"success": True, "message": "Connection successful"}
+            else:
+                return {"error": "Connection failed", "details": result}
+        except Exception as e:
+            return {"error": f"Connection test failed: {str(e)}"}
+    
+    def get_space_info(self) -> Dict[str, Any]:
+        """Get information about the Space"""
+        try:
+            if not HF_HUB_AVAILABLE:
+                return {"error": "Hugging Face Hub not available"}
+            
+            api = HfApi(token=self.hf_token)
+            space_info = api.space_info(self.space_id)
+            
+            return {
+                "success": True,
+                "data": {
+                    "space_id": self.space_id,
+                    "space_url": self.space_url,
+                    "space_info": {
+                        "title": getattr(space_info, 'title', 'Unknown'),
+                        "host": getattr(space_info, 'host', 'Unknown'),
+                        "stage": getattr(space_info, 'stage', 'Unknown'),
+                        "visibility": getattr(space_info, 'visibility', 'Unknown')
+                    }
+                }
+            }
+        except Exception as e:
+            return {"error": f"Failed to get Space info: {str(e)}"} 
