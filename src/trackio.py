@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 _monitor = None
 
 def init(
-    project_name: str,
+    project_name: Optional[str] = None,
     experiment_name: Optional[str] = None,
     **kwargs
 ) -> str:
@@ -25,7 +25,7 @@ def init(
     Initialize trackio experiment (TRL interface)
     
     Args:
-        project_name: Name of the project
+        project_name: Name of the project (optional, defaults to 'smollm3_experiment')
         experiment_name: Name of the experiment (optional)
         **kwargs: Additional configuration parameters
         
@@ -35,6 +35,10 @@ def init(
     global _monitor
     
     try:
+        # Provide default project name if not provided
+        if project_name is None:
+            project_name = os.environ.get('EXPERIMENT_NAME', 'smollm3_experiment')
+        
         # Extract configuration from kwargs
         trackio_url = kwargs.get('trackio_url') or os.environ.get('TRACKIO_URL')
         trackio_token = kwargs.get('trackio_token') or os.environ.get('TRACKIO_TOKEN')

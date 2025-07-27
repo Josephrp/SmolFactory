@@ -29,14 +29,18 @@ def test_trackio_interface():
                 print(f"❌ Missing required function: {func_name}")
                 return False
         
-        # Test initialization
+        # Test initialization with arguments
         experiment_id = trackio.init(
             project_name="test_project",
             experiment_name="test_experiment",
             trackio_url="https://test.hf.space",
             dataset_repo="test/trackio-experiments"
         )
-        print(f"✅ Trackio initialization successful: {experiment_id}")
+        print(f"✅ Trackio initialization with args successful: {experiment_id}")
+        
+        # Test initialization without arguments (TRL compatibility)
+        experiment_id2 = trackio.init()
+        print(f"✅ Trackio initialization without args successful: {experiment_id2}")
         
         # Test logging
         metrics = {'loss': 0.5, 'learning_rate': 1e-4}
@@ -72,6 +76,15 @@ def test_trl_compatibility():
         # Check init signature
         init_sig = inspect.signature(trackio.init)
         print(f"✅ init signature: {init_sig}")
+        
+        # Test that init can be called without arguments (TRL compatibility)
+        try:
+            # This simulates what TRL might do
+            trackio.init()
+            print("✅ init() can be called without arguments")
+        except Exception as e:
+            print(f"❌ init() failed when called without arguments: {e}")
+            return False
         
         # Check log signature
         log_sig = inspect.signature(trackio.log)

@@ -21,7 +21,7 @@ However, our custom monitoring implementation didn't provide this interface.
 Created a trackio module that provides the exact interface expected by TRL:
 
 ```python
-def init(project_name: str, experiment_name: Optional[str] = None, **kwargs) -> str:
+def init(project_name: Optional[str] = None, experiment_name: Optional[str] = None, **kwargs) -> str:
     """Initialize trackio experiment (TRL interface)"""
     
 def log(metrics: Dict[str, Any], step: Optional[int] = None, **kwargs):
@@ -30,6 +30,8 @@ def log(metrics: Dict[str, Any], step: Optional[int] = None, **kwargs):
 def finish():
     """Finish trackio experiment (TRL interface)"""
 ```
+
+**Key Feature**: The `init()` function can be called without any arguments, making it compatible with TRL's expectations. It will use environment variables or defaults when no arguments are provided.
 
 ### 2. Global Trackio Module (`trackio.py`)
 
@@ -103,20 +105,23 @@ Test results:
 ✅ Found required function: init
 ✅ Found required function: log  
 ✅ Found required function: finish
-✅ Trackio initialization successful
+✅ Trackio initialization with args successful
+✅ Trackio initialization without args successful
 ✅ Trackio logging successful
 ✅ Trackio finish successful
+✅ init() can be called without arguments
 ✅ TRL compatibility test passed
 ✅ Monitor integration working
 ```
 
 ## Benefits
 
-1. **Resolves Training Error**: Fixes the "module trackio has no attribute init" error
+1. **Resolves Training Error**: Fixes the "module trackio has no attribute init" error and "init() missing 1 required positional argument: 'project_name'" error
 2. **Maintains Functionality**: All existing monitoring features continue to work
-3. **TRL Compatibility**: SFTTrainer can now use trackio for logging
+3. **TRL Compatibility**: SFTTrainer can now use trackio for logging, even when called without arguments
 4. **Graceful Fallback**: Continues training even if trackio initialization fails
 5. **Future-Proof**: Easy to extend with additional TRL-compatible functions
+6. **Flexible Initialization**: Supports both argument-based and environment-based configuration
 
 ## Usage
 

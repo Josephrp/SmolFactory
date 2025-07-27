@@ -140,8 +140,8 @@ class SmolLM3Trainer:
             import trackio
             # Initialize trackio with our configuration
             experiment_id = trackio.init(
-                project_name=self.config.experiment_name,
-                experiment_name=self.config.experiment_name,
+                project_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
+                experiment_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
                 trackio_url=getattr(self.config, 'trackio_url', None),
                 trackio_token=getattr(self.config, 'trackio_token', None),
                 hf_token=getattr(self.config, 'hf_token', None),
