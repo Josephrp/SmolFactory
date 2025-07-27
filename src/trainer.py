@@ -138,16 +138,27 @@ class SmolLM3Trainer:
         # Initialize trackio for TRL compatibility
         try:
             import trackio
-            # Initialize trackio with our configuration
-            experiment_id = trackio.init(
-                project_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
-                experiment_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
-                trackio_url=getattr(self.config, 'trackio_url', None),
-                trackio_token=getattr(self.config, 'trackio_token', None),
-                hf_token=getattr(self.config, 'hf_token', None),
-                dataset_repo=getattr(self.config, 'dataset_repo', None)
-            )
-            logger.info(f"Trackio initialized with experiment ID: {experiment_id}")
+            # Initialize trackio with our configuration and use the same experiment ID
+            if self.monitor and self.monitor.experiment_id:
+                # Use the experiment ID from our monitor
+                experiment_id = self.monitor.experiment_id
+                logger.info(f"Using existing experiment ID: {experiment_id}")
+            else:
+                # Initialize trackio with our configuration
+                experiment_id = trackio.init(
+                    project_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
+                    experiment_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
+                    trackio_url=getattr(self.config, 'trackio_url', None),
+                    trackio_token=getattr(self.config, 'trackio_token', None),
+                    hf_token=getattr(self.config, 'hf_token', None),
+                    dataset_repo=getattr(self.config, 'dataset_repo', None)
+                )
+                logger.info(f"Trackio initialized with experiment ID: {experiment_id}")
+                
+                # Update our monitor with the same experiment ID
+                if self.monitor:
+                    self.monitor.experiment_id = experiment_id
+                    logger.info(f"Updated monitor with experiment ID: {experiment_id}")
         except Exception as e:
             logger.warning(f"Failed to initialize trackio: {e}")
             logger.info("Continuing without trackio integration")

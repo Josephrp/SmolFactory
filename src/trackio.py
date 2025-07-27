@@ -61,8 +61,8 @@ def init(
             dataset_repo=dataset_repo
         )
         
-        # Generate experiment ID
-        experiment_id = f"trl_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Generate experiment ID - use the same format as our monitoring system
+        experiment_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         _monitor.experiment_id = experiment_id
         
         logger.info(f"Trackio initialized for experiment: {exp_name}")
@@ -72,8 +72,8 @@ def init(
         
     except Exception as e:
         logger.error(f"Failed to initialize trackio: {e}")
-        # Return a fallback experiment ID
-        return f"trl_fallback_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Return a fallback experiment ID - use the same format as our monitoring system
+        return f"exp_fallback_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 def log(
     metrics: Dict[str, Any],
