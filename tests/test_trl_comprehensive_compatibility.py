@@ -248,6 +248,63 @@ def test_error_handling():
         print(f"❌ Error handling test failed: {e}")
         return False
 
+def test_dict_style_access():
+    """Test dictionary-style access to TrackioConfig"""
+    print("\n📝 Testing Dictionary-Style Access...")
+    
+    try:
+        import trackio
+        
+        config = trackio.config
+        
+        # Test 1: Dictionary-style assignment
+        try:
+            config['test_key'] = 'test_value'
+            print(f"✅ Dictionary assignment: test_key={config['test_key']}")
+        except Exception as e:
+            print(f"❌ Dictionary assignment failed: {e}")
+            return False
+        
+        # Test 2: Dictionary-style access
+        try:
+            value = config['test_key']
+            print(f"✅ Dictionary access: {value}")
+        except Exception as e:
+            print(f"❌ Dictionary access failed: {e}")
+            return False
+        
+        # Test 3: Contains check
+        try:
+            has_key = 'test_key' in config
+            print(f"✅ Contains check: {'test_key' in config}")
+        except Exception as e:
+            print(f"❌ Contains check failed: {e}")
+            return False
+        
+        # Test 4: Get method
+        try:
+            value = config.get('test_key', 'default')
+            default_value = config.get('nonexistent', 'default')
+            print(f"✅ Get method: {value}, default: {default_value}")
+        except Exception as e:
+            print(f"❌ Get method failed: {e}")
+            return False
+        
+        # Test 5: TRL-style usage
+        try:
+            config['allow_val_change'] = True
+            config['report_to'] = 'trackio'
+            print(f"✅ TRL-style config: allow_val_change={config['allow_val_change']}, report_to={config['report_to']}")
+        except Exception as e:
+            print(f"❌ TRL-style config failed: {e}")
+            return False
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Dictionary-style access test failed: {e}")
+        return False
+
 def main():
     """Run comprehensive TRL compatibility tests"""
     print("🧪 Comprehensive TRL Compatibility Test")
@@ -261,6 +318,7 @@ def main():
         ("Finish Functionality", test_finish_functionality),
         ("TRL Trainer Simulation", test_trl_trainer_simulation),
         ("Error Handling", test_error_handling),
+        ("Dictionary-Style Access", test_dict_style_access),
     ]
     
     results = []

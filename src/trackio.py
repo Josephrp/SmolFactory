@@ -238,6 +238,87 @@ class TrackioConfig:
             else:
                 # Add new attributes dynamically
                 setattr(self, key, value)
+    
+    def __getitem__(self, key: str) -> Any:
+        """
+        Dictionary-style access to configuration values
+        
+        Args:
+            key: Configuration key to access
+            
+        Returns:
+            Configuration value
+        """
+        if hasattr(self, key):
+            return getattr(self, key)
+        else:
+            raise KeyError(f"Configuration key '{key}' not found")
+    
+    def __setitem__(self, key: str, value: Any):
+        """
+        Dictionary-style assignment to configuration values
+        
+        Args:
+            key: Configuration key to set
+            value: Value to assign
+        """
+        setattr(self, key, value)
+    
+    def __contains__(self, key: str) -> bool:
+        """
+        Check if configuration key exists
+        
+        Args:
+            key: Configuration key to check
+            
+        Returns:
+            True if key exists, False otherwise
+        """
+        return hasattr(self, key)
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """
+        Get configuration value with default
+        
+        Args:
+            key: Configuration key to access
+            default: Default value if key doesn't exist
+            
+        Returns:
+            Configuration value or default
+        """
+        if hasattr(self, key):
+            return getattr(self, key)
+        else:
+            return default
+    
+    def keys(self):
+        """
+        Get all configuration keys
+        
+        Returns:
+            List of configuration keys
+        """
+        # Use __dict__ to avoid recursion with dir()
+        return list(self.__dict__.keys())
+    
+    def items(self):
+        """
+        Get all configuration key-value pairs
+        
+        Returns:
+            List of (key, value) tuples
+        """
+        # Use __dict__ to avoid recursion
+        return list(self.__dict__.items())
+    
+    def __repr__(self):
+        """String representation of configuration"""
+        # Use __dict__ to avoid recursion
+        attrs = []
+        for key, value in self.__dict__.items():
+            attrs.append(f"{key}={repr(value)}")
+        return f"TrackioConfig({', '.join(attrs)})"
 
 # Create config instance
 config = TrackioConfig() 
