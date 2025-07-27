@@ -200,4 +200,19 @@ def is_available() -> bool:
 
 def get_monitor():
     """Get the current monitor instance (for advanced usage)"""
-    return _monitor 
+    return _monitor
+
+# Add config attribute for TRL compatibility
+class TrackioConfig:
+    """Configuration class for trackio (TRL compatibility)"""
+    
+    def __init__(self):
+        self.project_name = os.environ.get('EXPERIMENT_NAME', 'smollm3_experiment')
+        self.experiment_name = os.environ.get('EXPERIMENT_NAME', 'smollm3_experiment')
+        self.trackio_url = os.environ.get('TRACKIO_URL')
+        self.trackio_token = os.environ.get('TRACKIO_TOKEN')
+        self.hf_token = os.environ.get('HF_TOKEN')
+        self.dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+
+# Create config instance
+config = TrackioConfig() 

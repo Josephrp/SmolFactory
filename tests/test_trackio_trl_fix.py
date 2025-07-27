@@ -86,6 +86,16 @@ def test_trl_compatibility():
             print(f"❌ init() failed when called without arguments: {e}")
             return False
         
+        # Test that config attribute is available (TRL compatibility)
+        try:
+            config = trackio.config
+            print(f"✅ trackio.config is available: {type(config)}")
+            print(f"✅ config.project_name: {config.project_name}")
+            print(f"✅ config.experiment_name: {config.experiment_name}")
+        except Exception as e:
+            print(f"❌ trackio.config failed: {e}")
+            return False
+
         # Check log signature
         log_sig = inspect.signature(trackio.log)
         print(f"✅ log signature: {log_sig}")

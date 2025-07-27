@@ -13,7 +13,8 @@ from src.trackio import (
     log_evaluation_results,
     get_experiment_url,
     is_available,
-    get_monitor
+    get_monitor,
+    config
 )
 
 # Make all functions available at module level
@@ -26,5 +27,6 @@ __all__ = [
     'log_evaluation_results',
     'get_experiment_url',
     'is_available',
-    'get_monitor'
+    'get_monitor',
+    'config'
 ] 
