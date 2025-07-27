@@ -24,14 +24,14 @@ def test_trackio_config_update():
         assert hasattr(config, 'update'), "TrackioConfig.update method not found"
         print("✅ TrackioConfig.update method exists")
         
-        # Test update method functionality
+        # Test update method functionality with dictionary
         test_config = {
             'project_name': 'test_project',
             'experiment_name': 'test_experiment',
             'new_attribute': 'test_value'
         }
         
-        # Call update method
+        # Call update method with dictionary
         config.update(test_config)
         
         # Verify updates
@@ -39,7 +39,16 @@ def test_trackio_config_update():
         assert config.experiment_name == 'test_experiment', f"Expected 'test_experiment', got '{config.experiment_name}'"
         assert config.new_attribute == 'test_value', f"Expected 'test_value', got '{config.new_attribute}'"
         
-        print("✅ TrackioConfig.update method works correctly")
+        print("✅ TrackioConfig.update method works correctly with dictionary")
+        
+        # Test update method with keyword arguments (TRL style)
+        config.update(allow_val_change=True, trl_setting='test_value')
+        
+        # Verify keyword argument updates
+        assert config.allow_val_change == True, f"Expected True, got '{config.allow_val_change}'"
+        assert config.trl_setting == 'test_value', f"Expected 'test_value', got '{config.trl_setting}'"
+        
+        print("✅ TrackioConfig.update method works correctly with keyword arguments")
         print("✅ All attributes updated successfully")
         
         return True

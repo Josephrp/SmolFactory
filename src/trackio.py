@@ -214,14 +214,25 @@ class TrackioConfig:
         self.hf_token = os.environ.get('HF_TOKEN')
         self.dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
     
-    def update(self, config_dict: Dict[str, Any]):
+    def update(self, config_dict: Dict[str, Any] = None, **kwargs):
         """
         Update configuration with new values (TRL compatibility)
         
         Args:
-            config_dict: Dictionary of configuration values to update
+            config_dict: Dictionary of configuration values to update (optional)
+            **kwargs: Additional configuration values to update
         """
-        for key, value in config_dict.items():
+        # Handle both dictionary and keyword arguments
+        if config_dict is not None:
+            for key, value in config_dict.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+                else:
+                    # Add new attributes dynamically
+                    setattr(self, key, value)
+        
+        # Handle keyword arguments
+        for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
             else:
