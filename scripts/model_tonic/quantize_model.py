@@ -101,13 +101,23 @@ class ModelQuantizer:
             return False
         
         # Check for essential model files
-        required_files = ['config.json', 'pytorch_model.bin']
-        optional_files = ['tokenizer.json', 'tokenizer_config.json']
+        required_files = ['config.json']
+        
+        # Check for model files (either safetensors or pytorch)
+        model_files = [
+            "model.safetensors.index.json",  # Safetensors format
+            "pytorch_model.bin"  # PyTorch format
+        ]
         
         missing_required = []
         for file in required_files:
             if not (self.model_path / file).exists():
                 missing_required.append(file)
+        
+        # Check if at least one model file exists
+        model_file_exists = any((self.model_path / file).exists() for file in model_files)
+        if not model_file_exists:
+            missing_required.extend(model_files)
         
         if missing_required:
             logger.error(f"❌ Missing required model files: {missing_required}")
