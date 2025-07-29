@@ -101,27 +101,16 @@ class ModelQuantizer:
             return False
         
         # Check for essential model files
-        required_files = ['config.json']
+        required_files = ['config.json', 'pytorch_model.bin']
         optional_files = ['tokenizer.json', 'tokenizer_config.json']
         
-        # Check for model files (either safetensors or pytorch)
-        model_files = [
-            "model.safetensors.index.json",  # Safetensors format
-            "pytorch_model.bin"  # PyTorch format
-        ]
-        
-        missing_files = []
+        missing_required = []
         for file in required_files:
             if not (self.model_path / file).exists():
-                missing_files.append(file)
+                missing_required.append(file)
         
-        # Check if at least one model file exists
-        model_file_exists = any((self.model_path / file).exists() for file in model_files)
-        if not model_file_exists:
-            missing_files.extend(model_files)
-        
-        if missing_files:
-            logger.error(f"❌ Missing required model files: {missing_files}")
+        if missing_required:
+            logger.error(f"❌ Missing required model files: {missing_required}")
             return False
         
         logger.info(f"✅ Model path validated: {self.model_path}")
@@ -144,6 +133,99 @@ class ModelQuantizer:
         
         return TorchAoConfig(quant_type=quant_config)
     
+    def get_optimal_device(self, quant_type: str) -> str:
+        """Get optimal device for quantization type"""
+        if quant_type == "int4_weight_only":
+            # Int4 quantization works better on CPU
+            return "cpu"
+        elif quant_type == "int8_weight_only":
+            # Int8 quantization works on GPU
+            if torch.cuda.is_available():
+                return "cuda"
+            else:
+                logger.warning("⚠️ CUDA not available, falling back to CPU for int8")
+                return "cpu"
+        else:
+            return "auto"
+    
+    def quantize_model_alternative(
+        self, 
+        quant_type: str, 
+        device: str = "auto",
+        group_size: int = 128,
+        save_dir: Optional[str] = None
+    ) -> Optional[str]:
+        """Alternative quantization using bitsandbytes for better compatibility"""
+        try:
+            logger.info(f"🔄 Attempting alternative quantization for: {quant_type}")
+            
+            # Import bitsandbytes if available
+            try:
+                import bitsandbytes as bnb
+                from transformers import BitsAndBytesConfig
+                BNB_AVAILABLE = True
+            except ImportError:
+                BNB_AVAILABLE = False
+                logger.error("❌ bitsandbytes not available for alternative quantization")
+                return None
+            
+            if not BNB_AVAILABLE:
+                return None
+            
+            # Create bitsandbytes config
+            if quant_type == "int8_weight_only":
+                bnb_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_threshold=6.0,
+                    llm_int8_has_fp16_weight=False
+                )
+            elif quant_type == "int4_weight_only":
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
+                )
+            else:
+                logger.error(f"❌ Unsupported quantization type for alternative method: {quant_type}")
+                return None
+            
+            # Load model with bitsandbytes quantization
+            quantized_model = AutoModelForCausalLM.from_pretrained(
+                str(self.model_path),
+                quantization_config=bnb_config,
+                device_map="auto",
+                torch_dtype=torch.bfloat16,
+                low_cpu_mem_usage=True
+            )
+            
+            # Determine save directory
+            if save_dir is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                save_dir = f"quantized_{quant_type}_bnb_{timestamp}"
+            
+            save_path = Path(save_dir)
+            save_path.mkdir(parents=True, exist_ok=True)
+            
+            # Save quantized model
+            logger.info(f"💾 Saving quantized model to: {save_path}")
+            quantized_model.save_pretrained(save_path, safe_serialization=False)
+            
+            # Copy tokenizer files if they exist
+            tokenizer_files = ['tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json']
+            for file in tokenizer_files:
+                src_file = self.model_path / file
+                if src_file.exists():
+                    shutil.copy2(src_file, save_path / file)
+                    logger.info(f"📋 Copied {file}")
+            
+            logger.info(f"✅ Alternative quantization successful: {save_path}")
+            return str(save_path)
+            
+        except Exception as e:
+            logger.error(f"❌ Alternative quantization failed: {e}")
+            return None
+
     def quantize_model(
         self, 
         quant_type: str, 
@@ -162,15 +244,32 @@ class ModelQuantizer:
             logger.info(f"🔄 Device: {device}")
             logger.info(f"🔄 Group size: {group_size}")
             
+            # Determine optimal device
+            if device == "auto":
+                device = self.get_optimal_device(quant_type)
+                logger.info(f"🔄 Using device: {device}")
+            
             # Create quantization config
             quantization_config = self.create_quantization_config(quant_type, group_size)
+            
+            # Load model with appropriate device mapping
+            if device == "cpu":
+                device_map = "cpu"
+                torch_dtype = torch.float32
+            elif device == "cuda":
+                device_map = "auto"
+                torch_dtype = torch.bfloat16
+            else:
+                device_map = "auto"
+                torch_dtype = "auto"
             
             # Load and quantize the model
             quantized_model = AutoModelForCausalLM.from_pretrained(
                 str(self.model_path),
-                torch_dtype="auto",
-                device_map=device,
-                quantization_config=quantization_config
+                torch_dtype=torch_dtype,
+                device_map=device_map,
+                quantization_config=quantization_config,
+                low_cpu_mem_usage=True
             )
             
             # Determine save directory
@@ -183,7 +282,24 @@ class ModelQuantizer:
             
             # Save quantized model (don't use safetensors for torchao)
             logger.info(f"💾 Saving quantized model to: {save_path}")
-            quantized_model.save_pretrained(save_path, safe_serialization=False)
+            
+            # For torchao models, we need to handle serialization carefully
+            try:
+                quantized_model.save_pretrained(save_path, safe_serialization=False)
+            except Exception as save_error:
+                logger.warning(f"⚠️ Standard save failed: {save_error}")
+                logger.info("🔄 Attempting alternative save method...")
+                
+                # Try saving without quantization config
+                try:
+                    # Remove quantization config temporarily
+                    original_config = quantized_model.config.quantization_config
+                    quantized_model.config.quantization_config = None
+                    quantized_model.save_pretrained(save_path, safe_serialization=False)
+                    quantized_model.config.quantization_config = original_config
+                except Exception as alt_save_error:
+                    logger.error(f"❌ Alternative save also failed: {alt_save_error}")
+                    return None
             
             # Copy tokenizer files if they exist
             tokenizer_files = ['tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json']
@@ -198,7 +314,9 @@ class ModelQuantizer:
             
         except Exception as e:
             logger.error(f"❌ Quantization failed: {e}")
-            return None
+            # Try alternative quantization method
+            logger.info("🔄 Attempting alternative quantization method...")
+            return self.quantize_model_alternative(quant_type, device, group_size, save_dir)
     
     def create_quantized_model_card(self, quant_type: str, original_model: str, subdir: str) -> str:
         """Create a model card for the quantized model"""
@@ -470,10 +588,24 @@ For questions and support, please open an issue on the Hugging Face repository.
         """Log quantization events to Trackio"""
         if self.monitor:
             try:
-                self.monitor.log_event(action, details)
+                # Use the correct monitoring method
+                if hasattr(self.monitor, 'log_event'):
+                    self.monitor.log_event(action, details)
+                elif hasattr(self.monitor, 'log_metric'):
+                    # Log as metric instead
+                    self.monitor.log_metric(action, details.get('value', 1.0))
+                elif hasattr(self.monitor, 'log'):
+                    # Use generic log method
+                    self.monitor.log(action, details)
+                else:
+                    # Just log locally if no monitoring method available
+                    logger.info(f"📊 {action}: {details}")
                 logger.info(f"📊 Logged to Trackio: {action}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to log to Trackio: {e}")
+        else:
+            # Log locally if no monitor available
+            logger.info(f"📊 {action}: {details}")
     
     def quantize_and_push(
         self, 
