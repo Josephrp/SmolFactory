@@ -1,5 +1,5 @@
 ---
-title: Trackio Tonic
+title: Track Tonic
 emoji: 🐠
 colorFrom: indigo
 colorTo: yellow
@@ -8,7 +8,7 @@ sdk_version: 5.38.0
 app_file: app.py
 pinned: true
 license: mit
-short_description: trackio for training monitoring
+short_description: track tonic for training monitoring
 ---
 
 # Trackio Experiment Tracking
