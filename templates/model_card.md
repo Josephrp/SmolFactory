@@ -98,7 +98,7 @@ trackio_url: {{trackio_url}}
 dataset_repo: {{dataset_repo}}
 {{/if}}
 {{#if hardware_info}}
-hardware: {{hardware_info}}
+hardware: "{{hardware_info}}"
 {{/if}}
 {{#if training_config_type}}
 training_config: {{training_config_type}}

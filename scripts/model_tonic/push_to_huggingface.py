@@ -199,7 +199,11 @@ class HuggingFacePusher:
         except Exception as e:
             logger.error(f"Failed to generate model card from template: {e}")
             # Fallback to simple model card
-            return f"""---
+            return self._create_simple_model_card(training_config, results)
+    
+    def _create_simple_model_card(self, training_config: Dict[str, Any], results: Dict[str, Any]) -> str:
+        """Create a simple model card without complex YAML to avoid formatting issues"""
+        return f"""---
 language:
 - en
 - fr
@@ -209,6 +213,8 @@ tags:
 - fine-tuned
 - causal-lm
 - text-generation
+pipeline_tag: text-generation
+base_model: HuggingFaceTB/SmolLM3-3B
 ---
 
 # {self.repo_name.split('/')[-1]}
@@ -222,6 +228,7 @@ This is a fine-tuned SmolLM3 model based on the HuggingFaceTB/SmolLM3-3B archite
 - **Training Date**: {datetime.now().strftime('%Y-%m-%d')}
 - **Model Size**: {self._get_model_size():.1f} GB
 - **Dataset Repository**: {self.dataset_repo}
+- **Hardware**: {self._get_hardware_info()}
 
 ## Training Configuration
 
