@@ -156,50 +156,9 @@ class HuggingFacePusher:
         return True
     
     def create_model_card(self, training_config: Dict[str, Any], results: Dict[str, Any]) -> str:
-        """Create a comprehensive model card using the unified template"""
-        try:
-            # Import the model card generator
-            import sys
-            sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-            from scripts.model_tonic.generate_model_card import ModelCardGenerator
-            
-            # Create variables for the template
-            variables = {
-                "model_name": f"{self.repo_name.split('/')[-1]} - Fine-tuned SmolLM3",
-                "model_description": self.model_description or "A fine-tuned version of SmolLM3-3B for improved text generation and conversation capabilities.",
-                "repo_name": self.repo_name,
-                "base_model": "HuggingFaceTB/SmolLM3-3B",
-                "dataset_name": training_config.get('dataset_name', 'OpenHermes-FR'),
-                "training_config_type": training_config.get('training_config_type', 'Custom Configuration'),
-                "trainer_type": training_config.get('trainer_type', 'SFTTrainer'),
-                "batch_size": str(training_config.get('per_device_train_batch_size', 8)),
-                "gradient_accumulation_steps": str(training_config.get('gradient_accumulation_steps', 16)),
-                "learning_rate": str(training_config.get('learning_rate', '5e-6')),
-                "max_epochs": str(training_config.get('num_train_epochs', 3)),
-                "max_seq_length": str(training_config.get('max_seq_length', 2048)),
-                "hardware_info": self._get_hardware_info(),
-                "experiment_name": self.experiment_name or "smollm3-experiment",
-                "trackio_url": self.trackio_url or "https://trackio.space/experiment",
-                "dataset_repo": self.dataset_repo,
-                "dataset_size": training_config.get('dataset_size', '~80K samples'),
-                "dataset_format": training_config.get('dataset_format', 'Chat format'),
-                "author_name": self.author_name or training_config.get('author_name', 'Your Name'),
-                "model_name_slug": self.repo_name.split('/')[-1].lower().replace('-', '_'),
-                "quantized_models": False,  # Will be updated if quantized models are added
-                "dataset_sample_size": training_config.get('dataset_sample_size'),
-                "training_loss": results.get('train_loss', 'N/A'),
-                "validation_loss": results.get('eval_loss', 'N/A'),
-                "perplexity": results.get('perplexity', 'N/A')
-            }
-            
-            # Create generator and generate model card
-            generator = ModelCardGenerator()
-            return generator.generate_model_card(variables)
-            
-        except Exception as e:
-            logger.error(f"Failed to generate model card from template: {e}")
-            # Fallback to simple model card
-            return self._create_simple_model_card(training_config, results)
+        """Create a comprehensive model card using the simple method to avoid YAML issues"""
+        # Always use the simple model card to avoid YAML formatting issues
+        return self._create_simple_model_card(training_config, results)
     
     def _create_simple_model_card(self, training_config: Dict[str, Any], results: Dict[str, Any]) -> str:
         """Create a simple model card without complex YAML to avoid formatting issues"""

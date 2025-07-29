@@ -236,7 +236,7 @@ class ModelRecoveryPipeline:
             
             logger.info(f"📊 Quantization summary: {success_count}/{total_count} successful")
             return success_count > 0
-            
+                
         except Exception as e:
             logger.error(f"❌ Error during quantization: {e}")
             return False
@@ -324,8 +324,8 @@ def main():
             return 0
         else:
             logger.error("❌ Model recovery and deployment failed!")
-            return 1
-            
+        return 1
+    
     except Exception as e:
         logger.error(f"❌ Error during model recovery: {e}")
         return 1
