@@ -21,7 +21,7 @@ def main():
     
     # Configuration - CHANGE THESE VALUES
     MODEL_PATH = "/output-checkpoint"
-    REPO_NAME = "your-username/smollm3-finetuned"  # Change to your HF username and desired repo name
+    REPO_NAME = "Tonic/smollm3-finetuned"  # Change to your HF username and desired repo name
     HF_TOKEN = os.getenv('HF_TOKEN')
     PRIVATE = False  # Set to True for private repository
     
@@ -69,7 +69,7 @@ def main():
         REPO_NAME,
         "--hf-token", HF_TOKEN,
         "--quant-types", "int8_weight_only", "int4_weight_only",
-        "--author-name", "Your Name",
+        "--author-name", "Tonic",
         "--model-description", "A fine-tuned SmolLM3 model for improved text generation and conversation capabilities"
     ]
     
