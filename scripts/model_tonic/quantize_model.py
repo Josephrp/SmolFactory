@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 import subprocess
 import shutil
+import platform
 
 try:
     import torch
@@ -100,13 +101,24 @@ class ModelQuantizer:
             return False
         
         # Check for essential model files
-        required_files = ['config.json', 'pytorch_model.bin']
+        required_files = ['config.json']
         optional_files = ['tokenizer.json', 'tokenizer_config.json']
+        
+        # Check for model files (either safetensors or pytorch)
+        model_files = [
+            "model.safetensors.index.json",  # Safetensors format
+            "pytorch_model.bin"  # PyTorch format
+        ]
         
         missing_files = []
         for file in required_files:
             if not (self.model_path / file).exists():
                 missing_files.append(file)
+        
+        # Check if at least one model file exists
+        model_file_exists = any((self.model_path / file).exists() for file in model_files)
+        if not model_file_exists:
+            missing_files.extend(model_files)
         
         if missing_files:
             logger.error(f"❌ Missing required model files: {missing_files}")

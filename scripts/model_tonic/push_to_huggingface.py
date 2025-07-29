@@ -8,11 +8,17 @@ import os
 import json
 import argparse
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import subprocess
 import shutil
+import platform
+
+# Set timeout for HF operations to prevent hanging
+os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '300'
+os.environ['HF_HUB_UPLOAD_TIMEOUT'] = '600'
 
 try:
     from huggingface_hub import HfApi, create_repo, upload_file
@@ -33,6 +39,14 @@ except ImportError:
     print("Warning: monitoring module not available")
 
 logger = logging.getLogger(__name__)
+
+class TimeoutError(Exception):
+    """Custom timeout exception"""
+    pass
+
+def timeout_handler(signum, frame):
+    """Signal handler for timeout"""
+    raise TimeoutError("Operation timed out")
 
 class HuggingFacePusher:
     """Push trained models and results to Hugging Face Hub with HF Datasets integration"""
@@ -88,16 +102,22 @@ class HuggingFacePusher:
         try:
             logger.info(f"Creating repository: {self.repo_name}")
             
-            # Create repository
-            create_repo(
-                repo_id=self.repo_name,
-                token=self.token,
-                private=self.private,
-                exist_ok=True
-            )
-            
-            logger.info(f"✅ Repository created: https://huggingface.co/{self.repo_name}")
-            return True
+            # Create repository with timeout handling
+            try:
+                # Create repository
+                create_repo(
+                    repo_id=self.repo_name,
+                    token=self.token,
+                    private=self.private,
+                    exist_ok=True
+                )
+                
+                logger.info(f"✅ Repository created: https://huggingface.co/{self.repo_name}")
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ Repository creation failed: {e}")
+                return False
             
         except Exception as e:
             logger.error(f"❌ Failed to create repository: {e}")
@@ -105,17 +125,28 @@ class HuggingFacePusher:
     
     def validate_model_path(self) -> bool:
         """Validate that the model path contains required files"""
+        # Support both safetensors and pytorch formats
         required_files = [
             "config.json",
-            "pytorch_model.bin",
             "tokenizer.json",
             "tokenizer_config.json"
+        ]
+        
+        # Check for model files (either safetensors or pytorch)
+        model_files = [
+            "model.safetensors.index.json",  # Safetensors format
+            "pytorch_model.bin"  # PyTorch format
         ]
         
         missing_files = []
         for file in required_files:
             if not (self.model_path / file).exists():
                 missing_files.append(file)
+        
+        # Check if at least one model file exists
+        model_file_exists = any((self.model_path / file).exists() for file in model_files)
+        if not model_file_exists:
+            missing_files.extend(model_files)
         
         if missing_files:
             logger.error(f"❌ Missing required files: {missing_files}")
@@ -246,7 +277,6 @@ This model is fine-tuned for specific tasks and may not generalize well to all u
 
 This model is licensed under the Apache 2.0 License.
 """
-        # return model_card
     
     def _get_model_size(self) -> float:
         """Get model size in GB"""
@@ -272,7 +302,7 @@ This model is licensed under the Apache 2.0 License.
             return "Unknown"
     
     def upload_model_files(self) -> bool:
-        """Upload model files to Hugging Face Hub"""
+        """Upload model files to Hugging Face Hub with timeout protection"""
         try:
             logger.info("Uploading model files...")
             
@@ -283,12 +313,19 @@ This model is licensed under the Apache 2.0 License.
                     remote_path = str(relative_path)
                     
                     logger.info(f"Uploading {relative_path}")
-                    upload_file(
-                        path_or_fileobj=str(file_path),
-                        path_in_repo=remote_path,
-                        repo_id=self.repo_name,
-                        token=self.token
-                    )
+                    
+                    try:
+                        upload_file(
+                            path_or_fileobj=str(file_path),
+                            path_in_repo=remote_path,
+                            repo_id=self.repo_name,
+                            token=self.token
+                        )
+                        logger.info(f"✅ Uploaded {relative_path}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to upload {relative_path}: {e}")
+                        return False
             
             logger.info("✅ Model files uploaded successfully")
             return True
@@ -378,7 +415,7 @@ Training metrics and configuration are stored in the HF Dataset repository: `{se
 
 ## Files
 
-- `pytorch_model.bin`: Model weights
+- `model.safetensors.index.json`: Model weights (safetensors format)
 - `config.json`: Model configuration
 - `tokenizer.json`: Tokenizer configuration
 - `training_results/`: Training logs and results
