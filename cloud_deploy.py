@@ -7,6 +7,7 @@ Run this directly on your cloud instance to deploy your trained model
 import os
 import sys
 import logging
+import subprocess
 from pathlib import Path
 
 # Setup logging
@@ -78,18 +79,20 @@ def main():
     
     logger.info(f"Running: {' '.join(cmd)}")
     
-    # Run the command
-    result = os.system(' '.join(cmd))
-    
-    if result == 0:
+    # Run the command using subprocess for better argument handling
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         logger.info("✅ Model deployment completed successfully!")
         logger.info(f"🌐 View your model at: https://huggingface.co/{REPO_NAME}")
         logger.info("📊 Quantized models available at:")
         logger.info(f"  - https://huggingface.co/{REPO_NAME}/int8 (GPU optimized)")
         logger.info(f"  - https://huggingface.co/{REPO_NAME}/int4 (CPU optimized)")
         return 0
-    else:
-        logger.error("❌ Model deployment failed!")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ Model deployment failed!")
+        logger.error(f"Error: {e}")
+        logger.error(f"stdout: {e.stdout}")
+        logger.error(f"stderr: {e.stderr}")
         return 1
 
 if __name__ == "__main__":
