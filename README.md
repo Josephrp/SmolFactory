@@ -1,6 +1,6 @@
 # 🤏🏻🏭SmolFactory
 
-A comprehensive end-to-end fine-tuning pipeline for SmolLM3 models with custom monitoring, Hugging Face integration, and interactive configuration management.
+SmolFactory helps you train , monitor and deploy your Smollm3 finetune , and more !
 
 <table>
   <tr>
@@ -17,14 +17,13 @@ A comprehensive end-to-end fine-tuning pipeline for SmolLM3 models with custom m
 </table>
 
 
+Train and deploy your model with one simple command !
+
 ## 🤖 Automatically Push Model, Spaces, Datasets & Monitoring
 
+- **Automatic Deployment**: Spaces created and configured automatically during the pipeline
 - **Trackio Monitoring Space**: Real-time training metrics, loss curves, and resource utilization
 - **Demo Spaces**: Instant web interfaces for model testing and demonstration
-- **Automatic Deployment**: Spaces created and configured automatically during the pipeline
-
-### 📈 **Custom Trackio Monitoring**
-
 - **Real-time Metrics**: Live training loss, learning rate, gradient norms, and GPU utilization
 - **Custom Dashboards**: Tailored visualizations for SmolLM3 fine-tuning
 - **Artifact Logging**: Model checkpoints, configuration files, and training logs
