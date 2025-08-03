@@ -82,9 +82,9 @@ graph LR
     Model_Abstraction -- "Provides Model To" --> Training_Orchestrator
     click Entry_Point href "https://github.com/Josephrp/SmolFactory/blob/main/docs/Entry_Point.md" "Details"
     click Configuration_Management href "https://github.com/Josephrp/SmolFactory/blob/main/docs/Configuration_Management.md" "Details"
-    click Data_Pipeline href "https://github.com/CodeBoarding/GeneratedOnBoardings/blob/main/docs/Data_Pipeline.md" "Details"
-    click Model_Abstraction href "https://github.com/CodeBoarding/GeneratedOnBoardings/blob/main/docs/Model_Abstraction.md" "Details"
-    click Training_Orchestrator href "https://github.com/CodeBoarding/GeneratedOnBoardings/blob/main/docs/Training_Orchestrator.md" "Details"
+    click Data_Pipeline href "https://github.com/Josephrp/SmolFactory/blob/main/docs/Data_Pipeline.md" "Details"
+    click Model_Abstraction href "https://github.com/Josephrp/SmolFactory/blob/main/docs/Model_Abstraction.md" "Details"
+    click Training_Orchestrator href "https://github.com/Josephrp/SmolFactory/blob/main/docs/Training_Orchestrator.md" "Details"
 ```
 
 
