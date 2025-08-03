@@ -1,3 +1,13 @@
+<p align="center">
+        🤗 <a href="https://hf.co/Tonic">Hugging Face</a>&nbsp&nbsp | &nbsp&nbsp🤖 <a href="https://huggingface.co/spaces/Tonic/Petite-LLM-3">demo</a>&nbsp&nbsp | &nbsp&nbsp 📑 <a href="https://huggingface.co/blog/Tonic/SmolFactory">Blog</a> &nbsp&nbsp ｜ &nbsp&nbsp🖥️ <a href="https://huggingface.co/Tonic/petite-elle-L-aime-3-sft">Model</a>
+<br>
+<a href="https://huggingface.co/spaces/Tonic/Track-Tonic">Monitoring</a>&nbsp&nbsp | &nbsp&nbsp
+<a href="https://discord.gg/qdfnvSPcqP">
+  <img src="https://img.shields.io/discord/1109943800132010065?label=Discord&logo=discord&style=flat-square" alt="Join us on Discord">
+</a>&nbsp&nbsp ｜  &nbsp&nbsp<a href="https://huggingface.co/datasets/Tonic/trackio-experiments">Dataset</a> 
+</p>
+
+
 # 🤏🏻🏭SmolFactory
 
 SmolFactory helps you train , monitor and deploy your Smollm3 finetune , and more !
