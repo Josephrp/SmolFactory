@@ -25,9 +25,10 @@ except ImportError:
 class TrackioSpaceDeployer:
     """Deployer for Trackio on Hugging Face Spaces"""
     
-    def __init__(self, space_name: str, token: str, git_email: str = None, git_name: str = None):
+    def __init__(self, space_name: str, token: str, git_email: str = None, git_name: str = None, dataset_repo: str = None):
         self.space_name = space_name
         self.token = token
+        self.dataset_repo = dataset_repo
         
         # Initialize HF API and get user info
         if HF_HUB_AVAILABLE:
@@ -211,7 +212,11 @@ class TrackioSpaceDeployer:
                 dest_path = Path(temp_dir) / file_name
                 
                 if source_path.exists():
-                    shutil.copy2(source_path, dest_path)
+                    # For app.py, we need to customize it with user variables
+                    if file_name == "app.py":
+                        self._customize_app_py(source_path, dest_path)
+                    else:
+                        shutil.copy2(source_path, dest_path)
                     copied_files.append(file_name)
                     print(f"✅ Copied {file_name} to temp directory")
                 else:
@@ -237,6 +242,47 @@ class TrackioSpaceDeployer:
         except Exception as e:
             print(f"❌ Error preparing files: {e}")
             return None
+    
+    def _customize_app_py(self, source_path: Path, dest_path: Path):
+        """Customize app.py with user-specific variables"""
+        try:
+            with open(source_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Replace hardcoded values with user-specific ones
+            replacements = {
+                # Default dataset repository
+                "'tonic/trackio-experiments'": f"'{self.dataset_repo or f'{self.username}/trackio-experiments'}'",
+                "'trackio-experiments'": f"'{self.dataset_repo or f'{self.username}/trackio-experiments'}" if self.dataset_repo else "'trackio-experiments'",
+                
+                # Trackio URL
+                "'https://tonic-test-trackio-test.hf.space'": f"'{self.space_url}'",
+                "'https://your-trackio-space.hf.space'": f"'{self.space_url}'",
+                
+                # UI default values
+                '"tonic/trackio-experiments"': f'"{self.dataset_repo or f"{self.username}/trackio-experiments"}"',
+                '"trackio-experiments"': f'"{self.dataset_repo or f"{self.username}/trackio-experiments"}"' if self.dataset_repo else '"trackio-experiments"',
+                
+                # Examples in help text
+                "'tonic/trackio-experiments'": f"'{self.username}/trackio-experiments'",
+                "'your-username/trackio-experiments'": f"'{self.username}/trackio-experiments'",
+                "'your-username/my-experiments'": f"'{self.username}/my-experiments'"
+            }
+            
+            # Apply replacements
+            for old, new in replacements.items():
+                content = content.replace(old, new)
+            
+            # Write customized content
+            with open(dest_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            print(f"✅ Customized app.py with user variables")
+            
+        except Exception as e:
+            print(f"❌ Error customizing app.py: {e}")
+            # Fallback to copying original file
+            shutil.copy2(source_path, dest_path)
     
     def upload_files_to_space(self, temp_dir: str) -> bool:
         """Upload files to the Space using HF Hub API directly"""
@@ -288,29 +334,57 @@ class TrackioSpaceDeployer:
             
             repo_id = f"{self.username}/{self.space_name}"
             
-            # Get the HF token from environment or use the provided token
-            hf_token = os.getenv('HF_TOKEN', self.token)
+            # Get the HF tokens from environment or use the provided token
+            hf_write_token = os.getenv('HF_WRITE_TOKEN', self.token)
+            hf_read_token = os.getenv('HF_READ_TOKEN', self.token)
+            hf_token = os.getenv('HF_TOKEN', self.token)  # Legacy
             
-            # Set the HF_TOKEN secret for the space using the API
+            # Set the HF_WRITE_TOKEN secret for the space using the API
             try:
+                self.api.add_space_secret(
+                    repo_id=repo_id,
+                    key="HF_WRITE_TOKEN",
+                    value=hf_write_token,
+                    description="Hugging Face write token for training operations"
+                )
+                print("✅ Successfully set HF_WRITE_TOKEN secret via API")
+                
+                # Set the HF_READ_TOKEN secret for the space using the API
+                self.api.add_space_secret(
+                    repo_id=repo_id,
+                    key="HF_READ_TOKEN",
+                    value=hf_read_token,
+                    description="Hugging Face read token for security"
+                )
+                print("✅ Successfully set HF_READ_TOKEN secret via API")
+                
+                # Set legacy HF_TOKEN secret for backward compatibility
                 self.api.add_space_secret(
                     repo_id=repo_id,
                     key="HF_TOKEN",
                     value=hf_token,
-                    description="Hugging Face token for dataset access"
+                    description="Hugging Face token for dataset access (legacy)"
                 )
                 print("✅ Successfully set HF_TOKEN secret via API")
                 
-                # Optionally set dataset repository if specified
-                dataset_repo = os.getenv('TRACKIO_DATASET_REPO')
-                if dataset_repo:
-                    self.api.add_space_variable(
-                        repo_id=repo_id,
-                        key="TRACKIO_DATASET_REPO",
-                        value=dataset_repo,
-                        description="Dataset repository for Trackio experiments"
-                    )
-                    print(f"✅ Successfully set TRACKIO_DATASET_REPO variable: {dataset_repo}")
+                # Set the TRACKIO_DATASET_REPO variable
+                dataset_repo = self.dataset_repo or f"{self.username}/trackio-experiments"
+                self.api.add_space_variable(
+                    repo_id=repo_id,
+                    key="TRACKIO_DATASET_REPO",
+                    value=dataset_repo,
+                    description="Dataset repository for Trackio experiments"
+                )
+                print(f"✅ Successfully set TRACKIO_DATASET_REPO variable: {dataset_repo}")
+                
+                # Set the TRACKIO_URL variable
+                self.api.add_space_variable(
+                    repo_id=repo_id,
+                    key="TRACKIO_URL",
+                    value=self.space_url,
+                    description="Trackio Space URL for monitoring"
+                )
+                print(f"✅ Successfully set TRACKIO_URL variable: {self.space_url}")
                 
                 return True
                 
@@ -326,20 +400,34 @@ class TrackioSpaceDeployer:
     def _manual_secret_setup(self) -> bool:
         """Fallback method for manual secret setup"""
         print("📝 Manual Space Secrets Configuration:")
-        print(f"   HF_TOKEN={self.token}")
         
-        dataset_repo = os.getenv('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        # Get tokens from environment or use provided token
+        hf_write_token = os.getenv('HF_WRITE_TOKEN', self.token)
+        hf_read_token = os.getenv('HF_READ_TOKEN', self.token)
+        hf_token = os.getenv('HF_TOKEN', self.token)  # Legacy
+        
+        print(f"   HF_WRITE_TOKEN={hf_write_token}")
+        print(f"   HF_READ_TOKEN={hf_read_token}")
+        print(f"   HF_TOKEN={hf_token}")
+        
+        dataset_repo = self.dataset_repo or f"{self.username}/trackio-experiments"
         print(f"   TRACKIO_DATASET_REPO={dataset_repo}")
+        print(f"   TRACKIO_URL={self.space_url}")
         
         print("\n🔧 To set secrets in your Space:")
         print("1. Go to your Space settings: {self.space_url}/settings")
         print("2. Navigate to the 'Repository secrets' section")
         print("3. Add the following secrets:")
+        print(f"   Name: HF_WRITE_TOKEN")
+        print(f"   Value: {hf_write_token}")
+        print(f"   Name: HF_READ_TOKEN")
+        print(f"   Value: {hf_read_token}")
         print(f"   Name: HF_TOKEN")
-        print(f"   Value: {self.token}")
-        if dataset_repo:
-            print(f"   Name: TRACKIO_DATASET_REPO")
-            print(f"   Value: {dataset_repo}")
+        print(f"   Value: {hf_token}")
+        print(f"   Name: TRACKIO_DATASET_REPO")
+        print(f"   Value: {dataset_repo}")
+        print(f"   Name: TRACKIO_URL")
+        print(f"   Value: {self.space_url}")
         print("4. Save the secrets")
         
         return True
@@ -420,12 +508,14 @@ def main():
         token = sys.argv[2]
         git_email = sys.argv[3] if len(sys.argv) > 3 else None
         git_name = sys.argv[4] if len(sys.argv) > 4 else None
+        dataset_repo = sys.argv[5] if len(sys.argv) > 5 else None
         
         print(f"Using provided arguments:")
         print(f"  Space name: {space_name}")
         print(f"  Token: {'*' * 10}...{token[-4:]}")
         print(f"  Git email: {git_email or 'default'}")
         print(f"  Git name: {git_name or 'default'}")
+        print(f"  Dataset repo: {dataset_repo or 'default'}")
     else:
         # Get user input (no username needed - will be extracted from token)
         space_name = input("Enter Space name (e.g., trackio-monitoring): ").strip()
@@ -434,6 +524,7 @@ def main():
         # Get git configuration (optional)
         git_email = input("Enter your git email (optional, press Enter for default): ").strip()
         git_name = input("Enter your git name (optional, press Enter for default): ").strip()
+        dataset_repo = input("Enter dataset repository (optional, press Enter for default): ").strip()
     
     if not space_name or not token:
         print("❌ Space name and token are required")
@@ -444,9 +535,11 @@ def main():
         git_email = None
     if not git_name:
         git_name = None
+    if not dataset_repo:
+        dataset_repo = None
     
     # Create deployer (username will be extracted from token)
-    deployer = TrackioSpaceDeployer(space_name, token, git_email, git_name)
+    deployer = TrackioSpaceDeployer(space_name, token, git_email, git_name, dataset_repo)
     
     # Run deployment
     success = deployer.deploy()
@@ -455,6 +548,7 @@ def main():
         print("\n✅ Deployment successful!")
         print(f"🌐 Your Trackio Space: {deployer.space_url}")
         print(f"👤 Username: {deployer.username}")
+        print(f"📊 Dataset Repository: {deployer.dataset_repo or f'{deployer.username}/trackio-experiments'}")
         print("\nNext steps:")
         print("1. Wait for the Space to build (usually 2-5 minutes)")
         print("2. Secrets have been automatically set via API")

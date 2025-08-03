@@ -9,9 +9,9 @@ tags:
 - fine-tuned
 - causal-lm
 - text-generation
+- tonic
+- legml
 - {{#if quantized_models}}quantized{{/if}}
-- {{#if dataset_name}}dataset:{{dataset_name}}{{/if}}
-- {{#if training_config_type}}config:{{training_config_type}}{{/if}}
 pipeline_tag: text-generation
 base_model: {{base_model}}
 {{#if dataset_name}}
@@ -37,34 +37,34 @@ model-index:
     - name: Perplexity
       type: perplexity
       value: "{{perplexity|default:'N/A'}}"
-  - name: {{model_name}} (int8 quantized)
-    results:
-    - task:
-        type: text-generation
-      dataset:
-        name: {{dataset_name}}
-        type: {{dataset_name}}
-      metrics:
-      - name: Memory Reduction
-        type: memory_efficiency
-        value: "~50%"
-      - name: Inference Speed
-        type: speed
-        value: "Faster"
-  - name: {{model_name}} (int4 quantized)
-    results:
-    - task:
-        type: text-generation
-      dataset:
-        name: {{dataset_name}}
-        type: {{dataset_name}}
-      metrics:
-      - name: Memory Reduction
-        type: memory_efficiency
-        value: "~75%"
-      - name: Inference Speed
-        type: speed
-        value: "Significantly Faster"
+- name: {{model_name}} (int8 quantized)
+  results:
+  - task:
+      type: text-generation
+    dataset:
+      name: {{dataset_name}}
+      type: {{dataset_name}}
+    metrics:
+    - name: Memory Reduction
+      type: memory_efficiency
+      value: "~50%"
+    - name: Inference Speed
+      type: speed
+      value: "Faster"
+- name: {{model_name}} (int4 quantized)
+  results:
+  - task:
+      type: text-generation
+    dataset:
+      name: {{dataset_name}}
+      type: {{dataset_name}}
+    metrics:
+    - name: Memory Reduction
+      type: memory_efficiency
+      value: "~75%"
+    - name: Inference Speed
+      type: speed
+      value: "Significantly Faster"
 {{else}}
 model-index:
 - name: {{model_name}}
@@ -130,11 +130,6 @@ dataset_format: {{dataset_format}}
 {{#if gradient_accumulation_steps}}
 gradient_accumulation_steps: {{gradient_accumulation_steps}}
 {{/if}}
-{{#if quantized_models}}
-quantization_types:
-- int8_weight_only
-- int4_weight_only
-{{/if}}
 ---
 
 # {{model_name}}
@@ -174,46 +169,6 @@ input_ids = tokenizer(input_text, return_tensors="pt").to(model.device.type)
 output = model.generate(**input_ids, max_new_tokens=50)
 print(tokenizer.decode(output[0], skip_special_tokens=True))
 ```
-
-{{#if quantized_models}}
-### Quantized Models
-
-This repository also includes quantized versions of the model for improved efficiency:
-
-#### int8 Weight-Only Quantization (GPU Optimized)
-```python
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-# Load int8 quantized model (GPU optimized)
-model = AutoModelForCausalLM.from_pretrained(
-    "{{repo_name}}/int8",
-    device_map="auto",
-    torch_dtype=torch.bfloat16
-)
-tokenizer = AutoTokenizer.from_pretrained("{{repo_name}}/int8")
-```
-
-#### int4 Weight-Only Quantization (CPU Optimized)
-```python
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-# Load int4 quantized model (CPU optimized)
-model = AutoModelForCausalLM.from_pretrained(
-    "{{repo_name}}/int4",
-    device_map="cpu",
-    torch_dtype=torch.bfloat16
-)
-tokenizer = AutoTokenizer.from_pretrained("{{repo_name}}/int4")
-```
-
-### Quantization Benefits
-
-- **int8 (GPU)**: ~50% memory reduction, faster inference with minimal accuracy loss
-- **int4 (CPU)**: ~75% memory reduction, significantly faster inference with some accuracy trade-off
-
-{{/if}}
 
 ## Training Information
 
@@ -322,17 +277,7 @@ For questions and support:
 ├── config.json
 ├── pytorch_model.bin
 ├── tokenizer.json
-├── tokenizer_config.json
-{{#if quantized_models}}
-├── int8/ (quantized model for GPU)
-│   ├── README.md
-│   ├── config.json
-│   └── pytorch_model.bin
-└── int4/ (quantized model for CPU)
-    ├── README.md
-    ├── config.json
-    └── pytorch_model.bin
-{{/if}}
+└── tokenizer_config.json
 ```
 
 ## Usage Examples
@@ -394,22 +339,7 @@ pip install torchao  # For quantized models
 
 ### Hardware Requirements
 - **Main Model**: GPU with 8GB+ VRAM recommended
-{{#if quantized_models}}
-- **int8 Model**: GPU with 4GB+ VRAM
-- **int4 Model**: CPU deployment possible
-{{/if}}
-
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
 
 ## Changelog
 
 - **v1.0.0**: Initial release with fine-tuned model
-{{#if quantized_models}}
-- **v1.1.0**: Added quantized versions (int8, int4)
-{{/if}} 

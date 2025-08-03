@@ -79,11 +79,16 @@ def configure_trackio():
     print("🔧 Trackio Configuration")
     print("=" * 40)
     
-    # Get HF token and user info
-    hf_token = os.environ.get('HF_TOKEN')
+    # Get HF tokens and user info
+    hf_write_token = os.environ.get('HF_WRITE_TOKEN')
+    hf_read_token = os.environ.get('HF_READ_TOKEN')
+    hf_token = os.environ.get('HF_TOKEN')  # Legacy support
     
-    if hf_token:
-        username = get_username_from_token(hf_token)
+    # Use write token if available, otherwise fall back to HF_TOKEN
+    active_token = hf_write_token or hf_token
+    
+    if active_token:
+        username = get_username_from_token(active_token)
         if username:
             print(f"✅ Authenticated as: {username}")
         else:
@@ -97,9 +102,12 @@ def configure_trackio():
     
     # Current configuration
     current_config = {
-        'HF_TOKEN': hf_token or 'Not set',
+        'HF_WRITE_TOKEN': hf_write_token or 'Not set',
+        'HF_READ_TOKEN': hf_read_token or 'Not set',
+        'HF_TOKEN': hf_token or 'Not set',  # Legacy
         'TRACKIO_DATASET_REPO': dataset_repo,
-        'SPACE_ID': os.environ.get('SPACE_ID', 'Not set')
+        'SPACE_ID': os.environ.get('SPACE_ID', 'Not set'),
+        'TRACKIO_URL': os.environ.get('TRACKIO_URL', 'Not set')
     }
     
     print("📋 Current Configuration:")
@@ -108,9 +116,12 @@ def configure_trackio():
         print(f"   {status} {key}: {value}")
     
     print("\n🎯 Configuration Options:")
-    print("1. Set HF_TOKEN - Required for dataset access")
-    print("2. Set TRACKIO_DATASET_REPO - Dataset repository (optional)")
-    print("3. Set SPACE_ID - HF Space ID (auto-detected)")
+    print("1. Set HF_WRITE_TOKEN - Required for training operations")
+    print("2. Set HF_READ_TOKEN - Required for Trackio Space security")
+    print("3. Set HF_TOKEN - Legacy token (fallback)")
+    print("4. Set TRACKIO_DATASET_REPO - Dataset repository (optional)")
+    print("5. Set SPACE_ID - HF Space ID (auto-detected)")
+    print("6. Set TRACKIO_URL - Trackio Space URL (auto-detected)")
     
     # Check if running on HF Spaces
     if os.environ.get('SPACE_ID'):
@@ -120,27 +131,45 @@ def configure_trackio():
     # Validate configuration
     print("\n🔍 Configuration Validation:")
     
-    # Check HF_TOKEN
-    if current_config['HF_TOKEN'] != 'Not set':
-        print("✅ HF_TOKEN is set")
-        print("   This allows the app to read/write to HF Datasets")
+    # Check HF_WRITE_TOKEN
+    if current_config['HF_WRITE_TOKEN'] != 'Not set':
+        print("✅ HF_WRITE_TOKEN is set")
+        print("   This allows training operations and repository creation")
     else:
-        print("❌ HF_TOKEN is not set")
-        print("   Please set HF_TOKEN to enable dataset functionality")
+        print("❌ HF_WRITE_TOKEN is not set")
+        print("   Please set HF_WRITE_TOKEN for training operations")
         print("   Get your token from: https://huggingface.co/settings/tokens")
+    
+    # Check HF_READ_TOKEN
+    if current_config['HF_READ_TOKEN'] != 'Not set':
+        print("✅ HF_READ_TOKEN is set")
+        print("   This will be used for Trackio Space security")
+    else:
+        print("❌ HF_READ_TOKEN is not set")
+        print("   Please set HF_READ_TOKEN for Space security")
+        print("   Get your token from: https://huggingface.co/settings/tokens")
+    
+    # Check legacy HF_TOKEN
+    if current_config['HF_TOKEN'] != 'Not set':
+        print("✅ HF_TOKEN (legacy) is set")
+        print("   This provides fallback functionality")
+    else:
+        print("⚠️  HF_TOKEN (legacy) is not set")
+        print("   This is optional if using HF_WRITE_TOKEN")
     
     # Check dataset repository
     print(f"📊 Dataset Repository: {dataset_repo}")
     
     # Test dataset access if token is available
-    if current_config['HF_TOKEN'] != 'Not set':
+    test_token = current_config['HF_WRITE_TOKEN'] or current_config['HF_TOKEN']
+    if test_token != 'Not set':
         print("\n🧪 Testing Dataset Access...")
         try:
             from datasets import load_dataset
             from huggingface_hub import HfApi
             
             # First check if the dataset repository exists
-            api = HfApi(token=current_config['HF_TOKEN'])
+            api = HfApi(token=test_token)
             
             try:
                 # Try to get repository info
@@ -148,7 +177,7 @@ def configure_trackio():
                 print(f"✅ Dataset repository exists: {dataset_repo}")
                 
                 # Try to load the dataset
-                dataset = load_dataset(dataset_repo, token=current_config['HF_TOKEN'])
+                dataset = load_dataset(dataset_repo, token=test_token)
                 print(f"✅ Successfully loaded dataset: {dataset_repo}")
                 
                 # Show experiment count
@@ -182,14 +211,17 @@ def configure_trackio():
             print("   Run setup_hf_dataset.py to create the dataset")
     else:
         print("\n🧪 Dataset Access Test:")
-        print("❌ Cannot test dataset access - HF_TOKEN not set")
+        print("❌ Cannot test dataset access - no valid token set")
     
     # Generate configuration file
     config_file = "trackio_config.json"
     config_data = {
-        'hf_token': current_config['HF_TOKEN'],
+        'hf_write_token': current_config['HF_WRITE_TOKEN'],
+        'hf_read_token': current_config['HF_READ_TOKEN'],
+        'hf_token': current_config['HF_TOKEN'],  # Legacy
         'dataset_repo': current_config['TRACKIO_DATASET_REPO'],
         'space_id': current_config['SPACE_ID'],
+        'trackio_url': current_config['TRACKIO_URL'],
         'username': username,
         'last_updated': datetime.now().isoformat(),
         'notes': 'Trackio configuration - set these as environment variables in your HF Space'
@@ -203,14 +235,19 @@ def configure_trackio():
     # Show environment variable commands
     print("\n📝 Environment Variables for HF Space:")
     print("=" * 50)
-    print(f"HF_TOKEN={current_config['HF_TOKEN']}")
+    print(f"HF_WRITE_TOKEN={current_config['HF_WRITE_TOKEN']}")
+    print(f"HF_READ_TOKEN={current_config['HF_READ_TOKEN']}")
+    print(f"HF_TOKEN={current_config['HF_TOKEN']}")  # Legacy
     print(f"TRACKIO_DATASET_REPO={current_config['TRACKIO_DATASET_REPO']}")
+    if current_config['TRACKIO_URL'] != 'Not set':
+        print(f"TRACKIO_URL={current_config['TRACKIO_URL']}")
     
     print("\n🎯 Next Steps:")
-    print("1. Set HF_TOKEN in your HF Space environment variables")
-    print("2. Optionally set TRACKIO_DATASET_REPO to use a different dataset")
-    print("3. Deploy your updated app.py to the Space")
-    print("4. Run setup_hf_dataset.py if you haven't created the dataset yet")
+    print("1. Set HF_WRITE_TOKEN in your HF Space environment variables")
+    print("2. Set HF_READ_TOKEN in your HF Space environment variables")
+    print("3. Optionally set TRACKIO_DATASET_REPO to use a different dataset")
+    print("4. Deploy your updated app.py to the Space")
+    print("5. Run setup_hf_dataset.py if you haven't created the dataset yet")
     
     print("\n📚 Usage Examples")
     print("=" * 30)

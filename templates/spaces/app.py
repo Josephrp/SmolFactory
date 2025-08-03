@@ -705,14 +705,11 @@ Name: {experiment['name']}
 Description: {experiment['description']}
 Status: {experiment['status']}
 Created: {experiment['created_at']}
-
 📈 METRICS COUNT: {len(experiment['metrics'])}
 📋 PARAMETERS COUNT: {len(experiment['parameters'])}
 📦 ARTIFACTS COUNT: {len(experiment['artifacts'])}
-
 🔧 PARAMETERS:
 {json.dumps(experiment['parameters'], indent=2)}
-
 📊 LATEST METRICS:
 """
             if experiment['metrics']:

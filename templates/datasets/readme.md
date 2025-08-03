@@ -33,7 +33,7 @@ configs:
   - split: train
     path: data/train-*
 tags:
-- trackio
+- track tonic
 - tonic
 - experiment tracking
 - smollm3

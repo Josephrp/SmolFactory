@@ -60,6 +60,33 @@ get_input() {
     eval "$var_name=\"$input\""
 }
 
+# Function to get secure token input (hidden with stars)
+get_secure_token_input() {
+    local prompt="$1"
+    local var_name="$2"
+    local token_type="$3"
+    
+    echo -n "$prompt: "
+    # Use -s flag to hide input, -r to not interpret backslashes
+    read -s -r input
+    echo  # Add newline after hidden input
+    
+    # Validate that input is not empty
+    while [ -z "$input" ]; do
+        print_error "Token is required!"
+        echo -n "$prompt: "
+        read -s -r input
+        echo
+    done
+    
+    # Store the token
+    eval "$var_name=\"$input\""
+    
+    # Show confirmation with stars
+    local masked_token="${input:0:4}****${input: -4}"
+    print_status "$token_type token added: $masked_token"
+}
+
 # Function to select from options
 select_option() {
     local prompt="$1"
@@ -342,21 +369,50 @@ print_header "SmolLM3 End-to-End Fine-tuning Pipeline"
 echo "=============================================="
 echo ""
 
-# Step 1: Get user credentials (only token needed now)
+# Step 1: Get user credentials (write and read tokens)
 print_step "Step 1: User Authentication"
 echo "================================"
 
-get_input "Hugging Face token (get from https://huggingface.co/settings/tokens)" "" HF_TOKEN
+print_info "You'll need two Hugging Face tokens:"
+echo "1. Write Token - Used during training for creating repositories and pushing models"
+echo "2. Read Token - Used in Trackio Space after training for security"
+echo ""
 
-# Validate HF token and get username automatically
-print_info "Validating Hugging Face token and getting username..."
-if validate_hf_token_and_get_username "$HF_TOKEN"; then
-    print_status "HF token validated successfully"
+print_info "Getting Write Token (for training operations)..."
+get_secure_token_input "Enter your Hugging Face WRITE token (get from https://huggingface.co/settings/tokens)" HF_WRITE_TOKEN "Write"
+
+print_info "Getting Read Token (for Trackio Space security)..."
+get_secure_token_input "Enter your Hugging Face READ token (get from https://huggingface.co/settings/tokens)" HF_READ_TOKEN "Read"
+
+# Validate write token and get username automatically
+print_info "Validating write token and getting username..."
+if validate_hf_token_and_get_username "$HF_WRITE_TOKEN"; then
+    print_status "Write token validated successfully"
     print_info "Username: $HF_USERNAME"
 else
-    print_error "Invalid HF token. Please check your token and try again."
+    print_error "Invalid write token. Please check your token and try again."
     exit 1
 fi
+
+# Validate read token belongs to same user
+print_info "Validating read token..."
+if validate_hf_token_and_get_username "$HF_READ_TOKEN"; then
+    READ_USERNAME="$HF_USERNAME"
+    if [ "$READ_USERNAME" = "$HF_USERNAME" ]; then
+        print_status "Read token validated successfully"
+        print_info "Both tokens belong to user: $HF_USERNAME"
+    else
+        print_error "Token mismatch: write token user ($HF_USERNAME) != read token user ($READ_USERNAME)"
+        print_error "Both tokens must belong to the same user"
+        exit 1
+    fi
+else
+    print_error "Invalid read token. Please check your token and try again."
+    exit 1
+fi
+
+# Set the main HF_TOKEN to write token for training operations
+HF_TOKEN="$HF_WRITE_TOKEN"
 
 # Step 2: Select training configuration
 print_step "Step 2: Training Configuration"
@@ -535,6 +591,8 @@ fi
 
 # Set environment variables before creating virtual environment
 print_info "Setting up environment variables..."
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
@@ -546,6 +604,8 @@ source smollm3_env/bin/activate
 
 # Re-export environment variables in the virtual environment
 print_info "Configuring environment variables in virtual environment..."
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
@@ -574,15 +634,16 @@ print_status "HF token configured for Python API usage"
 print_info "Username: $HF_USERNAME (auto-detected from token)"
 print_info "Token available in environment: ${HF_TOKEN:0:10}...${HF_TOKEN: -4}"
 
-# Verify token is available in the virtual environment
+# Verify tokens are available in the virtual environment
 print_info "Verifying token availability in virtual environment..."
-if [ -n "$HF_TOKEN" ] && [ -n "$HUGGING_FACE_HUB_TOKEN" ]; then
-    print_status "✅ Token properly configured in virtual environment"
-    print_info "  HF_TOKEN: ${HF_TOKEN:0:10}...${HF_TOKEN: -4}"
+if [ -n "$HF_WRITE_TOKEN" ] && [ -n "$HF_READ_TOKEN" ] && [ -n "$HUGGING_FACE_HUB_TOKEN" ]; then
+    print_status "✅ Tokens properly configured in virtual environment"
+    print_info "  HF_WRITE_TOKEN: ${HF_WRITE_TOKEN:0:10}...${HF_WRITE_TOKEN: -4}"
+    print_info "  HF_READ_TOKEN: ${HF_READ_TOKEN:0:10}...${HF_READ_TOKEN: -4}"
     print_info "  HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:0:10}...${HUGGING_FACE_HUB_TOKEN: -4}"
 else
-    print_error "❌ Token not properly configured in virtual environment"
-    print_error "Please check your token and try again"
+    print_error "❌ Tokens not properly configured in virtual environment"
+    print_error "Please check your tokens and try again"
     exit 1
 fi
 
@@ -632,12 +693,14 @@ print_info "Username will be auto-detected from token"
 print_info "Secrets will be set automatically via API"
 
 # Ensure environment variables are available for the script
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
 
 # Run deployment script with automated features
-python deploy_trackio_space.py "$TRACKIO_SPACE_NAME" "$HF_TOKEN" "$GIT_EMAIL"
+python deploy_trackio_space.py "$TRACKIO_SPACE_NAME" "$HF_TOKEN" "$GIT_EMAIL" "$HF_USERNAME" "$TRACKIO_DATASET_REPO"
 
 print_status "Trackio Space deployed: $TRACKIO_URL"
 
@@ -651,6 +714,8 @@ print_info "Username will be auto-detected from token"
 print_info "Dataset repository: $TRACKIO_DATASET_REPO"
 
 # Ensure environment variables are available for the script
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
@@ -666,6 +731,8 @@ print_info "Configuring Trackio ..."
 print_info "Username will be auto-detected from token"
 
 # Ensure environment variables are available for the script
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
@@ -709,6 +776,8 @@ print_info "Output: /output-checkpoint"
 print_info "Trackio: $TRACKIO_URL"
 
 # Ensure environment variables are available for training
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
@@ -730,6 +799,8 @@ print_info "Pushing model to: $REPO_NAME"
 print_info "Checkpoint: /output-checkpoint"
 
 # Ensure environment variables are available for model push
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
 export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
@@ -744,94 +815,75 @@ python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME
     --author-name "$AUTHOR_NAME" \
     --model-description "$MODEL_DESCRIPTION"
 
-# Step 16.5: Quantization Options
-print_step "Step 16.5: Model Quantization Options"
-echo "=========================================="
+# Step 16.5: Switch Trackio Space to Read Token (Security)
+print_step "Step 16.5: Switching to Read Token for Security"
+echo "===================================================="
 
-print_info "Would you like to create quantized versions of your model?"
-print_info "Quantization reduces model size and improves inference speed."
+print_info "Switching Trackio Space from write token to read token for security..."
+print_info "This ensures the space can only read datasets, not write to repositories"
 
-# Ask about quantization
-get_input "Create quantized models? (y/n)" "y" "CREATE_QUANTIZED"
+# Ensure environment variables are available for token switch
+export HF_TOKEN="$HF_WRITE_TOKEN"  # Use write token to update space
+export HUGGING_FACE_HUB_TOKEN="$HF_WRITE_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
 
-if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
-    print_info "Quantization options:"
-    print_info "1. int8_weight_only (GPU optimized, ~50% memory reduction)"
-    print_info "2. int4_weight_only (CPU optimized, ~75% memory reduction)"
-    print_info "3. Both int8 and int4 versions"
-    
-    select_option "Select quantization type:" "int8_weight_only" "int4_weight_only" "both" "QUANT_TYPE"
-    
-    if [ "$QUANT_TYPE" = "both" ]; then
-        # Create both int8 and int4 versions in the same repository
-        print_info "Creating int8 (GPU) quantized model..."
-        
-        # Ensure environment variables are available for quantization
-        export HF_TOKEN="$HF_TOKEN"
-        export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-        export HF_USERNAME="$HF_USERNAME"
-        export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
-        
-        python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
-            --quant-type "int8_weight_only" \
-            --device "auto" \
-            --token "$HF_TOKEN" \
-            --trackio-url "$TRACKIO_URL" \
-            --experiment-name "${EXPERIMENT_NAME}-int8" \
-            --dataset-repo "$TRACKIO_DATASET_REPO"
-        
-        print_info "Creating int4 (CPU) quantized model..."
-        
-        # Ensure environment variables are available for quantization
-        export HF_TOKEN="$HF_TOKEN"
-        export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-        export HF_USERNAME="$HF_USERNAME"
-        export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
-        
-        python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
-            --quant-type "int4_weight_only" \
-            --device "cpu" \
-            --token "$HF_TOKEN" \
-            --trackio-url "$TRACKIO_URL" \
-            --experiment-name "${EXPERIMENT_NAME}-int4" \
-            --dataset-repo "$TRACKIO_DATASET_REPO"
-        
-        print_status "✅ Both quantized models created in the same repository:"
-        print_info "Main model: https://huggingface.co/$REPO_NAME"
-        print_info "int8 (GPU): https://huggingface.co/$REPO_NAME/int8"
-        print_info "int4 (CPU): https://huggingface.co/$REPO_NAME/int4"
-        
-    else
-        # Create single quantized version in the same repository
-        print_info "Creating ${QUANT_TYPE} quantized model..."
-        
-        DEVICE="auto"
-        if [ "$QUANT_TYPE" = "int4_weight_only" ]; then
-            DEVICE="cpu"
-        fi
-        
-        # Ensure environment variables are available for quantization
-        export HF_TOKEN="$HF_TOKEN"
-        export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-        export HF_USERNAME="$HF_USERNAME"
-        export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
-        
-        python scripts/model_tonic/quantize_model.py /output-checkpoint "$REPO_NAME" \
-            --quant-type "$QUANT_TYPE" \
-            --device "$DEVICE" \
-            --token "$HF_TOKEN" \
-            --trackio-url "$TRACKIO_URL" \
-            --experiment-name "${EXPERIMENT_NAME}-${QUANT_TYPE}" \
-            --dataset-repo "$TRACKIO_DATASET_REPO"
-        
-        print_status "✅ Quantized model created: https://huggingface.co/$REPO_NAME/${QUANT_TYPE//_/-}"
-    fi
+# Switch to read token in Trackio Space
+cd scripts/trackio_tonic
+python switch_to_read_token.py "$HF_USERNAME/$TRACKIO_SPACE_NAME" "$HF_READ_TOKEN" "$HF_WRITE_TOKEN"
+
+if [ $? -eq 0 ]; then
+    print_status "✅ Successfully switched Trackio Space to read token"
+    print_info "🔒 Space now uses read-only permissions for security"
 else
-    print_info "Skipping quantization"
+    print_warning "⚠️ Failed to switch to read token, but continuing with pipeline"
+    print_info "You can manually switch the token in your Space settings later"
 fi
 
-# Step 17: Create summary report
-print_step "Step 17: Creating Summary Report"
+cd ../..
+
+# Step 17: Deploy Demo Space
+print_step "Step 17: Deploying Demo Space"
+echo "=================================="
+
+# Ask user if they want to deploy a demo space
+get_input "Do you want to deploy a demo space to test your model? (y/n)" "y" "DEPLOY_DEMO"
+
+if [ "$DEPLOY_DEMO" = "y" ] || [ "$DEPLOY_DEMO" = "Y" ]; then
+    print_info "Deploying demo space for model testing..."
+    
+    # Use main model for demo (no quantization)
+    DEMO_MODEL_ID="$REPO_NAME"
+    DEMO_SUBFOLDER=""
+    
+    # Ensure environment variables are available for demo deployment
+export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
+export HF_READ_TOKEN="$HF_READ_TOKEN"
+export HF_TOKEN="$HF_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_USERNAME="$HF_USERNAME"
+    
+    print_info "Deploying demo space for model: $DEMO_MODEL_ID"
+    print_info "Using subfolder: $DEMO_SUBFOLDER"
+    
+    python scripts/deploy_demo_space.py \
+        --hf-token "$HF_TOKEN" \
+        --hf-username "$HF_USERNAME" \
+        --model-id "$DEMO_MODEL_ID" \
+        --subfolder "$DEMO_SUBFOLDER" \
+        --space-name "${REPO_NAME}-demo"
+    
+    if [ $? -eq 0 ]; then
+        DEMO_SPACE_URL="https://huggingface.co/spaces/$HF_USERNAME/${REPO_NAME}-demo"
+        print_status "✅ Demo space deployed successfully: $DEMO_SPACE_URL"
+    else
+        print_warning "⚠️ Demo space deployment failed, but continuing with pipeline"
+    fi
+else
+    print_info "Skipping demo space deployment"
+fi
+
+# Step 18: Create summary report
+print_step "Step 18: Creating Summary Report"
 echo "===================================="
 
 cat > training_summary.md << EOF
@@ -846,6 +898,7 @@ cat > training_summary.md << EOF
 - **HF Dataset**: $TRACKIO_DATASET_REPO
 - **Training Config**: $TRAINING_CONFIG_TYPE
 - **Trainer Type**: $TRAINER_TYPE
+- **Security**: Dual token system (write + read tokens)
 $(if [ "$TRAINING_CONFIG_TYPE" = "H100 Lightweight (Rapid)" ]; then
 echo "- **Dataset Sample Size**: ${DATASET_SAMPLE_SIZE:-80000}"
 fi)
@@ -861,14 +914,9 @@ fi)
 - **Model Repository**: https://huggingface.co/$REPO_NAME
 - **Trackio Monitoring**: $TRACKIO_URL
 - **Experiment Data**: https://huggingface.co/datasets/$TRACKIO_DATASET_REPO
-$(if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
-echo "- **Quantization**: $QUANT_TYPE"
-if [ "$QUANT_TYPE" = "both" ]; then
-echo "- **int8 Model (GPU)**: https://huggingface.co/$REPO_NAME/int8"
-echo "- **int4 Model (CPU)**: https://huggingface.co/$REPO_NAME/int4"
-else
-echo "- **Quantized Model**: https://huggingface.co/$REPO_NAME/${QUANT_TYPE//_/-}"
-fi
+- **Security**: Trackio Space switched to read-only token for security
+$(if [ "$DEPLOY_DEMO" = "y" ] || [ "$DEPLOY_DEMO" = "Y" ]; then
+echo "- **Demo Space**: https://huggingface.co/spaces/$HF_USERNAME/${REPO_NAME}-demo"
 fi)
 
 ## Next Steps
@@ -895,15 +943,8 @@ echo "📊 Model: https://huggingface.co/$REPO_NAME"
 echo "📈 Trackio: $TRACKIO_URL"
 echo "📋 Experiment: $EXPERIMENT_NAME"
 echo "📊 Dataset: https://huggingface.co/datasets/$TRACKIO_DATASET_REPO"
-$(if [ "$CREATE_QUANTIZED" = "y" ] || [ "$CREATE_QUANTIZED" = "Y" ]; then
-echo ""
-echo "🔧 Quantized Models:"
-if [ "$QUANT_TYPE" = "both" ]; then
-echo "   📊 int8 (GPU): https://huggingface.co/$REPO_NAME/int8"
-echo "   📊 int4 (CPU): https://huggingface.co/$REPO_NAME/int4"
-else
-echo "   📊 $QUANT_TYPE: https://huggingface.co/$REPO_NAME/${QUANT_TYPE//_/-}"
-fi
+$(if [ "$DEPLOY_DEMO" = "y" ] || [ "$DEPLOY_DEMO" = "Y" ]; then
+echo "🎮 Demo: https://huggingface.co/spaces/$HF_USERNAME/${REPO_NAME}-demo"
 fi)
 echo ""
 echo "📋 Summary report saved to: training_summary.md"
@@ -911,7 +952,11 @@ echo ""
 echo "🚀 Next steps:"
 echo "1. Monitor training progress in your Trackio Space"
 echo "2. Check the model repository on Hugging Face Hub"
-echo "3. Use the model in your applications"
-echo "4. Share your results with the community"
+echo "3. Your Trackio Space is now secured with read-only permissions"
+$(if [ "$DEPLOY_DEMO" = "y" ] || [ "$DEPLOY_DEMO" = "Y" ]; then
+echo "3. Make your huggingface space a ZeroGPU Space & Test your model"
+fi)
+echo "5. Use the model in your applications"
+echo "6. Share your results with the community"
 echo ""
 print_status "Pipeline completed successfully!" 

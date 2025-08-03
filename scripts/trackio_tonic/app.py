@@ -27,7 +27,9 @@ class TrackioSpace:
         self.current_experiment = None
         
         # Get dataset repository and HF token from parameters or environment variables
-        self.dataset_repo = dataset_repo or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        # Use dynamic default based on environment or fallback to generic default
+        default_dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'trackio-experiments')
+        self.dataset_repo = dataset_repo or default_dataset_repo
         self.hf_token = hf_token or os.environ.get('HF_TOKEN')
         
         logger.info(f"🔧 Using dataset repository: {self.dataset_repo}")
@@ -83,6 +85,9 @@ class TrackioSpace:
     def _load_backup_experiments(self):
         """Load backup experiments when dataset is not available"""
         logger.info("🔄 Loading backup experiments...")
+        
+        # Get dynamic trackio URL from environment or use a placeholder
+        trackio_url = os.environ.get('TRACKIO_URL', 'https://your-trackio-space.hf.space')
         
         backup_experiments = {
             'exp_20250720_130853': {
@@ -180,7 +185,7 @@ class TrackioSpace:
                     'use_chat_template': True,
                     'chat_template_kwargs': {'add_generation_prompt': True, 'no_think_system_message': True},
                     'enable_tracking': True,
-                    'trackio_url': 'https://tonic-test-trackio-test.hf.space',
+                    'trackio_url': trackio_url,
                     'trackio_token': None,
                     'log_artifacts': True,
                     'log_metrics': True,
@@ -275,7 +280,7 @@ class TrackioSpace:
                     'use_chat_template': True,
                     'chat_template_kwargs': {'add_generation_prompt': True, 'no_think_system_message': True},
                     'enable_tracking': True,
-                    'trackio_url': 'https://tonic-test-trackio-test.hf.space',
+                    'trackio_url': trackio_url,
                     'trackio_token': None,
                     'log_artifacts': True,
                     'log_metrics': True,
@@ -563,9 +568,12 @@ def create_dataset_repository(hf_token: str, dataset_repo: str) -> str:
 # Initialize API client for remote data
 api_client = None
 try:
-    from trackio_api_client import TrackioAPIClient
-    api_client = TrackioAPIClient("https://tonic-test-trackio-test.hf.space")
-    logger.info("✅ API client initialized for remote data access")
+    from trackio_api_client import create_trackio_client
+    api_client = create_trackio_client()
+    if api_client:
+        logger.info("✅ API client initialized for remote data access")
+    else:
+        logger.warning("⚠️ Could not initialize API client, using local data only")
 except ImportError:
     logger.warning("⚠️ API client not available, using local data only")
 
@@ -700,14 +708,11 @@ Name: {experiment['name']}
 Description: {experiment['description']}
 Status: {experiment['status']}
 Created: {experiment['created_at']}
-
 📈 METRICS COUNT: {len(experiment['metrics'])}
 📋 PARAMETERS COUNT: {len(experiment['parameters'])}
 📦 ARTIFACTS COUNT: {len(experiment['artifacts'])}
-
 🔧 PARAMETERS:
 {json.dumps(experiment['parameters'], indent=2)}
-
 📊 LATEST METRICS:
 """
             if experiment['metrics']:
@@ -918,7 +923,7 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
                     dataset_repo_input = gr.Textbox(
                         label="Dataset Repository",
                         placeholder="your-username/your-dataset-name",
-                        value="tonic/trackio-experiments",
+                        value=os.environ.get('TRACKIO_DATASET_REPO', 'trackio-experiments'),
                         info="HF Dataset repository for experiment storage"
                     )
                     

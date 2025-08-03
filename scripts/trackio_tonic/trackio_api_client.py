@@ -10,6 +10,7 @@ import time
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
+import os
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -289,4 +290,31 @@ class TrackioAPIClient:
                 }
             }
         except Exception as e:
-            return {"error": f"Failed to get Space info: {str(e)}"} 
+            return {"error": f"Failed to get Space info: {str(e)}"}
+
+# Factory function to create client with dynamic configuration
+def create_trackio_client(space_id: Optional[str] = None, hf_token: Optional[str] = None) -> TrackioAPIClient:
+    """Create a TrackioAPIClient with dynamic configuration"""
+    
+    # Get space_id from environment if not provided
+    if not space_id:
+        space_id = os.environ.get('TRACKIO_URL')
+        if not space_id:
+            # Try to construct from username and space name
+            username = os.environ.get('HF_USERNAME')
+            space_name = os.environ.get('TRACKIO_SPACE_NAME')
+            if username and space_name:
+                space_id = f"https://huggingface.co/spaces/{username}/{space_name}"
+            else:
+                logger.warning("⚠️ No space_id provided and could not determine from environment")
+                return None
+    
+    # Get HF token from environment if not provided
+    if not hf_token:
+        hf_token = os.environ.get('HF_TOKEN')
+    
+    if not space_id:
+        logger.error("❌ No space_id available for TrackioAPIClient")
+        return None
+    
+    return TrackioAPIClient(space_id, hf_token) 
