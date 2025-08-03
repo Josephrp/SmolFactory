@@ -2,6 +2,21 @@
 
 A comprehensive end-to-end fine-tuning pipeline for SmolLM3 models with custom monitoring, Hugging Face integration, and interactive configuration management.
 
+<table>
+  <tr>
+    <td>
+      <img width="100%" src="https://github.com/user-attachments/assets/42d5df5f-acaa-40dc-ac4a-34153b5c9675" alt="Screenshot 1" />
+    </td>
+    <td>
+      <img width="100%" src="https://github.com/user-attachments/assets/ed3c99b3-1335-4ebd-807e-25db795e751b" alt="Screenshot 2" />
+    </td>
+    <td>
+      <img width="100%" src="https://github.com/user-attachments/assets/c557500a-1a08-4efa-9b17-1afe1101d71a" alt="Screenshot 3" />
+    </td>
+  </tr>
+</table>
+
+
 ## 🤖 Automatically Push Model, Spaces, Datasets & Monitoring
 
 - **Trackio Monitoring Space**: Real-time training metrics, loss curves, and resource utilization
