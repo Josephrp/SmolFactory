@@ -1,10 +1,10 @@
-# Core dependencies for SmolLM3 fine-tuning
+# Core dependencies for SmolLM3 and GPT-OSS fine-tuning
 torch>=2.0.0
-transformers>=4.53.0
+transformers>=4.55.0  # Updated for GPT-OSS compatibility
 datasets>=2.14.0
 accelerate>=0.20.0
-peft>=0.4.0
-trl>=0.7.0
+peft>=0.17.0  # Updated for GPT-OSS LoRA support
+trl>=0.20.0  # Updated for GPT-OSS compatibility
 
 # Hugging Face Hub for model and space management
 huggingface_hub>=0.19.0
@@ -17,3 +17,7 @@ plotly>=5.0.0
 trackio>=0.1.0
 psutil>=5.9.0 
 pynvml>=12.0.0
+
+# GPT-OSS specific dependencies
+# Note: GPT-OSS requires specific versions for optimal performance
+# These are compatible with the tutorial requirements

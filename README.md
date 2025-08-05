@@ -10,7 +10,7 @@
 
 # 🤏🏻🏭SmolFactory
 
-SmolFactory helps you train , monitor and deploy your Smollm3 finetune , and more !
+SmolFactory helps you train, monitor and deploy your SmolLM3 and GPT-OSS fine-tunes, and more!
 
 <table>
   <tr>
@@ -35,7 +35,7 @@ Train and deploy your model with one simple command !
 - **Trackio Monitoring Space**: Real-time training metrics, loss curves, and resource utilization
 - **Demo Spaces**: Instant web interfaces for model testing and demonstration
 - **Real-time Metrics**: Live training loss, learning rate, gradient norms, and GPU utilization
-- **Custom Dashboards**: Tailored visualizations for SmolLM3 fine-tuning
+- **Custom Dashboards**: Tailored visualizations for SmolLM3 and GPT-OSS fine-tuning
 - **Artifact Logging**: Model checkpoints, configuration files, and training logs
 - **Experiment Comparison**: Side-by-side analysis of different training runs
 - **Alert System**: Notifications for training issues or completion
@@ -44,6 +44,7 @@ Train and deploy your model with one simple command !
 - **Reproducibility**: Complete experiment history with configuration snapshots
 - **Collaboration**: Easy sharing of training results and model comparisons
 - **Version Control**: Track dataset changes and model performance over time
+- **GPT-OSS Support**: Specialized configurations for OpenAI's GPT-OSS-20B model with LoRA and multilingual reasoning
 
 ## 🚀 Quick Start
 
@@ -57,7 +58,7 @@ The easiest way to get started is using the interactive pipeline:
 
 This script will:
 1. **Authenticate** with Hugging Face (write + read tokens)
-2. **Configure** training parameters interactively
+2. **Configure** training parameters interactively (SmolLM3 or GPT-OSS)
 3. **Deploy** Trackio Space for monitoring
 4. **Setup** HF Dataset for experiment tracking
 5. **Execute** training with your chosen configuration

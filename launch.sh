@@ -164,6 +164,7 @@ show_training_configs() {
     print_header "Available Training Configurations"
     echo "======================================"
     echo ""
+    echo "=== SmolLM3 Configurations ==="
     echo "1. Basic Training (Default)"
     echo "   - Model: SmolLM3-3B"
     echo "   - Dataset: SmolTalk"
@@ -196,7 +197,35 @@ show_training_configs() {
     echo "   - Learning Rate: 3e-6"
     echo "   - Sequence Length: 8192"
     echo ""
-    echo "5. Custom Configuration"
+    echo "=== GPT-OSS Configurations ==="
+    echo "5. GPT-OSS Basic Training"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: Multilingual-Thinking"
+    echo "   - Epochs: 1"
+    echo "   - Batch Size: 4"
+    echo "   - Learning Rate: 2e-4"
+    echo "   - LoRA + MXFP4 Quantization"
+    echo "   - Optimized for multilingual reasoning"
+    echo ""
+    echo "6. GPT-OSS H100 Optimized"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: Multilingual-Thinking"
+    echo "   - Epochs: 2"
+    echo "   - Batch Size: 8"
+    echo "   - Learning Rate: 3e-4"
+    echo "   - Enhanced LoRA (rank 16)"
+    echo "   - Optimized for H100 performance"
+    echo ""
+    echo "7. GPT-OSS Multilingual Reasoning"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: Multilingual-Thinking"
+    echo "   - Epochs: 1"
+    echo "   - Batch Size: 4"
+    echo "   - Learning Rate: 2e-4"
+    echo "   - Specialized for reasoning tasks"
+    echo "   - Supports 10+ languages"
+    echo ""
+    echo "8. Custom Configuration"
     echo "   - User-defined parameters"
     echo ""
 }
@@ -246,6 +275,36 @@ get_training_config() {
             LEARNING_RATE=3e-6
             MAX_SEQ_LENGTH=8192
             CONFIG_FILE="config/train_smollm3_openhermes_fr_a100_multiple_passes.py"
+            ;;
+        "GPT-OSS Basic Training")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="HuggingFaceH4/Multilingual-Thinking"
+            MAX_EPOCHS=1
+            BATCH_SIZE=4
+            GRADIENT_ACCUMULATION_STEPS=4
+            LEARNING_RATE=2e-4
+            MAX_SEQ_LENGTH=2048
+            CONFIG_FILE="config/train_gpt_oss_basic.py"
+            ;;
+        "GPT-OSS H100 Optimized")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="HuggingFaceH4/Multilingual-Thinking"
+            MAX_EPOCHS=2
+            BATCH_SIZE=8
+            GRADIENT_ACCUMULATION_STEPS=2
+            LEARNING_RATE=3e-4
+            MAX_SEQ_LENGTH=4096
+            CONFIG_FILE="config/train_gpt_oss_h100_optimized.py"
+            ;;
+        "GPT-OSS Multilingual Reasoning")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="HuggingFaceH4/Multilingual-Thinking"
+            MAX_EPOCHS=1
+            BATCH_SIZE=4
+            GRADIENT_ACCUMULATION_STEPS=4
+            LEARNING_RATE=2e-4
+            MAX_SEQ_LENGTH=2048
+            CONFIG_FILE="config/train_gpt_oss_multilingual_reasoning.py"
             ;;
         "Custom Configuration")
             get_custom_config
@@ -419,7 +478,7 @@ print_step "Step 2: Training Configuration"
 echo "=================================="
 
 show_training_configs
-select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "Custom Configuration" TRAINING_CONFIG_TYPE
+select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "GPT-OSS Basic Training" "GPT-OSS H100 Optimized" "GPT-OSS Multilingual Reasoning" "Custom Configuration" TRAINING_CONFIG_TYPE
 
 get_training_config "$TRAINING_CONFIG_TYPE"
 
@@ -783,13 +842,24 @@ export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 
-# Run the simpler training script
-python scripts/training/train.py \
-    --config "$CONFIG_FILE" \
-    --experiment-name "$EXPERIMENT_NAME" \
-    --output-dir /output-checkpoint \
-    --trackio-url "$TRACKIO_URL" \
-    --trainer-type "$TRAINER_TYPE_LOWER"
+# Run the appropriate training script based on model type
+if [[ "$MODEL_NAME" == *"gpt-oss"* ]]; then
+    print_info "Using GPT-OSS specialized training script..."
+    python scripts/training/train_gpt_oss.py \
+        --config "$CONFIG_FILE" \
+        --experiment-name "$EXPERIMENT_NAME" \
+        --output-dir /output-checkpoint \
+        --trackio-url "$TRACKIO_URL" \
+        --trainer-type "$TRAINER_TYPE_LOWER"
+else
+    print_info "Using standard SmolLM3 training script..."
+    python scripts/training/train.py \
+        --config "$CONFIG_FILE" \
+        --experiment-name "$EXPERIMENT_NAME" \
+        --output-dir /output-checkpoint \
+        --trackio-url "$TRACKIO_URL" \
+        --trainer-type "$TRAINER_TYPE_LOWER"
+fi
 
 # Step 16: Push model to Hugging Face Hub
 print_step "Step 16: Pushing Model to HF Hub"
@@ -806,14 +876,26 @@ export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 
-# Run the push script
-python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME" \
-    --token "$HF_TOKEN" \
-    --trackio-url "$TRACKIO_URL" \
-    --experiment-name "$EXPERIMENT_NAME" \
-    --dataset-repo "$TRACKIO_DATASET_REPO" \
-    --author-name "$AUTHOR_NAME" \
-    --model-description "$MODEL_DESCRIPTION"
+# Run the appropriate push script based on model type
+if [[ "$MODEL_NAME" == *"gpt-oss"* ]]; then
+    print_info "Using GPT-OSS specialized push script..."
+    python scripts/model_tonic/push_gpt_oss_to_huggingface.py /output-checkpoint "$REPO_NAME" \
+        --token "$HF_TOKEN" \
+        --trackio-url "$TRACKIO_URL" \
+        --experiment-name "$EXPERIMENT_NAME" \
+        --dataset-repo "$TRACKIO_DATASET_REPO" \
+        --author-name "$AUTHOR_NAME" \
+        --model-description "$MODEL_DESCRIPTION"
+else
+    print_info "Using standard SmolLM3 push script..."
+    python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME" \
+        --token "$HF_TOKEN" \
+        --trackio-url "$TRACKIO_URL" \
+        --experiment-name "$EXPERIMENT_NAME" \
+        --dataset-repo "$TRACKIO_DATASET_REPO" \
+        --author-name "$AUTHOR_NAME" \
+        --model-description "$MODEL_DESCRIPTION"
+fi
 
 # Step 16.5: Switch Trackio Space to Read Token (Security)
 print_step "Step 16.5: Switching to Read Token for Security"
