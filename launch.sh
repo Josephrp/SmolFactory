@@ -225,7 +225,16 @@ show_training_configs() {
     echo "   - Specialized for reasoning tasks"
     echo "   - Supports 10+ languages"
     echo ""
-    echo "8. Custom Configuration"
+    echo "8. GPT-OSS Memory Optimized"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: Multilingual-Thinking"
+    echo "   - Epochs: 1"
+    echo "   - Batch Size: 1 (effective 16 with accumulation)"
+    echo "   - Learning Rate: 2e-4"
+    echo "   - 4-bit quantization + reduced LoRA"
+    echo "   - Optimized for limited GPU memory"
+    echo ""
+    echo "9. Custom Configuration"
     echo "   - User-defined parameters"
     echo ""
 }
@@ -305,6 +314,16 @@ get_training_config() {
             LEARNING_RATE=2e-4
             MAX_SEQ_LENGTH=2048
             CONFIG_FILE="config/train_gpt_oss_multilingual_reasoning.py"
+            ;;
+        "GPT-OSS Memory Optimized")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="HuggingFaceH4/Multilingual-Thinking"
+            MAX_EPOCHS=1
+            BATCH_SIZE=1
+            GRADIENT_ACCUMULATION_STEPS=16
+            LEARNING_RATE=2e-4
+            MAX_SEQ_LENGTH=1024
+            CONFIG_FILE="config/train_gpt_oss_memory_optimized.py"
             ;;
         "Custom Configuration")
             get_custom_config
@@ -478,7 +497,7 @@ print_step "Step 2: Training Configuration"
 echo "=================================="
 
 show_training_configs
-select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "GPT-OSS Basic Training" "GPT-OSS H100 Optimized" "GPT-OSS Multilingual Reasoning" "Custom Configuration" TRAINING_CONFIG_TYPE
+select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "GPT-OSS Basic Training" "GPT-OSS H100 Optimized" "GPT-OSS Multilingual Reasoning" "GPT-OSS Memory Optimized" "Custom Configuration" TRAINING_CONFIG_TYPE
 
 get_training_config "$TRAINING_CONFIG_TYPE"
 

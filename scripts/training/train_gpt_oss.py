@@ -23,10 +23,20 @@ def load_gpt_oss_model_and_tokenizer(config):
     print("Loading GPT-OSS model with quantization...")
     
     # Import quantization config
-    from transformers import Mxfp4Config
+    from transformers import BitsAndBytesConfig
     
-    # Set up quantization config
-    quantization_config = Mxfp4Config(dequantize=True)
+    # Set up quantization config based on config
+    if config.quantization_config and config.quantization_config.get("load_in_4bit"):
+        # Use BitsAndBytesConfig for 4-bit quantization
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4"
+        )
+    else:
+        # Use BitsAndBytesConfig as default (no quantization)
+        quantization_config = None
     
     # Model kwargs as per tutorial
     model_kwargs = {
@@ -144,7 +154,7 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
             # Try to find a config class
             for attr_name in dir(config_module):
                 attr = getattr(config_module, attr_name)
-                if hasattr(attr, 'model_name') and 'gpt_oss' in attr.model_name.lower():
+                if hasattr(attr, 'model_name') and ('gpt_oss' in attr.model_name.lower() or 'GPTOSS' in attr_name):
                     config = attr
                     break
             else:
