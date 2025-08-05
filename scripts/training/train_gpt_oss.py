@@ -70,9 +70,9 @@ def setup_lora_for_gpt_oss(model, config):
     
     # LoRA configuration as per tutorial
     lora_config = LoraConfig(
-        r=config.lora_config.get("r", 8),
-        lora_alpha=config.lora_config.get("lora_alpha", 16),
-        target_modules=config.lora_config.get("target_modules", "all-linear"),
+        r=config.lora_config.get("r", 8) if config.lora_config else 8,
+        lora_alpha=config.lora_config.get("lora_alpha", 16) if config.lora_config else 16,
+        target_modules=config.lora_config.get("target_modules", "all-linear") if config.lora_config else "all-linear",
         target_parameters=config.lora_config.get("target_parameters", [
             "7.mlp.experts.gate_up_proj",
             "7.mlp.experts.down_proj",
@@ -80,7 +80,14 @@ def setup_lora_for_gpt_oss(model, config):
             "15.mlp.experts.down_proj",
             "23.mlp.experts.gate_up_proj",
             "23.mlp.experts.down_proj",
-        ]),
+        ]) if config.lora_config else [
+            "7.mlp.experts.gate_up_proj",
+            "7.mlp.experts.down_proj",
+            "15.mlp.experts.gate_up_proj",
+            "15.mlp.experts.down_proj",
+            "23.mlp.experts.gate_up_proj",
+            "23.mlp.experts.down_proj",
+        ],
     )
     
     peft_model = get_peft_model(model, lora_config)
