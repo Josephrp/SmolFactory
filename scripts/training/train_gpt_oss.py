@@ -12,7 +12,6 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer, SFTConfig
-import trackio
 from datasets import load_dataset
 
 def load_gpt_oss_model_and_tokenizer(config):
@@ -85,10 +84,16 @@ def setup_trackio_tracking(config):
     
     print(f"Setting up Trackio tracking: {config.trackio_url}")
     
-    # Initialize Trackio client
-    trackio_client = trackio.Client(
-        api_url=config.trackio_url,
-        token=config.trackio_token
+    # Import the correct TrackioAPIClient
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'trackio_tonic'))
+    from trackio_api_client import TrackioAPIClient
+    
+    # Initialize Trackio client using the correct API
+    trackio_client = TrackioAPIClient(
+        space_id=config.trackio_url,
+        hf_token=config.trackio_token
     )
     
     return trackio_client
