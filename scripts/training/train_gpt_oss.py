@@ -27,25 +27,37 @@ def load_gpt_oss_model_and_tokenizer(config):
     
     # Set up quantization config based on config
     if config.quantization_config and config.quantization_config.get("load_in_4bit"):
-        # Use BitsAndBytesConfig for 4-bit quantization
+        # Use BitsAndBytesConfig for 4-bit quantization (memory optimized)
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4"
         )
+    elif config.quantization_config and config.quantization_config.get("dequantize"):
+        # Try to use Mxfp4Config if available (as per tutorial)
+        try:
+            from transformers import Mxfp4Config
+            quantization_config = Mxfp4Config(dequantize=True)
+        except ImportError:
+            # Fallback to no quantization if Mxfp4Config not available
+            print("Warning: Mxfp4Config not available, using no quantization")
+            quantization_config = None
     else:
-        # Use BitsAndBytesConfig as default (no quantization)
+        # No quantization
         quantization_config = None
     
     # Model kwargs as per tutorial
     model_kwargs = {
         "attn_implementation": "eager",
         "torch_dtype": torch.bfloat16,
-        "quantization_config": quantization_config,
         "use_cache": False,
         "device_map": "auto",
     }
+    
+    # Only add quantization_config if it's not None
+    if quantization_config is not None:
+        model_kwargs["quantization_config"] = quantization_config
     
     model = AutoModelForCausalLM.from_pretrained(config.model_name, **model_kwargs)
     

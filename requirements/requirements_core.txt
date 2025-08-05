@@ -1,6 +1,6 @@
 # Core dependencies for SmolLM3 and GPT-OSS fine-tuning
 torch>=2.0.0
-transformers>=4.55.0  # Updated for GPT-OSS compatibility
+transformers @ git+https://github.com/huggingface/transformers.git  # Latest version with GPT-OSS support
 datasets>=2.14.0
 accelerate>=0.20.0
 peft>=0.17.0  # Updated for GPT-OSS LoRA support

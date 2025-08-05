@@ -89,11 +89,8 @@ class GPTOSSMemoryOptimizedConfig:
         
         if self.quantization_config is None:
             self.quantization_config = {
-                "dequantize": True,
-                "load_in_4bit": True,
-                "bnb_4bit_compute_dtype": "bfloat16",
-                "bnb_4bit_use_double_quant": True,
-                "bnb_4bit_quant_type": "nf4"
+                "dequantize": True,  # Use Mxfp4Config as per tutorial
+                "load_in_4bit": False  # Only use 4-bit if explicitly needed
             }
         
         if self.model_kwargs is None:
