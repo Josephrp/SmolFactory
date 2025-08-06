@@ -76,7 +76,7 @@ def test_backup_fallback():
     
     try:
         # Import and test the TrackioSpace class
-        from templates.spaces.app import TrackioSpace
+        from templates.spaces.trackio.app import TrackioSpace
         
         trackio = TrackioSpace()
         experiments = trackio.experiments
@@ -105,7 +105,7 @@ def test_metrics_dataframe():
     print("=" * 40)
     
     try:
-        from templates.spaces.app import TrackioSpace
+        from templates.spaces.trackio.app import TrackioSpace
         
         trackio = TrackioSpace()
         

@@ -1,0 +1,9 @@
+torch 
+git+https://github.com/huggingface/transformers.git
+peft
+trl
+bitsandbytes
+triton 
+accelerate
+kernels
+openai-harmony

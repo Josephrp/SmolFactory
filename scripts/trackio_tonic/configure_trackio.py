@@ -79,13 +79,11 @@ def configure_trackio():
     print("🔧 Trackio Configuration")
     print("=" * 40)
     
-    # Get HF tokens and user info
-    hf_write_token = os.environ.get('HF_WRITE_TOKEN')
-    hf_read_token = os.environ.get('HF_READ_TOKEN')
-    hf_token = os.environ.get('HF_TOKEN')  # Legacy support
+    # Get HF token (single token approach)
+    hf_token = os.environ.get('HF_TOKEN')
     
-    # Use write token if available, otherwise fall back to HF_TOKEN
-    active_token = hf_write_token or hf_token
+    # Use the single HF_TOKEN
+    active_token = hf_token
     
     if active_token:
         username = get_username_from_token(active_token)
@@ -102,9 +100,7 @@ def configure_trackio():
     
     # Current configuration
     current_config = {
-        'HF_WRITE_TOKEN': hf_write_token or 'Not set',
-        'HF_READ_TOKEN': hf_read_token or 'Not set',
-        'HF_TOKEN': hf_token or 'Not set',  # Legacy
+        'HF_TOKEN': hf_token or 'Not set',
         'TRACKIO_DATASET_REPO': dataset_repo,
         'SPACE_ID': os.environ.get('SPACE_ID', 'Not set'),
         'TRACKIO_URL': os.environ.get('TRACKIO_URL', 'Not set')
@@ -116,12 +112,10 @@ def configure_trackio():
         print(f"   {status} {key}: {value}")
     
     print("\n🎯 Configuration Options:")
-    print("1. Set HF_WRITE_TOKEN - Required for training operations")
-    print("2. Set HF_READ_TOKEN - Required for Trackio Space security")
-    print("3. Set HF_TOKEN - Legacy token (fallback)")
-    print("4. Set TRACKIO_DATASET_REPO - Dataset repository (optional)")
-    print("5. Set SPACE_ID - HF Space ID (auto-detected)")
-    print("6. Set TRACKIO_URL - Trackio Space URL (auto-detected)")
+    print("1. Set HF_TOKEN - Main token (starts as write, switches to read after training)")
+    print("2. Set TRACKIO_DATASET_REPO - Dataset repository (optional)")
+    print("3. Set SPACE_ID - HF Space ID (auto-detected)")
+    print("4. Set TRACKIO_URL - Trackio Space URL (auto-detected)")
     
     # Check if running on HF Spaces
     if os.environ.get('SPACE_ID'):
@@ -131,37 +125,21 @@ def configure_trackio():
     # Validate configuration
     print("\n🔍 Configuration Validation:")
     
-    # Check HF_WRITE_TOKEN
-    if current_config['HF_WRITE_TOKEN'] != 'Not set':
-        print("✅ HF_WRITE_TOKEN is set")
-        print("   This allows training operations and repository creation")
-    else:
-        print("❌ HF_WRITE_TOKEN is not set")
-        print("   Please set HF_WRITE_TOKEN for training operations")
-        print("   Get your token from: https://huggingface.co/settings/tokens")
-    
-    # Check HF_READ_TOKEN
-    if current_config['HF_READ_TOKEN'] != 'Not set':
-        print("✅ HF_READ_TOKEN is set")
-        print("   This will be used for Trackio Space security")
-    else:
-        print("❌ HF_READ_TOKEN is not set")
-        print("   Please set HF_READ_TOKEN for Space security")
-        print("   Get your token from: https://huggingface.co/settings/tokens")
-    
-    # Check legacy HF_TOKEN
+    # Check HF_TOKEN
     if current_config['HF_TOKEN'] != 'Not set':
-        print("✅ HF_TOKEN (legacy) is set")
-        print("   This provides fallback functionality")
+        print("✅ HF_TOKEN is set")
+        print("   This allows training operations and dataset access")
+        print("   Note: Token will be automatically switched from write to read after training")
     else:
-        print("⚠️  HF_TOKEN (legacy) is not set")
-        print("   This is optional if using HF_WRITE_TOKEN")
+        print("❌ HF_TOKEN is not set")
+        print("   Please set HF_TOKEN for training operations")
+        print("   Get your token from: https://huggingface.co/settings/tokens")
     
     # Check dataset repository
     print(f"📊 Dataset Repository: {dataset_repo}")
     
     # Test dataset access if token is available
-    test_token = current_config['HF_WRITE_TOKEN'] or current_config['HF_TOKEN']
+    test_token = current_config['HF_TOKEN']
     if test_token != 'Not set':
         print("\n🧪 Testing Dataset Access...")
         try:
@@ -216,15 +194,13 @@ def configure_trackio():
     # Generate configuration file
     config_file = "trackio_config.json"
     config_data = {
-        'hf_write_token': current_config['HF_WRITE_TOKEN'],
-        'hf_read_token': current_config['HF_READ_TOKEN'],
-        'hf_token': current_config['HF_TOKEN'],  # Legacy
+        'hf_token': current_config['HF_TOKEN'],
         'dataset_repo': current_config['TRACKIO_DATASET_REPO'],
         'space_id': current_config['SPACE_ID'],
         'trackio_url': current_config['TRACKIO_URL'],
         'username': username,
         'last_updated': datetime.now().isoformat(),
-        'notes': 'Trackio configuration - set these as environment variables in your HF Space'
+        'notes': 'Trackio configuration - HF_TOKEN starts as write token, switches to read token after training'
     }
     
     with open(config_file, 'w') as f:
@@ -235,16 +211,14 @@ def configure_trackio():
     # Show environment variable commands
     print("\n📝 Environment Variables for HF Space:")
     print("=" * 50)
-    print(f"HF_WRITE_TOKEN={current_config['HF_WRITE_TOKEN']}")
-    print(f"HF_READ_TOKEN={current_config['HF_READ_TOKEN']}")
-    print(f"HF_TOKEN={current_config['HF_TOKEN']}")  # Legacy
+    print(f"HF_TOKEN={current_config['HF_TOKEN']}")
     print(f"TRACKIO_DATASET_REPO={current_config['TRACKIO_DATASET_REPO']}")
     if current_config['TRACKIO_URL'] != 'Not set':
         print(f"TRACKIO_URL={current_config['TRACKIO_URL']}")
     
     print("\n🎯 Next Steps:")
-    print("1. Set HF_WRITE_TOKEN in your HF Space environment variables")
-    print("2. Set HF_READ_TOKEN in your HF Space environment variables")
+    print("1. HF_TOKEN will be automatically set during deployment (starts as write token)")
+    print("2. HF_TOKEN will be automatically switched to read token after training")
     print("3. Optionally set TRACKIO_DATASET_REPO to use a different dataset")
     print("4. Deploy your updated app.py to the Space")
     print("5. Run setup_hf_dataset.py if you haven't created the dataset yet")

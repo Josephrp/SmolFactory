@@ -17,15 +17,19 @@ def test_templates_exist():
     
     # Check spaces templates
     spaces_dir = project_root / "templates" / "spaces"
+    demo_types = ["demo_smol", "demo_gpt", "trackio"]
     spaces_files = ["app.py", "requirements.txt", "README.md"]
     
-    for file_name in spaces_files:
-        file_path = spaces_dir / file_name
-        if file_path.exists():
-            print(f"✅ {file_path}")
-        else:
-            print(f"❌ {file_path} not found")
-            return False
+    for demo_type in demo_types:
+        demo_dir = spaces_dir / demo_type
+        print(f"Checking {demo_type} templates...")
+        for file_name in spaces_files:
+            file_path = demo_dir / file_name
+            if file_path.exists():
+                print(f"✅ {file_path}")
+            else:
+                print(f"❌ {file_path} not found")
+                return False
     
     # Check datasets templates
     datasets_dir = project_root / "templates" / "datasets"

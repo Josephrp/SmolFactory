@@ -16,6 +16,7 @@ try:
     from scripts.trackio_tonic.trackio_api_client import TrackioAPIClient
     TRACKIO_AVAILABLE = True
 except ImportError:
+    TrackioAPIClient = None
     TRACKIO_AVAILABLE = False
     print("Warning: Trackio API client not available. Install with: pip install requests")
 
@@ -87,20 +88,33 @@ class SmolLM3Monitor:
         try:
             from datasets import Dataset
             from huggingface_hub import HfApi
+            try:
+                from .dataset_utils import create_dataset_manager
+            except ImportError:
+                # Try importing from same directory
+                import sys
+                import os
+                sys.path.insert(0, os.path.dirname(__file__))
+                from dataset_utils import create_dataset_manager
             
             self.hf_dataset_client = {
                 'Dataset': Dataset,
                 'HfApi': HfApi,
                 'api': HfApi(token=self.hf_token)
             }
-            logger.info("✅ HF Datasets client initialized for %s", self.dataset_repo)
+            
+            # Initialize dataset manager for safe operations
+            self.dataset_manager = create_dataset_manager(self.dataset_repo, self.hf_token)
+            logger.info("✅ HF Datasets client and manager initialized for %s", self.dataset_repo)
             
         except ImportError:
             logger.warning("⚠️ datasets or huggingface-hub not available. Install with: pip install datasets huggingface-hub")
             self.hf_dataset_client = None
+            self.dataset_manager = None
         except Exception as e:
             logger.error("Failed to initialize HF Datasets client: %s", e)
             self.hf_dataset_client = None
+            self.dataset_manager = None
     
     def _setup_trackio(self, trackio_url: Optional[str], trackio_token: Optional[str]):
         """Setup Trackio API client"""
@@ -184,55 +198,38 @@ class SmolLM3Monitor:
             self.experiment_id = f"exp_{timestamp}"
     
     def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
-        """Save experiment data to HF Dataset"""
-        if not self.hf_dataset_client or not self.dataset_repo:
-            logger.warning("⚠️ HF Datasets not available or dataset repo not set")
+        """Save experiment data to HF Dataset with data preservation using dataset manager"""
+        if not self.dataset_manager:
+            logger.warning("⚠️ Dataset manager not available")
             return False
         
         try:
-            # Ensure dataset repository is not empty
-            if not self.dataset_repo or self.dataset_repo.strip() == '':
-                logger.error("❌ Dataset repository is empty")
-                return False
-            
-            # Validate dataset repository format
-            if '/' not in self.dataset_repo:
-                logger.error(f"❌ Invalid dataset repository format: {self.dataset_repo}")
-                return False
-            
-            Dataset = self.hf_dataset_client['Dataset']
-            api = self.hf_dataset_client['api']
-            
-            # Create dataset from experiment data with correct structure
-            # Match the structure used in setup_hf_dataset.py
-            dataset_data = [{
+            # Prepare current experiment data with standardized structure
+            current_experiment = {
                 'experiment_id': self.experiment_id or f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 'name': self.experiment_name,
                 'description': "SmolLM3 fine-tuning experiment",
                 'created_at': self.start_time.isoformat(),
                 'status': 'running',
-                'metrics': json.dumps(self.metrics_history),
-                'parameters': json.dumps(experiment_data),
-                'artifacts': json.dumps(self.artifacts),
-                'logs': json.dumps([]),
+                'metrics': json.dumps(self.metrics_history, default=str),
+                'parameters': json.dumps(experiment_data, default=str),
+                'artifacts': json.dumps(self.artifacts, default=str),
+                'logs': json.dumps([], default=str),
                 'last_updated': datetime.now().isoformat()
-            }]
+            }
             
-            # Create dataset from the experiment data
-            dataset = Dataset.from_list(dataset_data)
+            # Use dataset manager to safely upsert the experiment
+            success = self.dataset_manager.upsert_experiment(current_experiment)
             
-            # Push to hub
-            dataset.push_to_hub(
-                self.dataset_repo,
-                token=self.hf_token,
-                private=True
-            )
-            
-            logger.info(f"✅ Experiment data saved to HF Dataset: {self.dataset_repo}")
-            return True
-            
+            if success:
+                logger.info(f"✅ Experiment data saved to HF Dataset: {self.dataset_repo}")
+                return True
+            else:
+                logger.error(f"❌ Failed to save experiment data to HF Dataset")
+                return False
+                
         except Exception as e:
-            logger.error(f"Failed to save to HF Dataset: {e}")
+            logger.error(f"❌ Failed to save to HF Dataset: {e}")
             return False
     
     def log_configuration(self, config: Dict[str, Any]):
@@ -556,25 +553,50 @@ class SmolLM3Monitor:
             return "{}?tab=view_experiments".format(self.trackio_client.space_url)
         return None
     
-    def close(self):
-        """Close the monitoring session"""
+    def close(self, final_status: str = "completed"):
+        """
+        Close the monitoring session with final status update
+        
+        Args:
+            final_status (str): Final status for the experiment (completed, failed, etc.)
+        """
+        logger.info(f"🔚 Closing monitoring session with status: {final_status}")
+        
         if self.enable_tracking and self.trackio_client:
             try:
-                # Mark experiment as completed
+                # Mark experiment as completed in Trackio
                 result = self.trackio_client.update_experiment_status(
                     experiment_id=self.experiment_id,
-                    status="completed"
+                    status=final_status
                 )
                 if "success" in result:
-                    logger.info("Monitoring session closed")
+                    logger.info("✅ Trackio monitoring session closed")
                 else:
-                    logger.error("Failed to close monitoring session: %s", result)
+                    logger.error("❌ Failed to close Trackio monitoring session: %s", result)
             except Exception as e:
-                logger.error("Failed to close monitoring session: %s", e)
+                logger.error("❌ Failed to close Trackio monitoring session: %s", e)
         
-        # Final save to HF Dataset
-        if self.hf_dataset_client:
-            self._save_to_hf_dataset({'status': 'completed'})
+        # Final save to HF Dataset with proper status update
+        if self.dataset_manager:
+            try:
+                # Update experiment with final status
+                final_experiment_data = {
+                    'status': final_status,
+                    'experiment_end_time': datetime.now().isoformat(),
+                    'final_metrics_count': len(self.metrics_history),
+                    'total_artifacts': len(self.artifacts)
+                }
+                
+                success = self._save_to_hf_dataset(final_experiment_data)
+                if success:
+                    logger.info("✅ Final experiment data saved to HF Dataset")
+                else:
+                    logger.error("❌ Failed to save final experiment data")
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to save final experiment data: {e}")
+        
+        logger.info(f"🎯 Monitoring session closed for experiment: {self.experiment_id}")
 
 # Utility function to create monitor from config
 def create_monitor_from_config(config, experiment_name: Optional[str] = None) -> SmolLM3Monitor:

@@ -17,16 +17,16 @@ def test_templates_structure():
     """Test that the templates structure is correct"""
     print("🔍 Testing templates structure...")
     
-    templates_dir = project_root / "templates" / "spaces"
+    trackio_dir = project_root / "templates" / "spaces" / "trackio"
     
     required_files = ["app.py", "requirements.txt", "README.md"]
     
     for file_name in required_files:
-        file_path = templates_dir / file_name
+        file_path = trackio_dir / file_name
         if file_path.exists():
-            print(f"✅ {file_name} exists")
+            print(f"✅ trackio/{file_name} exists")
         else:
-            print(f"❌ {file_name} missing")
+            print(f"❌ trackio/{file_name} missing")
             return False
     
     return True
@@ -35,7 +35,7 @@ def test_app_py_content():
     """Test that app.py has the required structure"""
     print("\n🔍 Testing app.py content...")
     
-    app_path = project_root / "templates" / "spaces" / "app.py"
+    app_path = project_root / "templates" / "spaces" / "trackio" / "app.py"
     
     try:
         with open(app_path, 'r', encoding='utf-8') as f:

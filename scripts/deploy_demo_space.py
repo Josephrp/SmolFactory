@@ -38,7 +38,8 @@ class DemoSpaceDeployer:
     """Deploy demo space to Hugging Face Spaces"""
     
     def __init__(self, hf_token: str, hf_username: str, model_id: str, 
-                 subfolder: str = "int4", space_name: Optional[str] = None):
+                 subfolder: str = "int4", space_name: Optional[str] = None, 
+                 demo_type: Optional[str] = None):
         self.hf_token = hf_token
         self.hf_username = hf_username
         self.model_id = model_id
@@ -47,8 +48,13 @@ class DemoSpaceDeployer:
         self.space_id = f"{hf_username}/{self.space_name}"
         self.space_url = f"https://huggingface.co/spaces/{self.space_id}"
         
-        # Template paths
-        self.template_dir = Path(__file__).parent.parent / "templates" / "spaces" / "demo"
+        # Determine demo type from model_id if not provided
+        if demo_type is None:
+            demo_type = self._detect_demo_type(model_id)
+        
+        # Template paths based on model type
+        self.demo_type = demo_type
+        self.template_dir = Path(__file__).parent.parent / "templates" / "spaces" / f"demo_{demo_type}"
         self.workspace_dir = Path.cwd()
         
         # Initialize HF API
@@ -57,6 +63,107 @@ class DemoSpaceDeployer:
         else:
             self.api = None
             logger.warning("huggingface_hub not available, using CLI fallback")
+    
+    def _detect_demo_type(self, model_id: str) -> str:
+        """Detect the appropriate demo type based on model ID"""
+        model_id_lower = model_id.lower()
+        
+        # Check for GPT-OSS models
+        if "gpt-oss" in model_id_lower or "gpt_oss" in model_id_lower:
+            logger.info(f"Detected GPT-OSS model, using demo_gpt template")
+            return "gpt"
+        
+        # Check for SmolLM models (default)
+        elif "smollm" in model_id_lower or "smol" in model_id_lower:
+            logger.info(f"Detected SmolLM model, using demo_smol template")
+            return "smol"
+        
+        # Default to SmolLM for unknown models
+        else:
+            logger.info(f"Unknown model type, defaulting to demo_smol template")
+            return "smol"
+    
+    def _generate_env_setup(self) -> str:
+        """Generate environment variable setup based on demo type and model"""
+        if self.demo_type == "gpt":
+            # For GPT-OSS models, we need more sophisticated environment setup
+            model_name = self.model_id.split("/")[-1] if "/" in self.model_id else self.model_id
+            
+            env_setup = f"""
+# Environment variables for GPT-OSS model configuration
+import os
+os.environ['HF_MODEL_ID'] = '{self.model_id}'
+os.environ['LORA_MODEL_ID'] = '{self.model_id}'
+os.environ['BASE_MODEL_ID'] = 'openai/gpt-oss-20b'
+os.environ['MODEL_SUBFOLDER'] = '{self.subfolder if self.subfolder else ""}'
+os.environ['MODEL_NAME'] = '{model_name}'
+
+"""
+        else:
+            # For SmolLM models, use simpler setup
+            env_setup = f"""
+# Environment variables for model configuration
+import os
+os.environ['HF_MODEL_ID'] = '{self.model_id}'
+os.environ['MODEL_SUBFOLDER'] = '{self.subfolder if self.subfolder else ""}'
+os.environ['MODEL_NAME'] = '{self.model_id.split("/")[-1]}'
+
+"""
+        return env_setup
+    
+    def _set_model_variables(self):
+        """Set model-specific environment variables in the space"""
+        try:
+            # Common variables for all models
+            self.api.add_space_variable(
+                repo_id=self.space_id,
+                key="HF_MODEL_ID",
+                value=self.model_id,
+                description="Model ID for the demo"
+            )
+            logger.info(f"✅ Successfully set HF_MODEL_ID variable: {self.model_id}")
+            
+            if self.subfolder and self.subfolder.strip():
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="MODEL_SUBFOLDER",
+                    value=self.subfolder,
+                    description="Model subfolder for the demo"
+                )
+                logger.info(f"✅ Successfully set MODEL_SUBFOLDER variable: {self.subfolder}")
+            else:
+                logger.info("ℹ️ No subfolder specified, using main model")
+            
+            # GPT-OSS specific variables
+            if self.demo_type == "gpt":
+                model_name = self.model_id.split("/")[-1] if "/" in self.model_id else self.model_id
+                
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="LORA_MODEL_ID",
+                    value=self.model_id,
+                    description="LoRA/Fine-tuned model ID"
+                )
+                logger.info(f"✅ Successfully set LORA_MODEL_ID variable: {self.model_id}")
+                
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="BASE_MODEL_ID",
+                    value="openai/gpt-oss-20b",
+                    description="Base model ID for GPT-OSS"
+                )
+                logger.info("✅ Successfully set BASE_MODEL_ID variable: openai/gpt-oss-20b")
+                
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="MODEL_NAME",
+                    value=model_name,
+                    description="Display name for the model"
+                )
+                logger.info(f"✅ Successfully set MODEL_NAME variable: {model_name}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to set model variables: {e}")
     
     def validate_model_exists(self) -> bool:
         """Validate that the model exists on Hugging Face Hub"""
@@ -187,14 +294,7 @@ class DemoSpaceDeployer:
                     content = f.read()
                 
                 # Add environment variable setup at the top
-                env_setup = f"""
-# Environment variables for model configuration
-import os
-os.environ['HF_MODEL_ID'] = '{self.model_id}'
-os.environ['MODEL_SUBFOLDER'] = '{self.subfolder if self.subfolder else ""}'
-os.environ['MODEL_NAME'] = '{self.model_id.split("/")[-1]}'
-
-"""
+                env_setup = self._generate_env_setup()
                 
                 # Insert after imports
                 lines = content.split('\n')
@@ -335,24 +435,7 @@ Simply start chatting with the model using the interface below!
                 logger.info("✅ Successfully set HF_TOKEN secret via API")
                 
                 # Set model-specific environment variables
-                self.api.add_space_variable(
-                    repo_id=self.space_id,
-                    key="HF_MODEL_ID",
-                    value=self.model_id,
-                    description="Model ID for the demo"
-                )
-                logger.info(f"✅ Successfully set HF_MODEL_ID variable: {self.model_id}")
-                
-                if self.subfolder and self.subfolder.strip():
-                    self.api.add_space_variable(
-                        repo_id=self.space_id,
-                        key="MODEL_SUBFOLDER",
-                        value=self.subfolder,
-                        description="Model subfolder for the demo"
-                    )
-                    logger.info(f"✅ Successfully set MODEL_SUBFOLDER variable: {self.subfolder}")
-                else:
-                    logger.info("ℹ️ No subfolder specified, using main model")
+                self._set_model_variables()
                 
                 return True
                 
@@ -375,6 +458,13 @@ Simply start chatting with the model using the interface below!
         else:
             logger.info("   MODEL_SUBFOLDER=(empty - using main model)")
         
+        # GPT-OSS specific variables
+        if self.demo_type == "gpt":
+            model_name = self.model_id.split("/")[-1] if "/" in self.model_id else self.model_id
+            logger.info(f"   LORA_MODEL_ID={self.model_id}")
+            logger.info(f"   BASE_MODEL_ID=openai/gpt-oss-20b")
+            logger.info(f"   MODEL_NAME={model_name}")
+        
         logger.info(f"\n🔧 To set secrets in your Space:")
         logger.info(f"1. Go to your Space settings: {self.space_url}/settings")
         logger.info("2. Navigate to the 'Repository secrets' section")
@@ -389,6 +479,17 @@ Simply start chatting with the model using the interface below!
         else:
             logger.info("   Name: MODEL_SUBFOLDER")
             logger.info("   Value: (leave empty)")
+        
+        # GPT-OSS specific variables
+        if self.demo_type == "gpt":
+            model_name = self.model_id.split("/")[-1] if "/" in self.model_id else self.model_id
+            logger.info(f"   Name: LORA_MODEL_ID")
+            logger.info(f"   Value: {self.model_id}")
+            logger.info(f"   Name: BASE_MODEL_ID")
+            logger.info(f"   Value: openai/gpt-oss-20b")
+            logger.info(f"   Name: MODEL_NAME")
+            logger.info(f"   Value: {model_name}")
+        
         logger.info("4. Save the secrets")
         
         return True
@@ -471,6 +572,7 @@ def main():
     parser.add_argument("--model-id", required=True, help="Model ID to deploy demo for")
     parser.add_argument("--subfolder", default="int4", help="Model subfolder (default: int4)")
     parser.add_argument("--space-name", help="Custom space name (optional)")
+    parser.add_argument("--demo-type", choices=["smol", "gpt"], help="Demo type: 'smol' for SmolLM, 'gpt' for GPT-OSS (auto-detected if not specified)")
     
     args = parser.parse_args()
     
@@ -479,7 +581,8 @@ def main():
         hf_username=args.hf_username,
         model_id=args.model_id,
         subfolder=args.subfolder,
-        space_name=args.space_name
+        space_name=args.space_name,
+        demo_type=args.demo_type
     )
     
     success = deployer.deploy()

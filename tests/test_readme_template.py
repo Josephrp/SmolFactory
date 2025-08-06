@@ -16,8 +16,8 @@ def test_readme_template():
     print("🔍 Testing README template replacement...")
     
     try:
-        # Get template path
-        templates_dir = project_root / "templates" / "spaces"
+        # Get template path (using trackio as example)
+        templates_dir = project_root / "templates" / "spaces" / "trackio"
         readme_template_path = templates_dir / "README.md"
         
         if not readme_template_path.exists():

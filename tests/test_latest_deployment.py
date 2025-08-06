@@ -158,16 +158,20 @@ def test_template_files():
     """Test that all required template files exist"""
     print("\n🔍 Testing template files...")
     
-    templates_dir = project_root / "templates" / "spaces"
+    spaces_dir = project_root / "templates" / "spaces"
+    demo_types = ["demo_smol", "demo_gpt", "trackio"]
     required_files = ["app.py", "requirements.txt", "README.md"]
     
-    for file_name in required_files:
-        file_path = templates_dir / file_name
-        if file_path.exists():
-            print(f"✅ {file_name} exists")
-        else:
-            print(f"❌ {file_name} missing")
-            return False
+    for demo_type in demo_types:
+        demo_dir = spaces_dir / demo_type
+        print(f"Checking {demo_type} templates...")
+        for file_name in required_files:
+            file_path = demo_dir / file_name
+            if file_path.exists():
+                print(f"✅ {demo_type}/{file_name} exists")
+            else:
+                print(f"❌ {demo_type}/{file_name} missing")
+                return False
     
     return True
 

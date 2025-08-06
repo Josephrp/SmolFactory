@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Switch Trackio Space from Write Token to Read Token
+Switch Trackio Space HF_TOKEN from Write Token to Read Token
 
 This script switches the HF_TOKEN secret in a Trackio Space from a write token
 to a read token after the experiment is complete, for security purposes.
+The space uses only HF_TOKEN, which starts as write token and gets switched to read token.
 """
 
 import os
@@ -61,8 +62,8 @@ def switch_space_token(space_id: str, read_token: str, write_token: str) -> bool
     
     Args:
         space_id (str): The space ID (username/space-name)
-        read_token (str): The read token to set
-        write_token (str): The write token (for validation)
+        read_token (str): The read token to set as new HF_TOKEN
+        write_token (str): The write token (for authentication to update the space)
         
     Returns:
         bool: True if successful, False otherwise
@@ -93,23 +94,24 @@ def switch_space_token(space_id: str, read_token: str, write_token: str) -> bool
         # Use the write token to update the space (since we need write access)
         api = HfApi(token=write_token)
         
-        # Update the HF_TOKEN secret in the space
+        # Update the HF_TOKEN secret in the space from write token to read token
         try:
             api.add_space_secret(
                 repo_id=space_id,
                 key="HF_TOKEN",
                 value=read_token,
-                description="Hugging Face read token for dataset access (switched from write token)"
+                description="Hugging Face token for dataset access (switched from write to read for security)"
             )
-            print(f"✅ Successfully switched HF_TOKEN to read token in space: {space_id}")
+            print(f"✅ Successfully switched HF_TOKEN from write to read token in space: {space_id}")
+            print(f"🔒 Space now uses read-only permissions for enhanced security")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to update space secret: {e}")
+            print(f"❌ Failed to update HF_TOKEN secret: {e}")
             return False
             
     except Exception as e:
-        print(f"❌ Error switching tokens: {e}")
+        print(f"❌ Error switching HF_TOKEN: {e}")
         return False
 
 def main():
@@ -137,12 +139,13 @@ def main():
     success = switch_space_token(space_id, read_token, write_token)
     
     if success:
-        print("\n✅ Token switch completed successfully!")
+        print("\n✅ HF_TOKEN switch completed successfully!")
         print(f"📊 Space: {space_id}")
-        print("🔒 HF_TOKEN now uses read-only permissions")
+        print("🔒 HF_TOKEN now uses read-only permissions for enhanced security")
         print("💡 The space can still read datasets but cannot write to repositories")
+        print("🎯 Training is complete - space is now secure for monitoring")
     else:
-        print("\n❌ Token switch failed!")
+        print("\n❌ HF_TOKEN switch failed!")
         print("Please check your tokens and try again.")
         sys.exit(1)
 

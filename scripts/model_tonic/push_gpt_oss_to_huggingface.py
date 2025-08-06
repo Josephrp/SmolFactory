@@ -169,8 +169,8 @@ If you use this model in your research, please cite:
   author = {{{author_name}}},
   title = {{{model_name}}},
   year = {{{datetime.now().year}}},
-  publisher = {Hugging Face},
-  journal = {Hugging Face repository},
+  publisher = {{Hugging Face}},
+  journal = {{Hugging Face repository}},
   howpublished = {{\\url{{https://huggingface.co/{model_name}}}}}
   }}
 ```

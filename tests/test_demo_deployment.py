@@ -39,14 +39,17 @@ def test_template_files_exist():
     """Test that template files exist"""
     print("🧪 Testing template files existence...")
     
-    template_dir = Path(__file__).parent.parent / "templates" / "spaces" / "demo"
-    
+    demo_types = ["demo_smol", "demo_gpt"]
     required_files = ["app.py", "requirements.txt"]
     
-    for file_name in required_files:
-        file_path = template_dir / file_name
-        assert file_path.exists(), f"Required file {file_name} not found in templates"
-        print(f"✅ Found {file_name}")
+    for demo_type in demo_types:
+        template_dir = Path(__file__).parent.parent / "templates" / "spaces" / demo_type
+        print(f"Checking {demo_type} templates...")
+        
+        for file_name in required_files:
+            file_path = template_dir / file_name
+            assert file_path.exists(), f"Required file {file_name} not found in {demo_type} templates"
+            print(f"✅ Found {demo_type}/{file_name}")
     
     print("✅ Template files test passed")
 

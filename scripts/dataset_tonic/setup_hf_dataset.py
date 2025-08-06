@@ -145,7 +145,7 @@ def setup_trackio_dataset(dataset_name: str = None, token: str = None) -> bool:
 
 def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
     """
-    Add initial experiment data to the dataset.
+    Add initial experiment data to the dataset using data preservation.
     
     Args:
         repo_id (str): Dataset repository ID
@@ -163,89 +163,95 @@ def add_initial_experiment_data(repo_id: str, token: str = None) -> bool:
             print("⚠️  No token available for uploading data")
             return False
         
+        # Import dataset manager
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+        from dataset_utils import TrackioDatasetManager
+        
+        # Initialize dataset manager
+        dataset_manager = TrackioDatasetManager(repo_id, token)
+        
+        # Check if dataset already has data
+        existing_experiments = dataset_manager.load_existing_experiments()
+        if existing_experiments:
+            print(f"ℹ️  Dataset already contains {len(existing_experiments)} experiments, preserving existing data")
+        
         # Initial experiment data
-        initial_experiments = [
-            {
-                'experiment_id': f'exp_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
-                'name': 'smollm3-finetune-demo',
-                'description': 'SmolLM3 fine-tuning experiment demo with comprehensive metrics tracking',
-                'created_at': datetime.now().isoformat(),
-                'status': 'completed',
-                'metrics': json.dumps([
-                    {
-                        'timestamp': datetime.now().isoformat(),
-                        'step': 100,
-                        'metrics': {
-                            'loss': 1.15,
-                            'grad_norm': 10.5,
-                            'learning_rate': 5e-6,
-                            'num_tokens': 1000000.0,
-                            'mean_token_accuracy': 0.76,
-                            'epoch': 0.1,
-                            'total_tokens': 1000000.0,
-                            'throughput': 2000000.0,
-                            'step_time': 0.5,
-                            'batch_size': 2,
-                            'seq_len': 4096,
-                            'token_acc': 0.76,
-                            'gpu_memory_allocated': 15.2,
-                            'gpu_memory_reserved': 70.1,
-                            'gpu_utilization': 85.2,
-                            'cpu_percent': 2.7,
-                            'memory_percent': 10.1
-                        }
+        initial_experiment = {
+            'experiment_id': f'exp_demo_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
+            'name': 'smollm3-finetune-demo',
+            'description': 'SmolLM3 fine-tuning experiment demo with comprehensive metrics tracking',
+            'created_at': datetime.now().isoformat(),
+            'status': 'completed',
+            'metrics': json.dumps([
+                {
+                    'timestamp': datetime.now().isoformat(),
+                    'step': 100,
+                    'metrics': {
+                        'loss': 1.15,
+                        'grad_norm': 10.5,
+                        'learning_rate': 5e-6,
+                        'num_tokens': 1000000.0,
+                        'mean_token_accuracy': 0.76,
+                        'epoch': 0.1,
+                        'total_tokens': 1000000.0,
+                        'throughput': 2000000.0,
+                        'step_time': 0.5,
+                        'batch_size': 2,
+                        'seq_len': 4096,
+                        'token_acc': 0.76,
+                        'gpu_memory_allocated': 15.2,
+                        'gpu_memory_reserved': 70.1,
+                        'gpu_utilization': 85.2,
+                        'cpu_percent': 2.7,
+                        'memory_percent': 10.1
                     }
-                ]),
-                'parameters': json.dumps({
-                    'model_name': 'HuggingFaceTB/SmolLM3-3B',
-                    'max_seq_length': 4096,
-                    'batch_size': 2,
-                    'learning_rate': 5e-6,
-                    'epochs': 3,
-                    'dataset': 'OpenHermes-FR',
-                    'trainer_type': 'SFTTrainer',
-                    'hardware': 'GPU (H100/A100)',
-                    'mixed_precision': True,
-                    'gradient_checkpointing': True,
-                    'flash_attention': True
-                }),
-                'artifacts': json.dumps([]),
-                'logs': json.dumps([
-                    {
-                        'timestamp': datetime.now().isoformat(),
-                        'level': 'INFO',
-                        'message': 'Training started successfully'
-                    },
-                    {
-                        'timestamp': datetime.now().isoformat(),
-                        'level': 'INFO',
-                        'message': 'Model loaded and configured'
-                    },
-                    {
-                        'timestamp': datetime.now().isoformat(),
-                        'level': 'INFO',
-                        'message': 'Dataset loaded and preprocessed'
-                    }
-                ]),
-                'last_updated': datetime.now().isoformat()
-            }
-        ]
+                }
+            ]),
+            'parameters': json.dumps({
+                'model_name': 'HuggingFaceTB/SmolLM3-3B',
+                'max_seq_length': 4096,
+                'batch_size': 2,
+                'learning_rate': 5e-6,
+                'epochs': 3,
+                'dataset': 'OpenHermes-FR',
+                'trainer_type': 'SFTTrainer',
+                'hardware': 'GPU (H100/A100)',
+                'mixed_precision': True,
+                'gradient_checkpointing': True,
+                'flash_attention': True
+            }),
+            'artifacts': json.dumps([]),
+            'logs': json.dumps([
+                {
+                    'timestamp': datetime.now().isoformat(),
+                    'level': 'INFO',
+                    'message': 'Training started successfully'
+                },
+                {
+                    'timestamp': datetime.now().isoformat(),
+                    'level': 'INFO',
+                    'message': 'Model loaded and configured'
+                },
+                {
+                    'timestamp': datetime.now().isoformat(),
+                    'level': 'INFO',
+                    'message': 'Dataset loaded and preprocessed'
+                }
+            ]),
+            'last_updated': datetime.now().isoformat()
+        }
         
-        # Create dataset and upload
-        from datasets import Dataset
+        # Use dataset manager to safely add the experiment
+        success = dataset_manager.upsert_experiment(initial_experiment)
         
-        # Create dataset from the initial experiments
-        dataset = Dataset.from_list(initial_experiments)
-        
-        # Push to hub
-        dataset.push_to_hub(
-            repo_id,
-            token=token,
-            private=False,
-            commit_message="Add initial experiment data"
-        )
-        
-        print(f"✅ Successfully uploaded initial experiment data to {repo_id}")
+        if success:
+            print(f"✅ Successfully added initial experiment data to {repo_id}")
+            final_count = len(dataset_manager.load_existing_experiments())
+            print(f"📊 Dataset now contains {final_count} total experiments")
+        else:
+            print(f"❌ Failed to add initial experiment data to {repo_id}")
+            return False
         
         # Add README template
         add_dataset_readme(repo_id, token)

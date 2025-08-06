@@ -196,16 +196,16 @@ class TrackioSpaceDeployer:
             
             # Get the project root directory (3 levels up from this script)
             project_root = Path(__file__).parent.parent.parent
-            templates_dir = project_root / "templates" / "spaces"
+            templates_dir = project_root / "templates" / "spaces" / "trackio"
             
-            # Files to copy from templates/spaces
+            # Files to copy from templates/spaces/trackio
             files_to_copy = [
                 "app.py",
                 "requirements.txt",
                 "README.md"
             ]
             
-            # Copy files from templates/spaces to temp directory
+            # Copy files from templates/spaces/trackio to temp directory
             copied_files = []
             for file_name in files_to_copy:
                 source_path = templates_dir / file_name
@@ -334,36 +334,16 @@ class TrackioSpaceDeployer:
             
             repo_id = f"{self.username}/{self.space_name}"
             
-            # Get the HF tokens from environment or use the provided token
-            hf_write_token = os.getenv('HF_WRITE_TOKEN', self.token)
-            hf_read_token = os.getenv('HF_READ_TOKEN', self.token)
-            hf_token = os.getenv('HF_TOKEN', self.token)  # Legacy
+            # Use the provided token as HF_TOKEN (starts as write token, will be switched to read token later)
+            hf_token = self.token
             
-            # Set the HF_WRITE_TOKEN secret for the space using the API
+            # Set the HF_TOKEN secret for the space using the API
             try:
-                self.api.add_space_secret(
-                    repo_id=repo_id,
-                    key="HF_WRITE_TOKEN",
-                    value=hf_write_token,
-                    description="Hugging Face write token for training operations"
-                )
-                print("✅ Successfully set HF_WRITE_TOKEN secret via API")
-                
-                # Set the HF_READ_TOKEN secret for the space using the API
-                self.api.add_space_secret(
-                    repo_id=repo_id,
-                    key="HF_READ_TOKEN",
-                    value=hf_read_token,
-                    description="Hugging Face read token for security"
-                )
-                print("✅ Successfully set HF_READ_TOKEN secret via API")
-                
-                # Set legacy HF_TOKEN secret for backward compatibility
                 self.api.add_space_secret(
                     repo_id=repo_id,
                     key="HF_TOKEN",
                     value=hf_token,
-                    description="Hugging Face token for dataset access (legacy)"
+                    description="Hugging Face token for dataset access (starts as write, switches to read)"
                 )
                 print("✅ Successfully set HF_TOKEN secret via API")
                 
@@ -401,13 +381,9 @@ class TrackioSpaceDeployer:
         """Fallback method for manual secret setup"""
         print("📝 Manual Space Secrets Configuration:")
         
-        # Get tokens from environment or use provided token
-        hf_write_token = os.getenv('HF_WRITE_TOKEN', self.token)
-        hf_read_token = os.getenv('HF_READ_TOKEN', self.token)
-        hf_token = os.getenv('HF_TOKEN', self.token)  # Legacy
+        # Use the provided token as HF_TOKEN
+        hf_token = self.token
         
-        print(f"   HF_WRITE_TOKEN={hf_write_token}")
-        print(f"   HF_READ_TOKEN={hf_read_token}")
         print(f"   HF_TOKEN={hf_token}")
         
         dataset_repo = self.dataset_repo or f"{self.username}/trackio-experiments"
@@ -415,13 +391,9 @@ class TrackioSpaceDeployer:
         print(f"   TRACKIO_URL={self.space_url}")
         
         print("\n🔧 To set secrets in your Space:")
-        print("1. Go to your Space settings: {self.space_url}/settings")
+        print(f"1. Go to your Space settings: {self.space_url}/settings")
         print("2. Navigate to the 'Repository secrets' section")
         print("3. Add the following secrets:")
-        print(f"   Name: HF_WRITE_TOKEN")
-        print(f"   Value: {hf_write_token}")
-        print(f"   Name: HF_READ_TOKEN")
-        print(f"   Value: {hf_read_token}")
         print(f"   Name: HF_TOKEN")
         print(f"   Value: {hf_token}")
         print(f"   Name: TRACKIO_DATASET_REPO")
@@ -429,6 +401,7 @@ class TrackioSpaceDeployer:
         print(f"   Name: TRACKIO_URL")
         print(f"   Value: {self.space_url}")
         print("4. Save the secrets")
+        print("\nNote: HF_TOKEN starts as write token and will be switched to read token after training")
         
         return True
     
