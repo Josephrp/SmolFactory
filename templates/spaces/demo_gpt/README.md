@@ -6,7 +6,7 @@ colorTo: pink
 sdk: gradio
 sdk_version: 5.40.0
 app_file: app.py
-pinned: true
+pinned: false
 short_description: GPT-OSS-20B Multilingual Reasoner LoRA adapter
 ---
 

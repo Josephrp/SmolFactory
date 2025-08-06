@@ -95,12 +95,215 @@ def setup_lora_for_gpt_oss(model, config):
     
     return peft_model
 
-def load_multilingual_thinking_dataset():
-    """Load the Multilingual-Thinking dataset"""
+def load_dataset_from_config(config):
+    """Load dataset based on configuration"""
     
-    print("Loading Multilingual-Thinking dataset...")
-    dataset = load_dataset("HuggingFaceH4/Multilingual-Thinking", split="train")
-    print(f"Dataset loaded: {len(dataset)} examples")
+    dataset_name = getattr(config, 'dataset_name', 'HuggingFaceH4/Multilingual-Thinking')
+    dataset_split = getattr(config, 'dataset_split', 'train')
+    dataset_config = getattr(config, 'dataset_config', None)
+    
+    print(f"Loading dataset: {dataset_name}")
+    print(f"Dataset split: {dataset_split}")
+    if dataset_config:
+        print(f"Dataset config: {dataset_config}")
+    
+    # Load the dataset
+    if dataset_config:
+        dataset = load_dataset(dataset_name, dataset_config, split=dataset_split)
+    else:
+        dataset = load_dataset(dataset_name, split=dataset_split)
+    
+    print(f"Original dataset size: {len(dataset)} examples")
+    
+    # Apply filtering based on configuration
+    dataset = apply_dataset_filtering(dataset, config)
+    
+    # Apply dataset processing based on format
+    dataset = process_dataset_format(dataset, config)
+    
+    print(f"Final dataset size: {len(dataset)} examples")
+    
+    return dataset
+
+def apply_dataset_filtering(dataset, config):
+    """Apply filtering based on configuration"""
+    
+    # Filter bad entries if specified
+    if getattr(config, 'filter_bad_entries', False):
+        bad_entry_field = getattr(config, 'bad_entry_field', 'bad_entry')
+        bad_prompt_field = getattr(config, 'bad_prompt_field', 'bad_prompt_detected')
+        bad_response_field = getattr(config, 'bad_response_field', 'bad_response_detected')
+        
+        original_size = len(dataset)
+        
+        # Filter out bad entries
+        if bad_entry_field in dataset.column_names:
+            dataset = dataset.filter(lambda x: not x.get(bad_entry_field, False))
+            print(f"Filtered {original_size - len(dataset)} bad entries")
+        
+        # Filter out bad prompts
+        if bad_prompt_field in dataset.column_names:
+            dataset = dataset.filter(lambda x: not x.get(bad_prompt_field, False))
+            print(f"Filtered bad prompts, remaining: {len(dataset)} examples")
+        
+        # Filter out bad responses
+        if bad_response_field in dataset.column_names:
+            dataset = dataset.filter(lambda x: not x.get(bad_response_field, False))
+            print(f"Filtered bad responses, remaining: {len(dataset)} examples")
+    
+    # Apply length filtering
+    min_length = getattr(config, 'min_length', 10)
+    max_length = getattr(config, 'max_length', None)
+    
+    input_field = getattr(config, 'input_field', 'prompt')
+    target_field = getattr(config, 'target_field', 'accepted_completion')
+    
+    if min_length > 0 or max_length:
+        def length_filter(example):
+            input_len = len(example.get(input_field, ''))
+            target_len = len(example.get(target_field, ''))
+            total_len = input_len + target_len
+            
+            if total_len < min_length:
+                return False
+            if max_length and total_len > max_length:
+                return False
+            return True
+        
+        original_size = len(dataset)
+        dataset = dataset.filter(length_filter)
+        print(f"Length filtering: {original_size} -> {len(dataset)} examples")
+    
+    # Apply sampling if specified
+    max_samples = getattr(config, 'max_samples', None)
+    if max_samples and len(dataset) > max_samples:
+        dataset = dataset.shuffle(seed=42).select(range(max_samples))
+        print(f"Sampled {max_samples} examples from dataset")
+    
+    return dataset
+
+def format_gpt_oss_harmony(prompt, completion, add_eos_token=True):
+    """
+    Format data for GPT-OSS Harmony format following the exact template structure.
+    Based on: https://huggingface.co/openai/gpt-oss-20b/raw/main/chat_template.jinja
+    """
+    # GPT-OSS Harmony format structure (exact template compliance)
+    # User message: <|start|>user<|message|>content<|end|>
+    # Assistant message: <|start|>assistant<|channel|>final<|message|>content<|end|> (inference)
+    # Assistant message: <|start|>assistant<|channel|>final<|message|>content<|return|> (training)
+    
+    harmony_text = f"<|start|>user<|message|>{prompt}<|end|><|start|>assistant<|channel|>final<|message|>{completion}"
+    
+    if add_eos_token:
+        # Use <|return|> for training as per template specification
+        # This indicates the end of generation in training
+        harmony_text += "<|return|>"
+    else:
+        # Use <|end|> for inference
+        harmony_text += "<|end|>"
+    
+    return harmony_text
+
+def process_dataset_format(dataset, config):
+    """Process dataset based on format configuration with exact GPT-OSS Harmony compliance"""
+    
+    dataset_format = getattr(config, 'dataset_format', 'openhermes_fr')
+    input_field = getattr(config, 'input_field', 'prompt')
+    target_field = getattr(config, 'target_field', 'accepted_completion')
+    concatenate_fields = getattr(config, 'concatenate_fields', True)
+    field_separator = getattr(config, 'field_separator', '\n\n### Response:\n')
+    add_eos_token = getattr(config, 'add_eos_token', True)
+    use_harmony_format = getattr(config, 'use_harmony_format', True)
+    
+    print(f"Processing dataset format: {dataset_format}")
+    print(f"Input field: {input_field}, Target field: {target_field}")
+    print(f"GPT-OSS Harmony Format: {'Enabled' if use_harmony_format else 'Disabled'}")
+    
+    if dataset_format == "openhermes_fr":
+        # Process OpenHermes-FR format: prompt + accepted_completion
+        def format_openhermes_fr(example):
+            prompt = example.get(input_field, '')
+            completion = example.get(target_field, '')
+            
+            if concatenate_fields:
+                if use_harmony_format:
+                    # Use exact GPT-OSS Harmony format from template
+                    text = format_gpt_oss_harmony(prompt, completion, add_eos_token)
+                else:
+                    # Fallback to standard format with separator
+                    text = prompt + field_separator + completion
+                    if add_eos_token:
+                        text += "</s>"
+                
+                return {"text": text}
+            else:
+                # Keep separate for more advanced training setups
+                return {
+                    "input": prompt,
+                    "output": completion
+                }
+        
+        dataset = dataset.map(format_openhermes_fr, remove_columns=dataset.column_names)
+        
+    elif dataset_format == "messages":
+        # Process messages format (like HuggingFaceH4/Multilingual-Thinking)
+        def format_messages(example):
+            messages = example.get(input_field, [])
+            
+            if use_harmony_format and len(messages) >= 2:
+                # Extract user and assistant messages for harmony format
+                user_message = ""
+                assistant_message = ""
+                
+                for message in messages:
+                    role = message.get("role", "")
+                    content = message.get("content", "")
+                    
+                    if role == "user":
+                        user_message = content
+                    elif role == "assistant":
+                        assistant_message = content
+                
+                if user_message and assistant_message:
+                    # Use GPT-OSS Harmony format
+                    text = format_gpt_oss_harmony(user_message, assistant_message, add_eos_token)
+                else:
+                    # Fallback to simple concatenation
+                    text = ""
+                    for message in messages:
+                        role = message.get("role", "")
+                        content = message.get("content", "")
+                        text += f"{role}: {content}\n"
+                    if add_eos_token:
+                        text += "</s>"
+            else:
+                # Standard format - convert messages to simple text
+                text = ""
+                for message in messages:
+                    role = message.get("role", "")
+                    content = message.get("content", "")
+                    text += f"{role}: {content}\n"
+                if add_eos_token:
+                    text += "</s>"
+            
+            return {"text": text}
+        
+        dataset = dataset.map(format_messages, remove_columns=dataset.column_names)
+        
+    elif dataset_format == "text":
+        # Process plain text format
+        text_field = input_field
+        def format_text(example):
+            text = example.get(text_field, '')
+            if add_eos_token:
+                text += "</s>"
+            return {"text": text}
+        
+        dataset = dataset.map(format_text, remove_columns=dataset.column_names)
+    
+    elif dataset_format == "custom":
+        # Custom format - user handles this in their config
+        print("Using custom dataset format - no automatic processing")
     
     return dataset
 
@@ -127,25 +330,111 @@ def setup_trackio_tracking(config):
     
     return trackio_client
 
-def create_sft_config(config):
-    """Create SFTConfig for GPT-OSS training"""
+def create_sft_config(config, output_dir):
+    """Create enhanced SFTConfig for GPT-OSS training"""
     
-    print("Creating SFT configuration...")
+    print("Creating enhanced SFT configuration...")
+    
+    # Extract training parameters from config with enhanced defaults
+    num_train_epochs = getattr(config, 'num_train_epochs', 1.0)
+    max_steps = getattr(config, 'max_steps', None)
+    warmup_ratio = getattr(config, 'warmup_ratio', 0.03)
+    warmup_steps = getattr(config, 'warmup_steps', None)
+    
+    # Learning rate configuration
+    learning_rate = config.learning_rate
+    lr_scheduler_type = getattr(config, 'scheduler', 'cosine_with_min_lr')
+    lr_scheduler_kwargs = getattr(config, 'lr_scheduler_kwargs', {"min_lr_rate": 0.1})
+    
+    # Batch configuration
+    per_device_train_batch_size = config.batch_size
+    per_device_eval_batch_size = getattr(config, 'eval_batch_size', config.batch_size)
+    gradient_accumulation_steps = config.gradient_accumulation_steps
+    
+    # Evaluation and logging
+    eval_strategy = getattr(config, 'eval_strategy', 'steps')
+    eval_steps = getattr(config, 'eval_steps', 100)
+    logging_steps = getattr(config, 'logging_steps', 10)
+    
+    # Saving configuration
+    save_strategy = getattr(config, 'save_strategy', 'steps')
+    save_steps = getattr(config, 'save_steps', 500)
+    save_total_limit = getattr(config, 'save_total_limit', 3)
+    
+    # Mixed precision
+    fp16 = getattr(config, 'fp16', False)
+    bf16 = getattr(config, 'bf16', True)
+    
+    # Regularization
+    weight_decay = getattr(config, 'weight_decay', 0.01)
+    max_grad_norm = getattr(config, 'max_grad_norm', 1.0)
+    
+    # HuggingFace Hub integration
+    push_to_hub = getattr(config, 'push_to_hub', False)
+    
+    print(f"  • Epochs: {num_train_epochs}")
+    print(f"  • Learning rate: {learning_rate}")
+    print(f"  • Batch size: {per_device_train_batch_size}")
+    print(f"  • Gradient accumulation: {gradient_accumulation_steps}")
+    print(f"  • Effective batch size: {per_device_train_batch_size * gradient_accumulation_steps}")
     
     sft_config = SFTConfig(
-        learning_rate=config.learning_rate,
-        gradient_checkpointing=True,
-        num_train_epochs=1,  # Single epoch as per tutorial
-        logging_steps=config.logging_steps,
-        per_device_train_batch_size=config.batch_size,
-        gradient_accumulation_steps=config.gradient_accumulation_steps,
-        max_length=config.max_seq_length,
-        warmup_ratio=0.03,
-        lr_scheduler_type="cosine_with_min_lr",
-        lr_scheduler_kwargs={"min_lr_rate": 0.1},
-        output_dir="gpt-oss-20b-multilingual-reasoner",
-        report_to="trackio" if config.enable_tracking else None,
-        push_to_hub=True,
+        # Training duration
+        num_train_epochs=num_train_epochs,
+        max_steps=max_steps,
+        
+        # Learning rate
+        learning_rate=learning_rate,
+        lr_scheduler_type=lr_scheduler_type,
+        lr_scheduler_kwargs=lr_scheduler_kwargs,
+        warmup_ratio=warmup_ratio,
+        warmup_steps=warmup_steps,
+        
+        # Batch configuration
+        per_device_train_batch_size=per_device_train_batch_size,
+        per_device_eval_batch_size=per_device_eval_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        
+        # Model configuration
+        max_seq_length=config.max_seq_length,
+        gradient_checkpointing=getattr(config, 'use_gradient_checkpointing', True),
+        
+        # Mixed precision
+        fp16=fp16,
+        bf16=bf16,
+        
+        # Regularization
+        weight_decay=weight_decay,
+        max_grad_norm=max_grad_norm,
+        
+        # Evaluation
+        evaluation_strategy=eval_strategy,
+        eval_steps=eval_steps,
+        
+        # Logging
+        logging_steps=logging_steps,
+        
+        # Saving
+        save_strategy=save_strategy,
+        save_steps=save_steps,
+        save_total_limit=save_total_limit,
+        
+        # Output
+        output_dir=output_dir,
+        
+        # Data loading
+        dataloader_num_workers=getattr(config, 'dataloader_num_workers', 4),
+        dataloader_pin_memory=getattr(config, 'dataloader_pin_memory', True),
+        
+        # Performance
+        group_by_length=getattr(config, 'group_by_length', True),
+        remove_unused_columns=getattr(config, 'remove_unused_columns', True),
+        
+        # HuggingFace Hub
+        push_to_hub=push_to_hub,
+        
+        # Monitoring
+        report_to="trackio" if getattr(config, 'enable_tracking', False) else None,
     )
     
     return sft_config
@@ -193,13 +482,13 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     peft_model = setup_lora_for_gpt_oss(model, config)
     
     # Load dataset
-    dataset = load_multilingual_thinking_dataset()
+    dataset = load_dataset_from_config(config)
     
     # Setup Trackio tracking
     trackio_client = setup_trackio_tracking(config)
     
     # Create SFT configuration
-    sft_config = create_sft_config(config)
+    sft_config = create_sft_config(config, output_dir)
     
     # Create trainer
     print("Creating SFT trainer...")

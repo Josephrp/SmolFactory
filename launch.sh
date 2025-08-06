@@ -234,7 +234,34 @@ show_training_configs() {
     echo "   - 4-bit quantization + reduced LoRA"
     echo "   - Optimized for limited GPU memory"
     echo ""
-    echo "9. Custom Configuration"
+    echo "9. GPT-OSS OpenHermes-FR (Recommended)"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: legmlai/openhermes-fr (800K French examples)"
+    echo "   - Epochs: 1.5"
+    echo "   - Batch Size: 6 (effective 36 with accumulation)"
+    echo "   - Learning Rate: 2.5e-4"
+    echo "   - Optimized for French language training"
+    echo "   - Quality filtering enabled"
+    echo ""
+    echo "10. GPT-OSS OpenHermes-FR Memory Optimized"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: legmlai/openhermes-fr (200K samples)"
+    echo "   - Epochs: 1"
+    echo "   - Batch Size: 2 (effective 32 with accumulation)"
+    echo "   - Learning Rate: 2e-4"
+    echo "   - Native MXFP4 quantization"
+    echo "   - Memory optimized for 40-80GB GPUs"
+    echo "   - Harmony format compatible"
+    echo ""
+    echo "10. GPT-OSS Custom Dataset"
+    echo "   - Model: openai/gpt-oss-20b"
+    echo "   - Dataset: User-defined (fully customizable)"
+    echo "   - Epochs: Configurable"
+    echo "   - Batch Size: Configurable"
+    echo "   - Learning Rate: Configurable"
+    echo "   - Maximum flexibility with all parameters"
+    echo ""
+    echo "11. Custom Configuration"
     echo "   - User-defined parameters"
     echo ""
 }
@@ -325,10 +352,140 @@ get_training_config() {
             MAX_SEQ_LENGTH=1024
             CONFIG_FILE="config/train_gpt_oss_memory_optimized.py"
             ;;
+        "GPT-OSS OpenHermes-FR (Recommended)")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="legmlai/openhermes-fr"
+            MAX_EPOCHS=1.5
+            BATCH_SIZE=6
+            GRADIENT_ACCUMULATION_STEPS=6
+            LEARNING_RATE=2.5e-4
+            MAX_SEQ_LENGTH=3072
+            CONFIG_FILE="config/train_gpt_oss_openhermes_fr.py"
+            ;;
+        "GPT-OSS OpenHermes-FR Memory Optimized")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="legmlai/openhermes-fr"
+            MAX_EPOCHS=1
+            BATCH_SIZE=2
+            GRADIENT_ACCUMULATION_STEPS=16
+            LEARNING_RATE=2e-4
+            MAX_SEQ_LENGTH=1024
+            CONFIG_FILE="config/train_gpt_oss_openhermes_fr_memory_optimized.py"
+            ;;
+        "GPT-OSS Custom Dataset")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="legmlai/openhermes-fr"  # Will be customizable
+            MAX_EPOCHS=1
+            BATCH_SIZE=4
+            GRADIENT_ACCUMULATION_STEPS=4
+            LEARNING_RATE=2e-4
+            MAX_SEQ_LENGTH=2048
+            CONFIG_FILE="config/train_gpt_oss_custom.py"
+            get_custom_dataset_config
+            ;;
         "Custom Configuration")
             get_custom_config
             ;;
     esac
+}
+
+# Function to get custom dataset configuration
+get_custom_dataset_config() {
+    print_step "GPT-OSS Custom Configuration"
+    echo "======================================"
+    
+    echo "Configure your GPT-OSS training:"
+    echo ""
+    
+    # Dataset Configuration
+    print_info "📊 Dataset Configuration"
+    get_input "Dataset name (HuggingFace format: username/dataset)" "legmlai/openhermes-fr" DATASET_NAME
+    get_input "Dataset split" "train" DATASET_SPLIT
+    
+    echo ""
+    echo "Dataset format options:"
+    echo "1. OpenHermes-FR (prompt + accepted_completion fields)"
+    echo "2. Messages format (chat conversations)"
+    echo "3. Text format (plain text field)"
+    echo "4. Custom format (specify field names)"
+    echo ""
+    
+    select_option "Select dataset format:" "OpenHermes-FR" "Messages format" "Text format" "Custom format" DATASET_FORMAT
+    
+    case "$DATASET_FORMAT" in
+        "OpenHermes-FR")
+            INPUT_FIELD="prompt"
+            TARGET_FIELD="accepted_completion"
+            DATASET_FORMAT_CODE="openhermes_fr"
+            FILTER_BAD_ENTRIES="true"
+            ;;
+        "Messages format")
+            INPUT_FIELD="messages"
+            TARGET_FIELD=""
+            DATASET_FORMAT_CODE="messages"
+            FILTER_BAD_ENTRIES="false"
+            ;;
+        "Text format")
+            INPUT_FIELD="text"
+            TARGET_FIELD=""
+            DATASET_FORMAT_CODE="text"
+            FILTER_BAD_ENTRIES="false"
+            ;;
+        "Custom format")
+            get_input "Input field name" "prompt" INPUT_FIELD
+            get_input "Target field name (leave empty if not needed)" "accepted_completion" TARGET_FIELD
+            DATASET_FORMAT_CODE="custom"
+            get_input "Filter bad entries? (true/false)" "false" FILTER_BAD_ENTRIES
+            ;;
+    esac
+    
+    # Dataset Filtering Options
+    echo ""
+    print_info "🔍 Dataset Filtering Options"
+    get_input "Maximum samples to use (leave empty for all)" "" MAX_SAMPLES
+    get_input "Minimum sequence length" "10" MIN_LENGTH
+    get_input "Maximum sequence length (leave empty for auto)" "" MAX_LENGTH
+    
+    # Training Hyperparameters
+    echo ""
+    print_info "⚙️ Training Hyperparameters"
+    get_input "Number of epochs" "1.0" NUM_EPOCHS
+    get_input "Batch size per device" "4" BATCH_SIZE
+    get_input "Gradient accumulation steps" "4" GRAD_ACCUM_STEPS
+    get_input "Learning rate" "2e-4" LEARNING_RATE
+    get_input "Minimum learning rate" "2e-5" MIN_LR
+    get_input "Weight decay" "0.01" WEIGHT_DECAY
+    get_input "Warmup ratio" "0.03" WARMUP_RATIO
+    
+    # Sequence Length
+    echo ""
+    print_info "📏 Sequence Configuration"
+    get_input "Maximum sequence length" "2048" MAX_SEQ_LENGTH
+    
+    # LoRA Configuration
+    echo ""
+    print_info "🎛️ LoRA Configuration"
+    get_input "LoRA rank" "16" LORA_RANK
+    get_input "LoRA alpha" "32" LORA_ALPHA
+    get_input "LoRA dropout" "0.05" LORA_DROPOUT
+    
+    # Memory & Performance
+    echo ""
+    print_info "💾 Memory & Performance"
+    select_option "Mixed precision:" "BF16 (recommended)" "FP16" "FP32" MIXED_PRECISION
+    get_input "Data loading workers" "4" NUM_WORKERS
+    select_option "Quantization:" "MXFP4 (default)" "4-bit BNB" "None" QUANTIZATION_TYPE
+    
+    # Advanced Options
+    echo ""
+    echo "Advanced options (press Enter for defaults):"
+    get_input "Max gradient norm" "1.0" MAX_GRAD_NORM
+    get_input "Logging steps" "10" LOGGING_STEPS
+    get_input "Evaluation steps" "100" EVAL_STEPS
+    get_input "Save steps" "500" SAVE_STEPS
+    
+    # Update the custom config file with user's choices
+    update_enhanced_gpt_oss_config
 }
 
 # Function to get custom configuration
@@ -350,6 +507,136 @@ get_custom_config() {
     else
         CONFIG_FILE="config/train_smollm3.py"
     fi
+}
+
+# Function to update enhanced GPT-OSS config with user choices
+update_enhanced_gpt_oss_config() {
+    print_info "Generating enhanced custom GPT-OSS configuration..."
+    
+    # Process mixed precision setting
+    case "$MIXED_PRECISION" in
+        "BF16 (recommended)")
+            FP16="False"
+            BF16="True"
+            ;;
+        "FP16")
+            FP16="True"
+            BF16="False"
+            ;;
+        "FP32")
+            FP16="False"
+            BF16="False"
+            ;;
+    esac
+    
+    # Process quantization setting
+    case "$QUANTIZATION_TYPE" in
+        "MXFP4 (default)")
+            USE_QUANTIZATION="True"
+            QUANTIZATION_CONFIG='{"dequantize": True, "load_in_4bit": False}'
+            ;;
+        "4-bit BNB")
+            USE_QUANTIZATION="True"
+            QUANTIZATION_CONFIG='{"dequantize": False, "load_in_4bit": True, "bnb_4bit_compute_dtype": "bfloat16", "bnb_4bit_use_double_quant": True, "bnb_4bit_quant_type": "nf4"}'
+            ;;
+        "None")
+            USE_QUANTIZATION="False"
+            QUANTIZATION_CONFIG='{"dequantize": False, "load_in_4bit": False}'
+            ;;
+    esac
+    
+    # Create enhanced config file with all user choices
+    cat > "$CONFIG_FILE" << EOF
+"""
+GPT-OSS Enhanced Custom Training Configuration - Generated by launch.sh
+Dataset: $DATASET_NAME ($DATASET_FORMAT)
+Optimized for: ${DATASET_FORMAT} format with full customization
+"""
+
+from config.train_gpt_oss_custom import GPTOSSEnhancedCustomConfig
+
+# Create enhanced config with all customizations
+config = GPTOSSEnhancedCustomConfig(
+    # ============================================================================
+    # DATASET CONFIGURATION
+    # ============================================================================
+    dataset_name="$DATASET_NAME",
+    dataset_split="$DATASET_SPLIT",
+    dataset_format="$DATASET_FORMAT_CODE",
+    input_field="$INPUT_FIELD",
+    target_field=$(if [ -n "$TARGET_FIELD" ]; then echo "\"$TARGET_FIELD\""; else echo "None"; fi),
+    filter_bad_entries=$FILTER_BAD_ENTRIES,
+    max_samples=$(if [ -n "$MAX_SAMPLES" ]; then echo "$MAX_SAMPLES"; else echo "None"; fi),
+    min_length=$MIN_LENGTH,
+    max_length=$(if [ -n "$MAX_LENGTH" ]; then echo "$MAX_LENGTH"; else echo "None"; fi),
+    
+    # ============================================================================
+    # TRAINING HYPERPARAMETERS
+    # ============================================================================
+    num_train_epochs=$NUM_EPOCHS,
+    batch_size=$BATCH_SIZE,
+    gradient_accumulation_steps=$GRAD_ACCUM_STEPS,
+    learning_rate=$LEARNING_RATE,
+    min_lr=$MIN_LR,
+    weight_decay=$WEIGHT_DECAY,
+    warmup_ratio=$WARMUP_RATIO,
+    max_grad_norm=$MAX_GRAD_NORM,
+    
+    # ============================================================================
+    # MODEL CONFIGURATION
+    # ============================================================================
+    max_seq_length=$MAX_SEQ_LENGTH,
+    
+    # ============================================================================
+    # MIXED PRECISION
+    # ============================================================================
+    fp16=$FP16,
+    bf16=$BF16,
+    
+    # ============================================================================
+    # LORA CONFIGURATION
+    # ============================================================================
+    lora_config={
+        "r": $LORA_RANK,
+        "lora_alpha": $LORA_ALPHA,
+        "lora_dropout": $LORA_DROPOUT,
+        "target_modules": "all-linear",
+        "bias": "none",
+        "task_type": "CAUSAL_LM",
+    },
+    
+    # ============================================================================
+    # QUANTIZATION CONFIGURATION
+    # ============================================================================
+    use_quantization=$USE_QUANTIZATION,
+    quantization_config=$QUANTIZATION_CONFIG,
+    
+    # ============================================================================
+    # PERFORMANCE CONFIGURATION
+    # ============================================================================
+    dataloader_num_workers=$NUM_WORKERS,
+    dataloader_pin_memory=True,
+    group_by_length=True,
+    
+    # ============================================================================
+    # LOGGING & EVALUATION
+    # ============================================================================
+    logging_steps=$LOGGING_STEPS,
+    eval_steps=$EVAL_STEPS,
+    save_steps=$SAVE_STEPS,
+    
+    # ============================================================================
+    # RUNTIME CONFIGURATION
+    # ============================================================================
+    experiment_name="$EXPERIMENT_NAME",
+    trackio_url="$TRACKIO_URL",
+    dataset_repo="$TRACKIO_DATASET_REPO",
+    enable_tracking=True,
+)
+EOF
+    
+    print_status "Enhanced GPT-OSS configuration generated successfully!"
+    print_info "Configuration saved to: $CONFIG_FILE"
 }
 
 # Function to create training configuration file
@@ -499,7 +786,7 @@ print_step "Step 2: Training Configuration"
 echo "=================================="
 
 show_training_configs
-select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "GPT-OSS Basic Training" "GPT-OSS H100 Optimized" "GPT-OSS Multilingual Reasoning" "GPT-OSS Memory Optimized" "Custom Configuration" TRAINING_CONFIG_TYPE
+select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "GPT-OSS Basic Training" "GPT-OSS H100 Optimized" "GPT-OSS Multilingual Reasoning" "GPT-OSS Memory Optimized" "GPT-OSS OpenHermes-FR (Recommended)" "GPT-OSS OpenHermes-FR Memory Optimized" "GPT-OSS Custom Dataset" "Custom Configuration" TRAINING_CONFIG_TYPE
 
 get_training_config "$TRAINING_CONFIG_TYPE"
 
@@ -836,13 +1123,25 @@ print_info "Dataset: $DATASET_NAME"
 print_info "Batch size: $BATCH_SIZE"
 print_info "Learning rate: $LEARNING_RATE"
 
+# Step 14.5: Define Output Directory
+print_step "Step 14.5: Output Directory Configuration"
+echo "============================================="
+
+# Define the output directory for training results
+OUTPUT_DIR="./outputs/${EXPERIMENT_NAME}_$(date +%Y%m%d_%H%M%S)"
+print_info "Training output directory: $OUTPUT_DIR"
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+print_status "Output directory created: $OUTPUT_DIR"
+
 # Step 15: Start training
 print_step "Step 15: Starting Training"
 echo "=============================="
 
 print_info "Starting training with configuration: $CONFIG_FILE"
 print_info "Experiment: $EXPERIMENT_NAME"
-print_info "Output: /output-checkpoint"
+print_info "Output: $OUTPUT_DIR"
 print_info "Trackio: $TRACKIO_URL"
 
 # Ensure environment variables are available for training
@@ -852,6 +1151,7 @@ export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+export OUTPUT_DIR="$OUTPUT_DIR"
 
 # Run the appropriate training script based on model type
 if [[ "$MODEL_NAME" == *"gpt-oss"* ]]; then
@@ -859,7 +1159,7 @@ if [[ "$MODEL_NAME" == *"gpt-oss"* ]]; then
     python scripts/training/train_gpt_oss.py \
         --config "$CONFIG_FILE" \
         --experiment-name "$EXPERIMENT_NAME" \
-        --output-dir /output-checkpoint \
+        --output-dir "$OUTPUT_DIR" \
         --trackio-url "$TRACKIO_URL" \
         --trainer-type "$TRAINER_TYPE_LOWER"
 else
@@ -867,7 +1167,7 @@ else
     python scripts/training/train.py \
         --config "$CONFIG_FILE" \
         --experiment-name "$EXPERIMENT_NAME" \
-        --output-dir /output-checkpoint \
+        --output-dir "$OUTPUT_DIR" \
         --trackio-url "$TRACKIO_URL" \
         --trainer-type "$TRAINER_TYPE_LOWER"
 fi
@@ -877,7 +1177,7 @@ print_step "Step 16: Pushing Model to HF Hub"
 echo "====================================="
 
 print_info "Pushing model to: $REPO_NAME"
-print_info "Checkpoint: /output-checkpoint"
+print_info "Checkpoint: $OUTPUT_DIR"
 
 # Ensure environment variables are available for model push
 export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
@@ -886,26 +1186,43 @@ export HF_TOKEN="$HF_TOKEN"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
+export OUTPUT_DIR="$OUTPUT_DIR"
 
 # Run the appropriate push script based on model type
 if [[ "$MODEL_NAME" == *"gpt-oss"* ]]; then
     print_info "Using GPT-OSS specialized push script..."
-    python scripts/model_tonic/push_gpt_oss_to_huggingface.py /output-checkpoint "$REPO_NAME" \
+    python scripts/model_tonic/push_gpt_oss_to_huggingface.py "$OUTPUT_DIR" "$REPO_NAME" \
         --token "$HF_TOKEN" \
         --trackio-url "$TRACKIO_URL" \
         --experiment-name "$EXPERIMENT_NAME" \
         --dataset-repo "$TRACKIO_DATASET_REPO" \
         --author-name "$AUTHOR_NAME" \
-        --model-description "$MODEL_DESCRIPTION"
+        --model-description "$MODEL_DESCRIPTION" \
+        --training-config-type "$TRAINING_CONFIG_TYPE" \
+        --model-name "$MODEL_NAME" \
+        --dataset-name "$DATASET_NAME" \
+        --batch-size "$BATCH_SIZE" \
+        --learning-rate "$LEARNING_RATE" \
+        --max-epochs "$MAX_EPOCHS" \
+        --max-seq-length "$MAX_SEQ_LENGTH" \
+        --trainer-type "$TRAINER_TYPE"
 else
     print_info "Using standard SmolLM3 push script..."
-    python scripts/model_tonic/push_to_huggingface.py /output-checkpoint "$REPO_NAME" \
+    python scripts/model_tonic/push_to_huggingface.py "$OUTPUT_DIR" "$REPO_NAME" \
         --token "$HF_TOKEN" \
         --trackio-url "$TRACKIO_URL" \
         --experiment-name "$EXPERIMENT_NAME" \
         --dataset-repo "$TRACKIO_DATASET_REPO" \
         --author-name "$AUTHOR_NAME" \
-        --model-description "$MODEL_DESCRIPTION"
+        --model-description "$MODEL_DESCRIPTION" \
+        --training-config-type "$TRAINING_CONFIG_TYPE" \
+        --model-name "$MODEL_NAME" \
+        --dataset-name "$DATASET_NAME" \
+        --batch-size "$BATCH_SIZE" \
+        --learning-rate "$LEARNING_RATE" \
+        --max-epochs "$MAX_EPOCHS" \
+        --max-seq-length "$MAX_SEQ_LENGTH" \
+        --trainer-type "$TRAINER_TYPE"
 fi
 
 # Step 16.5: Switch Trackio Space to Read Token (Security)
@@ -1018,7 +1335,7 @@ fi)
 
 ## Files Created
 - Training configuration: \`$CONFIG_FILE\`
-- Model checkpoint: \`/output-checkpoint/\`
+- Model checkpoint: \`$OUTPUT_DIR/\`
 - Training logs: \`training.log\`
 - Summary report: \`training_summary.md\`
 EOF

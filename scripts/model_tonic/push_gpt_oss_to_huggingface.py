@@ -43,8 +43,59 @@ def merge_lora_weights(checkpoint_path, base_model_name, output_path):
     
     return model, tokenizer
 
-def create_gpt_oss_model_card(model_name, experiment_name, trackio_url, dataset_repo, author_name, model_description):
-    """Create a comprehensive model card for GPT-OSS models"""
+def create_gpt_oss_model_card(model_name, experiment_name, trackio_url, dataset_repo, author_name, model_description, training_config_type=None, dataset_name=None, batch_size=None, learning_rate=None, max_epochs=None, max_seq_length=None, trainer_type=None):
+    """Create a comprehensive model card for GPT-OSS models using generate_model_card.py"""
+    
+    try:
+        # Import the model card generator
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__)))
+        from generate_model_card import ModelCardGenerator, create_default_variables
+        
+        # Create generator
+        generator = ModelCardGenerator()
+        
+        # Create variables for the model card
+        variables = create_default_variables()
+        
+        # Update with GPT-OSS specific values
+        variables.update({
+            "repo_name": model_name,
+            "model_name": model_name.split('/')[-1],
+            "experiment_name": experiment_name or "gpt_oss_finetune",
+            "dataset_repo": dataset_repo,
+            "author_name": author_name or "GPT-OSS Fine-tuner",
+            "model_description": model_description or "A fine-tuned version of OpenAI's GPT-OSS-20B model for multilingual reasoning tasks.",
+            "training_config_type": training_config_type or "GPT-OSS Configuration",
+            "base_model": "openai/gpt-oss-20b",
+            "dataset_name": dataset_name or "HuggingFaceH4/Multilingual-Thinking",
+            "trainer_type": trainer_type or "SFTTrainer",
+            "batch_size": str(batch_size) if batch_size else "4",
+            "learning_rate": str(learning_rate) if learning_rate else "2e-4",
+            "max_epochs": str(max_epochs) if max_epochs else "1",
+            "max_seq_length": str(max_seq_length) if max_seq_length else "2048",
+            "hardware_info": "GPU (H100/A100)",
+            "trackio_url": trackio_url or "N/A",
+            "training_loss": "N/A",
+            "validation_loss": "N/A",
+            "perplexity": "N/A",
+            "quantized_models": False
+        })
+        
+        # Generate the model card
+        model_card_content = generator.generate_model_card(variables)
+        
+        print("✅ Model card generated using generate_model_card.py")
+        return model_card_content
+        
+    except Exception as e:
+        print(f"❌ Failed to generate model card with generator: {e}")
+        print("🔄 Falling back to original GPT-OSS model card")
+        return _create_original_gpt_oss_model_card(model_name, experiment_name, trackio_url, dataset_repo, author_name, model_description)
+
+def _create_original_gpt_oss_model_card(model_name, experiment_name, trackio_url, dataset_repo, author_name, model_description):
+    """Create the original GPT-OSS model card as fallback"""
     
     card_content = f"""---
 language:
@@ -196,7 +247,7 @@ This model is licensed under the MIT License.
     
     return card_content
 
-def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experiment_name, dataset_repo, author_name, model_description):
+def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experiment_name, dataset_repo, author_name, model_description, training_config_type=None, model_name=None, dataset_name=None, batch_size=None, learning_rate=None, max_epochs=None, max_seq_length=None, trainer_type=None):
     """Push GPT-OSS model to Hugging Face Hub"""
     
     print("=== GPT-OSS Model Push Pipeline ===")
@@ -230,7 +281,14 @@ def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experi
             trackio_url=trackio_url,
             dataset_repo=dataset_repo,
             author_name=author_name,
-            model_description=model_description
+            model_description=model_description,
+            training_config_type=training_config_type,
+            dataset_name=dataset_name,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            max_epochs=max_epochs,
+            max_seq_length=max_seq_length,
+            trainer_type=trainer_type
         )
         
         # Save model card
@@ -291,6 +349,14 @@ def main():
     parser.add_argument("--dataset-repo", help="Dataset repository")
     parser.add_argument("--author-name", help="Author name")
     parser.add_argument("--model-description", help="Model description")
+    parser.add_argument("--training-config-type", help="Training configuration type")
+    parser.add_argument("--model-name", help="Base model name")
+    parser.add_argument("--dataset-name", help="Dataset name")
+    parser.add_argument("--batch-size", help="Batch size")
+    parser.add_argument("--learning-rate", help="Learning rate")
+    parser.add_argument("--max-epochs", help="Maximum epochs")
+    parser.add_argument("--max-seq-length", help="Maximum sequence length")
+    parser.add_argument("--trainer-type", help="Trainer type")
     
     args = parser.parse_args()
     
@@ -308,7 +374,15 @@ def main():
         experiment_name=experiment_name,
         dataset_repo=dataset_repo,
         author_name=author_name,
-        model_description=model_description
+        model_description=model_description,
+        training_config_type=args.training_config_type,
+        model_name=args.model_name,
+        dataset_name=args.dataset_name,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        max_epochs=args.max_epochs,
+        max_seq_length=args.max_seq_length,
+        trainer_type=args.trainer_type
     )
     
     sys.exit(0 if success else 1)

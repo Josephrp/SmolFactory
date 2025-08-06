@@ -62,7 +62,15 @@ class HuggingFacePusher:
         dataset_repo: Optional[str] = None,
         hf_token: Optional[str] = None,
         author_name: Optional[str] = None,
-        model_description: Optional[str] = None
+        model_description: Optional[str] = None,
+        training_config_type: Optional[str] = None,
+        model_name: Optional[str] = None,
+        dataset_name: Optional[str] = None,
+        batch_size: Optional[str] = None,
+        learning_rate: Optional[str] = None,
+        max_epochs: Optional[str] = None,
+        max_seq_length: Optional[str] = None,
+        trainer_type: Optional[str] = None
     ):
         self.model_path = Path(model_path)
         self.repo_name = repo_name
@@ -72,6 +80,16 @@ class HuggingFacePusher:
         self.experiment_name = experiment_name
         self.author_name = author_name
         self.model_description = model_description
+        
+        # Training configuration details for model card generation
+        self.training_config_type = training_config_type
+        self.model_name = model_name  
+        self.dataset_name = dataset_name
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.max_epochs = max_epochs
+        self.max_seq_length = max_seq_length
+        self.trainer_type = trainer_type
         
         # HF Datasets configuration
         self.dataset_repo = dataset_repo or os.getenv('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
@@ -156,9 +174,53 @@ class HuggingFacePusher:
         return True
     
     def create_model_card(self, training_config: Dict[str, Any], results: Dict[str, Any]) -> str:
-        """Create a comprehensive model card using the simple method to avoid YAML issues"""
-        # Always use the simple model card to avoid YAML formatting issues
-        return self._create_simple_model_card(training_config, results)
+        """Create a comprehensive model card using the generate_model_card.py script"""
+        try:
+            # Import the model card generator
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__)))
+            from generate_model_card import ModelCardGenerator, create_default_variables
+            
+            # Create generator
+            generator = ModelCardGenerator()
+            
+            # Create variables for the model card
+            variables = create_default_variables()
+            
+            # Update with actual values
+            variables.update({
+                "repo_name": self.repo_name,
+                "model_name": self.repo_name.split('/')[-1],
+                "experiment_name": self.experiment_name or "model_push",
+                "dataset_repo": self.dataset_repo,
+                "author_name": self.author_name or "Model Author",
+                "model_description": self.model_description or "A fine-tuned version of SmolLM3-3B for improved text generation capabilities.",
+                "training_config_type": self.training_config_type or "Custom Configuration",
+                "base_model": self.model_name or "HuggingFaceTB/SmolLM3-3B",
+                "dataset_name": self.dataset_name or "Custom Dataset",
+                "trainer_type": self.trainer_type or "SFTTrainer",
+                "batch_size": str(self.batch_size) if self.batch_size else "8",
+                "learning_rate": str(self.learning_rate) if self.learning_rate else "5e-6",
+                "max_epochs": str(self.max_epochs) if self.max_epochs else "3",
+                "max_seq_length": str(self.max_seq_length) if self.max_seq_length else "2048",
+                "hardware_info": self._get_hardware_info(),
+                "trackio_url": self.trackio_url or "N/A",
+                "training_loss": str(results.get('train_loss', 'N/A')),
+                "validation_loss": str(results.get('eval_loss', 'N/A')),
+                "perplexity": str(results.get('perplexity', 'N/A')),
+                "quantized_models": False  # Set to True if quantized models are available
+            })
+            
+            # Generate the model card
+            model_card_content = generator.generate_model_card(variables)
+            
+            logger.info("✅ Model card generated using generate_model_card.py")
+            return model_card_content
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate model card with generator: {e}")
+            logger.info("🔄 Falling back to simple model card")
+            return self._create_simple_model_card(training_config, results)
     
     def _create_simple_model_card(self, training_config: Dict[str, Any], results: Dict[str, Any]) -> str:
         """Create a simple model card without complex YAML to avoid formatting issues"""
@@ -531,6 +593,14 @@ def parse_args():
     parser.add_argument('--dataset-repo', type=str, default=None, help='HF Dataset repository for experiment storage')
     parser.add_argument('--author-name', type=str, default=None, help='Author name for model card')
     parser.add_argument('--model-description', type=str, default=None, help='Model description for model card')
+    parser.add_argument('--training-config-type', type=str, default=None, help='Training configuration type')
+    parser.add_argument('--model-name', type=str, default=None, help='Base model name')
+    parser.add_argument('--dataset-name', type=str, default=None, help='Dataset name')
+    parser.add_argument('--batch-size', type=str, default=None, help='Batch size')
+    parser.add_argument('--learning-rate', type=str, default=None, help='Learning rate')
+    parser.add_argument('--max-epochs', type=str, default=None, help='Maximum epochs')
+    parser.add_argument('--max-seq-length', type=str, default=None, help='Maximum sequence length')
+    parser.add_argument('--trainer-type', type=str, default=None, help='Trainer type')
     
     return parser.parse_args()
 
@@ -558,7 +628,15 @@ def main():
             dataset_repo=args.dataset_repo,
             hf_token=args.hf_token,
             author_name=args.author_name,
-            model_description=args.model_description
+            model_description=args.model_description,
+            training_config_type=args.training_config_type,
+            model_name=args.model_name,
+            dataset_name=args.dataset_name,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            max_epochs=args.max_epochs,
+            max_seq_length=args.max_seq_length,
+            trainer_type=args.trainer_type
         )
         
         # Push model
