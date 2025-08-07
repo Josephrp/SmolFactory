@@ -831,8 +831,11 @@ get_input "Experiment name" "smollm3_finetune_$(date +%Y%m%d_%H%M%S)" EXPERIMENT
 
 # Configure model repository name (customizable)
 print_info "Setting up model repository name..."
-DEFAULT_REPO_NAME="$HF_USERNAME/smolfactory-$(date +%Y%m%d)"
-get_input "Model repository name (Hugging Face format: username/repo)" "$DEFAULT_REPO_NAME" REPO_NAME
+# Ask only for short repo name; we'll prefix with username automatically
+DEFAULT_SHORT_REPO="smolfactory-$(date +%Y%m%d)"
+get_input "Model repository name (repo only, no username/)" "$DEFAULT_SHORT_REPO" REPO_SHORT
+# Build full repo id using detected username
+REPO_NAME="$HF_USERNAME/$REPO_SHORT"
 print_status "Model repository: $REPO_NAME"
 
 # Automatically create dataset repository
@@ -1311,10 +1314,10 @@ export HF_USERNAME="$HF_USERNAME"
         --hf-username "$HF_USERNAME" \
         --model-id "$DEMO_MODEL_ID" \
         --subfolder "$DEMO_SUBFOLDER" \
-        --space-name "${REPO_NAME}-demo"
+        --space-name "${REPO_SHORT}-demo"
     
     if [ $? -eq 0 ]; then
-        DEMO_SPACE_URL="https://huggingface.co/spaces/$HF_USERNAME/${REPO_NAME}-demo"
+        DEMO_SPACE_URL="https://huggingface.co/spaces/$HF_USERNAME/${REPO_SHORT}-demo"
         print_status "✅ Demo space deployed successfully: $DEMO_SPACE_URL"
     else
         print_warning "⚠️ Demo space deployment failed, but continuing with pipeline"
@@ -1385,7 +1388,7 @@ echo "📈 Trackio: $TRACKIO_URL"
 echo "📋 Experiment: $EXPERIMENT_NAME"
 echo "📊 Dataset: https://huggingface.co/datasets/$TRACKIO_DATASET_REPO"
 $(if [ "$DEPLOY_DEMO" = "y" ] || [ "$DEPLOY_DEMO" = "Y" ]; then
-echo "🎮 Demo: https://huggingface.co/spaces/$HF_USERNAME/${REPO_NAME}-demo"
+echo "🎮 Demo: https://huggingface.co/spaces/$HF_USERNAME/${REPO_SHORT}-demo"
 fi)
 echo ""
 echo "📋 Summary report saved to: training_summary.md"

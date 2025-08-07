@@ -42,9 +42,10 @@ class DemoSpaceDeployer:
                  demo_type: Optional[str] = None):
         self.hf_token = hf_token
         self.hf_username = hf_username
-        self.model_id = model_id
+        # Allow passing just a repo name without username and auto-prefix
+        self.model_id = model_id if "/" in model_id else f"{hf_username}/{model_id}"
         self.subfolder = subfolder
-        self.space_name = space_name or f"{model_id.split('/')[-1]}-demo"
+        self.space_name = space_name or f"{self.model_id.split('/')[-1]}-demo"
         self.space_id = f"{hf_username}/{self.space_name}"
         self.space_url = f"https://huggingface.co/spaces/{self.space_id}"
         

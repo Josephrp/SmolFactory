@@ -537,16 +537,38 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     # Create SFT configuration
     sft_config = create_sft_config(config, output_dir)
     
-    # Create trainer
+    # Create trainer with version-robust kwargs
     print("Creating SFT trainer...")
-    trainer = SFTTrainer(
-        model=peft_model,
-        args=sft_config,
-        train_dataset=dataset,
-        tokenizer=tokenizer,
-        dataset_text_field="text",
-        max_seq_length=getattr(config, 'max_seq_length', 2048),
-    )
+    try:
+        sft_sig = inspect.signature(SFTTrainer.__init__)
+        sft_params = set(sft_sig.parameters.keys())
+    except Exception:
+        sft_params = {"model", "args", "train_dataset", "tokenizer", "dataset_text_field", "max_seq_length"}
+
+    sft_kwargs = {
+        "model": peft_model,
+        "args": sft_config,
+        "train_dataset": dataset,
+    }
+
+    # Prefer passing tokenizer if supported; otherwise try processing_class
+    if "tokenizer" in sft_params:
+        sft_kwargs["tokenizer"] = tokenizer
+    elif "processing_class" in sft_params:
+        sft_kwargs["processing_class"] = tokenizer
+
+    # Pass dataset text field if supported (we produced a 'text' column)
+    if "dataset_text_field" in sft_params:
+        sft_kwargs["dataset_text_field"] = "text"
+
+    # Pass max sequence length if supported
+    if "max_seq_length" in sft_params:
+        sft_kwargs["max_seq_length"] = getattr(config, 'max_seq_length', 2048)
+
+    # Remove any None values
+    sft_kwargs = {k: v for k, v in sft_kwargs.items() if v is not None}
+
+    trainer = SFTTrainer(**sft_kwargs)
     
     # Start training
     print("Starting GPT-OSS training...")

@@ -73,6 +73,7 @@ class HuggingFacePusher:
         trainer_type: Optional[str] = None
     ):
         self.model_path = Path(model_path)
+        # Original user input (may be just the repo name without username)
         self.repo_name = repo_name
         self.token = token or hf_token or os.getenv('HF_TOKEN')
         self.private = private
@@ -101,6 +102,9 @@ class HuggingFacePusher:
         else:
             raise ImportError("huggingface_hub is required. Install with: pip install huggingface_hub")
         
+        # Resolve the full repo id (username/repo) if user only provided repo name
+        self.repo_id = self._resolve_repo_id(self.repo_name)
+
         # Initialize monitoring if available
         self.monitor = None
         if MONITORING_AVAILABLE:
@@ -112,25 +116,60 @@ class HuggingFacePusher:
                 dataset_repo=self.dataset_repo
             )
         
-        logger.info(f"Initialized HuggingFacePusher for {repo_name}")
+        logger.info(f"Initialized HuggingFacePusher for {self.repo_id}")
         logger.info(f"Dataset repository: {self.dataset_repo}")
+
+    def _resolve_repo_id(self, repo_name: str) -> str:
+        """Return a fully-qualified repo id in the form username/repo.
+
+        If the provided name already contains a '/', it is returned unchanged.
+        Otherwise, we attempt to derive the username from the authenticated token
+        or from the HF_USERNAME environment variable.
+        """
+        try:
+            if "/" in repo_name:
+                return repo_name
+
+            # Need a username. Prefer API whoami(), fallback to env HF_USERNAME
+            username: Optional[str] = None
+            if self.token:
+                try:
+                    user_info = self.api.whoami()
+                    username = user_info.get("name") or user_info.get("username")
+                except Exception:
+                    username = None
+
+            if not username:
+                username = os.getenv("HF_USERNAME")
+
+            if not username:
+                raise ValueError(
+                    "Username could not be determined. Provide a token or set HF_USERNAME, "
+                    "or pass a fully-qualified repo id 'username/repo'."
+                )
+
+            return f"{username}/{repo_name}"
+        except Exception as resolve_error:
+            logger.error(f"Failed to resolve full repo id for '{repo_name}': {resolve_error}")
+            # Fall back to provided value (may fail later at create/upload)
+            return repo_name
     
     def create_repository(self) -> bool:
         """Create the Hugging Face repository"""
         try:
-            logger.info(f"Creating repository: {self.repo_name}")
+            logger.info(f"Creating repository: {self.repo_id}")
             
             # Create repository with timeout handling
             try:
                 # Create repository
                 create_repo(
-                    repo_id=self.repo_name,
+                    repo_id=self.repo_id,
                     token=self.token,
                     private=self.private,
                     exist_ok=True
                 )
                 
-                logger.info(f"✅ Repository created: https://huggingface.co/{self.repo_name}")
+                logger.info(f"✅ Repository created: https://huggingface.co/{self.repo_id}")
                 return True
                 
             except Exception as e:
@@ -189,8 +228,8 @@ class HuggingFacePusher:
             
             # Update with actual values
             variables.update({
-                "repo_name": self.repo_name,
-                "model_name": self.repo_name.split('/')[-1],
+                "repo_name": self.repo_id,
+                "model_name": self.repo_id.split('/')[-1],
                 "experiment_name": self.experiment_name or "model_push",
                 "dataset_repo": self.dataset_repo,
                 "author_name": self.author_name or "Model Author",
@@ -238,7 +277,7 @@ pipeline_tag: text-generation
 base_model: HuggingFaceTB/SmolLM3-3B
 ---
 
-# {self.repo_name.split('/')[-1]}
+# {self.repo_id.split('/')[-1]}
 
 This is a fine-tuned SmolLM3 model based on the HuggingFaceTB/SmolLM3-3B architecture.
 
@@ -269,8 +308,8 @@ This is a fine-tuned SmolLM3 model based on the HuggingFaceTB/SmolLM3-3B archite
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Load model and tokenizer
-model = AutoModelForCausalLM.from_pretrained("{self.repo_name}")
-tokenizer = AutoTokenizer.from_pretrained("{self.repo_name}")
+model = AutoModelForCausalLM.from_pretrained("{self.repo_id}")
+tokenizer = AutoTokenizer.from_pretrained("{self.repo_id}")
 
 # Generate text
 inputs = tokenizer("Hello, how are you?", return_tensors="pt")
@@ -346,7 +385,7 @@ This model is licensed under the Apache 2.0 License.
                         upload_file(
                             path_or_fileobj=str(file_path),
                             path_in_repo=remote_path,
-                            repo_id=self.repo_name,
+                            repo_id=self.repo_id,
                             token=self.token
                         )
                         logger.info(f"✅ Uploaded {relative_path}")
@@ -381,7 +420,7 @@ This model is licensed under the Apache 2.0 License.
                     upload_file(
                         path_or_fileobj=str(file_path),
                         path_in_repo=f"training_results/{file_name}",
-                        repo_id=self.repo_name,
+                        repo_id=self.repo_id,
                         token=self.token
                     )
             
@@ -397,7 +436,7 @@ This model is licensed under the Apache 2.0 License.
         try:
             logger.info("Creating README.md...")
             
-            readme_content = f"""# {self.repo_name.split('/')[-1]}
+            readme_content = f"""# {self.repo_id.split('/')[-1]}
 
 A fine-tuned SmolLM3 model for text generation tasks.
 
@@ -406,8 +445,8 @@ A fine-tuned SmolLM3 model for text generation tasks.
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-model = AutoModelForCausalLM.from_pretrained("{self.repo_name}")
-tokenizer = AutoTokenizer.from_pretrained("{self.repo_name}")
+model = AutoModelForCausalLM.from_pretrained("{self.repo_id}")
+tokenizer = AutoTokenizer.from_pretrained("{self.repo_id}")
 
 # Generate text
 text = "Hello, how are you?"
@@ -463,7 +502,7 @@ MIT License
                 path_or_fileobj=str(readme_path),
                 path_in_repo="README.md",
                 token=self.token,
-                repo_id=self.repo_name
+                repo_id=self.repo_id
             )
             
             # Clean up
@@ -483,7 +522,7 @@ MIT License
                 # Log to Trackio
                 self.monitor.log_metrics({
                     "push_action": action,
-                    "repo_name": self.repo_name,
+                    "repo_name": self.repo_id,
                     "model_size_gb": self._get_model_size(),
                     "dataset_repo": self.dataset_repo,
                     **details
@@ -492,7 +531,7 @@ MIT License
                 # Log training summary
                 self.monitor.log_training_summary({
                     "model_push": True,
-                    "model_repo": self.repo_name,
+                    "model_repo": self.repo_id,
                     "dataset_repo": self.dataset_repo,
                     "push_date": datetime.now().isoformat(),
                     **details
@@ -505,7 +544,7 @@ MIT License
     def push_model(self, training_config: Optional[Dict[str, Any]] = None, 
                    results: Optional[Dict[str, Any]] = None) -> bool:
         """Complete model push process with HF Datasets integration"""
-        logger.info(f"🚀 Starting model push to {self.repo_name}")
+        logger.info(f"🚀 Starting model push to {self.repo_id}")
         logger.info(f"📊 Dataset repository: {self.dataset_repo}")
         
         # Validate model path
@@ -533,7 +572,7 @@ MIT License
             upload_file(
                 path_or_fileobj=str(model_card_path),
                 path_in_repo="README.md",
-                repo_id=self.repo_name,
+                repo_id=self.repo_id,
                 token=self.token
             )
         finally:
@@ -556,7 +595,7 @@ MIT License
             "results": results
         })
         
-        logger.info(f"🎉 Model successfully pushed to: https://huggingface.co/{self.repo_name}")
+        logger.info(f"🎉 Model successfully pushed to: https://huggingface.co/{self.repo_id}")
         logger.info(f"📊 Experiment data stored in: {self.dataset_repo}")
         return True
     
@@ -582,7 +621,7 @@ def parse_args():
     
     # Required arguments
     parser.add_argument('model_path', type=str, help='Path to trained model directory')
-    parser.add_argument('repo_name', type=str, help='Hugging Face repository name (username/repo-name)')
+    parser.add_argument('repo_name', type=str, help='Hugging Face repository name (repo-name). Username will be auto-detected from your token.')
     
     # Optional arguments
     parser.add_argument('--token', type=str, default=None, help='Hugging Face token')

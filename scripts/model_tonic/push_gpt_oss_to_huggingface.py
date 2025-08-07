@@ -247,12 +247,35 @@ This model is licensed under the MIT License.
     
     return card_content
 
+def _resolve_repo_id(repo_name: str, hf_token: str) -> str:
+    """Resolve to username/repo if only repo name was provided."""
+    try:
+        if "/" in repo_name:
+            return repo_name
+        from huggingface_hub import HfApi
+        username = None
+        if hf_token:
+            try:
+                api = HfApi(token=hf_token)
+                info = api.whoami()
+                username = info.get("name") or info.get("username")
+            except Exception:
+                username = None
+        if not username:
+            username = os.getenv("HF_USERNAME")
+        if not username:
+            raise ValueError("Could not determine HF username. Set HF_USERNAME or pass username/repo.")
+        return f"{username}/{repo_name}"
+    except Exception:
+        return repo_name
+
 def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experiment_name, dataset_repo, author_name, model_description, training_config_type=None, model_name=None, dataset_name=None, batch_size=None, learning_rate=None, max_epochs=None, max_seq_length=None, trainer_type=None):
     """Push GPT-OSS model to Hugging Face Hub"""
     
     print("=== GPT-OSS Model Push Pipeline ===")
     print(f"Checkpoint: {checkpoint_path}")
-    print(f"Repository: {repo_name}")
+    full_repo_id = _resolve_repo_id(repo_name, hf_token)
+    print(f"Repository: {full_repo_id}")
     print(f"Experiment: {experiment_name}")
     print(f"Author: {author_name}")
     
@@ -276,7 +299,7 @@ def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experi
         # Create model card
         print("Creating model card...")
         model_card_content = create_gpt_oss_model_card(
-            model_name=repo_name,
+            model_name=full_repo_id,
             experiment_name=experiment_name,
             trackio_url=trackio_url,
             dataset_repo=dataset_repo,
@@ -297,18 +320,18 @@ def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experi
             f.write(model_card_content)
         
         # Push to Hugging Face Hub
-        print(f"Pushing model to: {repo_name}")
+        print(f"Pushing model to: {full_repo_id}")
         
         # Set HF token
         os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
         
         # Push using transformers
         from huggingface_hub import HfApi
-        api = HfApi()
+        api = HfApi(token=hf_token)
         
         # Create repository if it doesn't exist
         try:
-            api.create_repo(repo_name, private=False, exist_ok=True)
+            api.create_repo(full_repo_id, private=False, exist_ok=True)
         except Exception as e:
             print(f"Warning: Could not create repository: {e}")
         
@@ -316,12 +339,12 @@ def push_gpt_oss_model(checkpoint_path, repo_name, hf_token, trackio_url, experi
         print("Uploading model files...")
         api.upload_folder(
             folder_path=temp_output,
-            repo_id=repo_name,
+            repo_id=full_repo_id,
             repo_type="model"
         )
         
         print("✅ GPT-OSS model pushed successfully!")
-        print(f"Model URL: https://huggingface.co/{repo_name}")
+        print(f"Model URL: https://huggingface.co/{full_repo_id}")
         
         # Clean up
         import shutil
