@@ -13,6 +13,15 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer, SFTConfig
 from datasets import load_dataset
+from pathlib import Path
+
+# Ensure project root and config package are importable for configs that do `from config...` imports
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+config_dir = project_root / "config"
+if str(config_dir) not in sys.path:
+    sys.path.insert(0, str(config_dir))
 
 def load_gpt_oss_model_and_tokenizer(config):
     """Load GPT-OSS model and tokenizer with proper configuration"""
