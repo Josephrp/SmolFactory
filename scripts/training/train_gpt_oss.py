@@ -8,6 +8,7 @@ Based on the GPT-OSS fine-tuning tutorial
 import os
 import sys
 import argparse
+import inspect
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from peft import LoraConfig, get_peft_model
@@ -386,62 +387,72 @@ def create_sft_config(config, output_dir):
     print(f"  • Gradient accumulation: {gradient_accumulation_steps}")
     print(f"  • Effective batch size: {per_device_train_batch_size * gradient_accumulation_steps}")
     
-    sft_config = TrainingArguments(
+    # Build kwargs dynamically to be compatible across transformers versions
+    ta_kwargs = {
         # Training duration
-        num_train_epochs=num_train_epochs,
-        max_steps=max_steps,
-        
+        "num_train_epochs": num_train_epochs,
+        "max_steps": max_steps,
         # Learning rate
-        learning_rate=learning_rate,
-        lr_scheduler_type=lr_scheduler_type,
-        warmup_ratio=warmup_ratio,
-        warmup_steps=warmup_steps,
-        
+        "learning_rate": learning_rate,
+        "lr_scheduler_type": lr_scheduler_type,
+        "warmup_ratio": warmup_ratio,
+        "warmup_steps": warmup_steps,
         # Batch configuration
-        per_device_train_batch_size=per_device_train_batch_size,
-        per_device_eval_batch_size=per_device_eval_batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        
+        "per_device_train_batch_size": per_device_train_batch_size,
+        "per_device_eval_batch_size": per_device_eval_batch_size,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
         # Model configuration
-        gradient_checkpointing=getattr(config, 'use_gradient_checkpointing', True),
-        
+        "gradient_checkpointing": getattr(config, 'use_gradient_checkpointing', True),
         # Mixed precision
-        fp16=fp16,
-        bf16=bf16,
-        
+        "fp16": fp16,
+        "bf16": bf16,
         # Regularization
-        weight_decay=weight_decay,
-        max_grad_norm=max_grad_norm,
-        
-        # Evaluation
-        evaluation_strategy=eval_strategy,
-        eval_steps=eval_steps,
-        
+        "weight_decay": weight_decay,
+        "max_grad_norm": max_grad_norm,
+        # Evaluation (name may vary across versions)
+        "evaluation_strategy": eval_strategy,
+        "eval_steps": eval_steps,
         # Logging
-        logging_steps=logging_steps,
-        
+        "logging_steps": logging_steps,
         # Saving
-        save_strategy=save_strategy,
-        save_steps=save_steps,
-        save_total_limit=save_total_limit,
-        
+        "save_strategy": save_strategy,
+        "save_steps": save_steps,
+        "save_total_limit": save_total_limit,
         # Output
-        output_dir=output_dir,
-        
+        "output_dir": output_dir,
         # Data loading
-        dataloader_num_workers=getattr(config, 'dataloader_num_workers', 4),
-        dataloader_pin_memory=getattr(config, 'dataloader_pin_memory', True),
-        
+        "dataloader_num_workers": getattr(config, 'dataloader_num_workers', 4),
+        "dataloader_pin_memory": getattr(config, 'dataloader_pin_memory', True),
         # Performance
-        group_by_length=getattr(config, 'group_by_length', True),
-        remove_unused_columns=getattr(config, 'remove_unused_columns', True),
-        
+        "group_by_length": getattr(config, 'group_by_length', True),
+        "remove_unused_columns": getattr(config, 'remove_unused_columns', True),
         # HuggingFace Hub
-        push_to_hub=push_to_hub,
-        
+        "push_to_hub": push_to_hub,
         # Monitoring
-        report_to=("trackio" if getattr(config, 'enable_tracking', False) else None),
-    )
+        "report_to": ("trackio" if getattr(config, 'enable_tracking', False) else None),
+    }
+
+    # Adapt to transformers versions where 'evaluation_strategy' was renamed
+    try:
+        ta_sig = inspect.signature(TrainingArguments.__init__)
+        param_names = set(ta_sig.parameters.keys())
+    except Exception:
+        param_names = set()
+
+    if "evaluation_strategy" not in param_names and "eval_strategy" in param_names:
+        # Move value to 'eval_strategy'
+        ta_kwargs["eval_strategy"] = ta_kwargs.pop("evaluation_strategy")
+    elif "evaluation_strategy" not in param_names:
+        # If neither is supported, drop it
+        ta_kwargs.pop("evaluation_strategy", None)
+
+    # Remove any kwargs not supported by current transformers version
+    if param_names:
+        unsupported = [k for k in ta_kwargs.keys() if k not in param_names]
+        for k in unsupported:
+            ta_kwargs.pop(k, None)
+
+    sft_config = TrainingArguments(**ta_kwargs)
     
     return sft_config
 
