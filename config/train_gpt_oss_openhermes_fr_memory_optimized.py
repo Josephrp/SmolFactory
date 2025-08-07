@@ -144,6 +144,9 @@ config = GPTOSSEnhancedCustomConfig(
     # Evaluation memory optimization
     eval_accumulation_steps=4,              # Accumulate eval outputs to save memory
     eval_batch_size=1,                      # Smaller eval batch size
+    # Split ratios for automatic validation/test creation
+    eval_ratio=0.001,
+    test_ratio=0.0005,
     
     # ============================================================================
     # GPT-OSS HARMONY FORMAT OPTIMIZATION

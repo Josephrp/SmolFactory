@@ -62,6 +62,9 @@ class GPTOSSH100OptimizedConfig:
     metric_for_best_model: str = "eval_loss"
     greater_is_better: bool = False
     load_best_model_at_end: bool = True
+    eval_accumulation_steps: Optional[int] = None
+    eval_ratio: float = 0.01
+    test_ratio: float = 0.01
     
     # Data configuration
     dataset_name: str = "HuggingFaceH4/Multilingual-Thinking"
@@ -104,6 +107,10 @@ class GPTOSSH100OptimizedConfig:
     dataloader_num_workers: int = 8  # More workers for H100
     dataloader_pin_memory: bool = True
     dataloader_prefetch_factor: int = 4  # Increased prefetch
+    tf32: Optional[bool] = None
+    chosen_field: Optional[str] = None
+    rejected_field: Optional[str] = None
+    dpo_beta: float = 0.1
     
     # Memory optimizations for H100
     max_grad_norm: float = 1.0

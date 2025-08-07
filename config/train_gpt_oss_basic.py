@@ -62,6 +62,9 @@ class GPTOSSBasicConfig:
     metric_for_best_model: str = "eval_loss"
     greater_is_better: bool = False
     load_best_model_at_end: bool = True
+    eval_accumulation_steps: Optional[int] = None
+    eval_ratio: float = 0.01
+    test_ratio: float = 0.01
     
     # Data configuration
     dataset_name: str = "HuggingFaceH4/Multilingual-Thinking"
@@ -99,6 +102,13 @@ class GPTOSSBasicConfig:
     
     # GPT-OSS specific model kwargs
     model_kwargs: dict = None
+    # Performance and precision extras
+    dataloader_prefetch_factor: int = 2
+    tf32: Optional[bool] = None
+    # DPO preference training fields
+    chosen_field: Optional[str] = None
+    rejected_field: Optional[str] = None
+    dpo_beta: float = 0.1
     
     def __post_init__(self):
         if self.chat_template_kwargs is None:

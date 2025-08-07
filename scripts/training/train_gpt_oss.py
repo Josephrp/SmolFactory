@@ -13,6 +13,10 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer
+try:
+    from trl import DPOTrainer
+except Exception:  # pragma: no cover - optional import depending on TRL version
+    DPOTrainer = None
 from datasets import load_dataset
 from pathlib import Path
 
@@ -214,6 +218,10 @@ def format_gpt_oss_harmony(prompt, completion, add_eos_token=True):
     
     return harmony_text
 
+def format_gpt_oss_harmony_prompt(prompt: str) -> str:
+    """Prefix-only Harmony prompt up to assistant content marker for DPO."""
+    return f"<|start|>user<|message|>{prompt}<|end|><|start|>assistant<|channel|>final<|message|>"
+
 def process_dataset_format(dataset, config):
     """Process dataset based on format configuration with exact GPT-OSS Harmony compliance"""
     
@@ -224,11 +232,53 @@ def process_dataset_format(dataset, config):
     field_separator = getattr(config, 'field_separator', '\n\n### Response:\n')
     add_eos_token = getattr(config, 'add_eos_token', True)
     use_harmony_format = getattr(config, 'use_harmony_format', True)
+    trainer_type = getattr(config, 'trainer_type', 'sft')
     
     print(f"Processing dataset format: {dataset_format}")
     print(f"Input field: {input_field}, Target field: {target_field}")
     print(f"GPT-OSS Harmony Format: {'Enabled' if use_harmony_format else 'Disabled'}")
     
+    # Preference-format for DPO training (chosen/rejected pairs)
+    if trainer_type == 'dpo':
+        chosen_field = getattr(config, 'chosen_field', None)
+        rejected_field = getattr(config, 'rejected_field', None)
+
+        if dataset_format == 'preference':
+            # Expect columns present; optionally reformat to ensure only necessary columns
+            def id_map(example):
+                prompt_val = example.get(input_field, '')
+                chosen_val = example.get('chosen', example.get(chosen_field or 'chosen', ''))
+                rejected_val = example.get('rejected', example.get(rejected_field or 'rejected', ''))
+                if use_harmony_format:
+                    prompt_text = format_gpt_oss_harmony_prompt(prompt_val)
+                    chosen_text = (chosen_val or '') + ("<|return|>" if add_eos_token else '')
+                    rejected_text = (rejected_val or '') + ("<|return|>" if add_eos_token else '')
+                    return {"prompt": prompt_text, "chosen": chosen_text, "rejected": rejected_text}
+                return {"prompt": prompt_val, "chosen": chosen_val, "rejected": rejected_val}
+
+            keep_cols = [c for c in ['prompt', 'chosen', 'rejected'] if c in dataset.column_names]
+            dataset = dataset.map(id_map, remove_columns=dataset.column_names if keep_cols else dataset.column_names)
+            return dataset
+
+        # Custom preference mapping via configured field names
+        if chosen_field and rejected_field:
+            def to_pref(example):
+                prompt_val = example.get(input_field, '')
+                chosen_val = example.get(chosen_field, '')
+                rejected_val = example.get(rejected_field, '')
+                if use_harmony_format:
+                    prompt_text = format_gpt_oss_harmony_prompt(prompt_val)
+                    chosen_text = (chosen_val or '') + ("<|return|>" if add_eos_token else '')
+                    rejected_text = (rejected_val or '') + ("<|return|>" if add_eos_token else '')
+                    return {"prompt": prompt_text, "chosen": chosen_text, "rejected": rejected_text}
+                return {"prompt": prompt_val, "chosen": chosen_val, "rejected": rejected_val}
+
+            dataset = dataset.map(to_pref, remove_columns=dataset.column_names)
+            return dataset
+
+        # If we reach here, we don't have required fields for DPO
+        raise ValueError("DPO training requires preference data. Please set dataset_format='preference' with 'prompt', 'chosen', 'rejected' columns, or specify 'chosen_field' and 'rejected_field' in the config.")
+
     if dataset_format == "openhermes_fr":
         # Process OpenHermes-FR format: prompt + accepted_completion
         def format_openhermes_fr(example):
@@ -316,6 +366,72 @@ def process_dataset_format(dataset, config):
         print("Using custom dataset format - no automatic processing")
     
     return dataset
+
+def split_dataset(dataset, config):
+    """Create train/validation/test splits from a single dataset.
+    Defaults to 1% eval and 1% test if not specified.
+    """
+    from datasets import Dataset
+
+    if not isinstance(dataset, Dataset):
+        # If it's already a DatasetDict, try to use its splits
+        try:
+            train_split = dataset["train"]
+            eval_split = dataset.get("validation") or dataset.get("eval")
+            test_split = dataset.get("test")
+            return train_split, eval_split, test_split
+        except Exception:
+            pass
+
+    eval_ratio = getattr(config, 'eval_ratio', 0.01)
+    test_ratio = getattr(config, 'test_ratio', 0.01)
+
+    # Clamp ratios to sane bounds
+    try:
+        eval_ratio = max(0.0, float(eval_ratio))
+        test_ratio = max(0.0, float(test_ratio))
+        if eval_ratio + test_ratio >= 0.9:
+            # Avoid extreme splits; cap combined at 0.2
+            scale = 0.2 / max(1e-9, (eval_ratio + test_ratio))
+            eval_ratio *= scale
+            test_ratio *= scale
+    except Exception:
+        eval_ratio, test_ratio = 0.01, 0.01
+
+    # No eval/test requested
+    if eval_ratio <= 0 and test_ratio <= 0:
+        return dataset, None, None
+
+    ds_shuffled = dataset.shuffle(seed=42)
+
+    # First carve out test split
+    if test_ratio > 0:
+        split1 = ds_shuffled.train_test_split(test_size=test_ratio, seed=42)
+        train_part = split1["train"]
+        test_split = split1["test"]
+    else:
+        train_part = ds_shuffled
+        test_split = None
+
+    # Then carve out eval from remaining train
+    if eval_ratio > 0:
+        remaining_fraction = 1.0 - test_ratio
+        # Convert global eval fraction to fraction of remaining pool
+        relative_eval = eval_ratio / remaining_fraction if remaining_fraction > 0 else eval_ratio
+        split2 = train_part.train_test_split(test_size=relative_eval, seed=42)
+        train_split = split2["train"]
+        eval_split = split2["test"]
+    else:
+        train_split = train_part
+        eval_split = None
+
+    # Log sizes
+    try:
+        print(f"Created splits -> train: {len(train_split)}, eval: {len(eval_split) if eval_split else 0}, test: {len(test_split) if test_split else 0}")
+    except Exception:
+        pass
+
+    return train_split, eval_split, test_split
 
 def setup_trackio_tracking(config):
     """Setup Trackio tracking if enabled"""
@@ -530,6 +646,9 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     
     # Load dataset
     dataset = load_dataset_from_config(config)
+
+    # Split into train/eval/test
+    train_dataset, eval_dataset, test_dataset = split_dataset(dataset, config)
     
     # Setup Trackio tracking
     trackio_client = setup_trackio_tracking(config)
@@ -538,37 +657,78 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     sft_config = create_sft_config(config, output_dir)
     
     # Create trainer with version-robust kwargs
-    print("Creating SFT trainer...")
-    try:
-        sft_sig = inspect.signature(SFTTrainer.__init__)
-        sft_params = set(sft_sig.parameters.keys())
-    except Exception:
-        sft_params = {"model", "args", "train_dataset", "tokenizer", "dataset_text_field", "max_seq_length"}
+    if trainer_type == 'dpo':
+        if DPOTrainer is None:
+            raise RuntimeError("DPOTrainer is not available in this TRL version. Please upgrade 'trl'.")
 
-    sft_kwargs = {
-        "model": peft_model,
-        "args": sft_config,
-        "train_dataset": dataset,
-    }
+        print("Creating DPO trainer...")
+        try:
+            dpo_sig = inspect.signature(DPOTrainer.__init__)
+            dpo_params = set(dpo_sig.parameters.keys())
+        except Exception:
+            dpo_params = {"model", "args", "train_dataset", "tokenizer", "beta", "prompt_column", "chosen_column", "rejected_column"}
 
-    # Prefer passing tokenizer if supported; otherwise try processing_class
-    if "tokenizer" in sft_params:
-        sft_kwargs["tokenizer"] = tokenizer
-    elif "processing_class" in sft_params:
-        sft_kwargs["processing_class"] = tokenizer
+        dpo_kwargs = {
+            "model": peft_model,
+            "args": sft_config,
+            "train_dataset": train_dataset,
+            "beta": getattr(config, 'dpo_beta', 0.1),
+        }
 
-    # Pass dataset text field if supported (we produced a 'text' column)
-    if "dataset_text_field" in sft_params:
-        sft_kwargs["dataset_text_field"] = "text"
+        if "tokenizer" in dpo_params:
+            dpo_kwargs["tokenizer"] = tokenizer
+        elif "processing_class" in dpo_params:
+            dpo_kwargs["processing_class"] = tokenizer
 
-    # Pass max sequence length if supported
-    if "max_seq_length" in sft_params:
-        sft_kwargs["max_seq_length"] = getattr(config, 'max_seq_length', 2048)
+        if "prompt_column" in dpo_params:
+            dpo_kwargs["prompt_column"] = "prompt"
+        if "chosen_column" in dpo_params:
+            dpo_kwargs["chosen_column"] = "chosen"
+        if "rejected_column" in dpo_params:
+            dpo_kwargs["rejected_column"] = "rejected"
 
-    # Remove any None values
-    sft_kwargs = {k: v for k, v in sft_kwargs.items() if v is not None}
+        # Remove Nones
+        dpo_kwargs = {k: v for k, v in dpo_kwargs.items() if v is not None}
 
-    trainer = SFTTrainer(**sft_kwargs)
+        # Pass eval dataset if supported
+        if "eval_dataset" in dpo_params and eval_dataset is not None:
+            dpo_kwargs["eval_dataset"] = eval_dataset
+        trainer = DPOTrainer(**dpo_kwargs)
+    else:
+        print("Creating SFT trainer...")
+        try:
+            sft_sig = inspect.signature(SFTTrainer.__init__)
+            sft_params = set(sft_sig.parameters.keys())
+        except Exception:
+            sft_params = {"model", "args", "train_dataset", "tokenizer", "dataset_text_field", "max_seq_length"}
+
+        sft_kwargs = {
+            "model": peft_model,
+            "args": sft_config,
+            "train_dataset": train_dataset,
+        }
+
+        # Prefer passing tokenizer if supported; otherwise try processing_class
+        if "tokenizer" in sft_params:
+            sft_kwargs["tokenizer"] = tokenizer
+        elif "processing_class" in sft_params:
+            sft_kwargs["processing_class"] = tokenizer
+
+        # Pass dataset text field if supported (we produced a 'text' column)
+        if "dataset_text_field" in sft_params:
+            sft_kwargs["dataset_text_field"] = "text"
+
+        # Pass max sequence length if supported
+        if "max_seq_length" in sft_params:
+            sft_kwargs["max_seq_length"] = getattr(config, 'max_seq_length', 2048)
+
+        # Remove any None values
+        sft_kwargs = {k: v for k, v in sft_kwargs.items() if v is not None}
+
+        # Attach eval_dataset if supported
+        if "eval_dataset" in sft_params and eval_dataset is not None:
+            sft_kwargs["eval_dataset"] = eval_dataset
+        trainer = SFTTrainer(**sft_kwargs)
     
     # Start training
     print("Starting GPT-OSS training...")

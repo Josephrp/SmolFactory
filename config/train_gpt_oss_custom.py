@@ -83,6 +83,9 @@ class GPTOSSEnhancedCustomConfig:
     eval_steps: int = 100  # Evaluate every N steps
     eval_delay: float = 0  # Delay evaluation for N steps/epochs
     eval_accumulation_steps: Optional[int] = None  # Accumulate eval outputs
+    # Automatic split ratios when only a single training split is provided
+    eval_ratio: float = 0.01  # Fraction of data for validation (0.0-0.5 typical)
+    test_ratio: float = 0.01  # Fraction of data for test (0.0-0.5 typical)
     
     # Checkpointing
     save_strategy: str = "steps"  # "no", "steps", "epoch"
@@ -167,6 +170,11 @@ class GPTOSSEnhancedCustomConfig:
     
     # Generation Configuration (for evaluation/testing)
     generation_config: Optional[Dict] = None
+
+    # Preference-training (DPO) configuration
+    chosen_field: Optional[str] = None  # Field name for preferred response (for DPO datasets)
+    rejected_field: Optional[str] = None  # Field name for rejected response (for DPO datasets)
+    dpo_beta: float = 0.1  # DPO beta parameter
     
     # ============================================================================
     # MULTILINGUAL & DOMAIN SPECIFIC SETTINGS

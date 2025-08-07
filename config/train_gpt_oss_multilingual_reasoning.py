@@ -62,6 +62,9 @@ class GPTOSSMultilingualReasoningConfig:
     metric_for_best_model: str = "eval_loss"
     greater_is_better: bool = False
     load_best_model_at_end: bool = True
+    eval_accumulation_steps: Optional[int] = None
+    eval_ratio: float = 0.01
+    test_ratio: float = 0.01
     
     # Data configuration - Multilingual-Thinking specific
     dataset_name: str = "HuggingFaceH4/Multilingual-Thinking"
@@ -99,6 +102,11 @@ class GPTOSSMultilingualReasoningConfig:
     
     # GPT-OSS specific model kwargs - as per tutorial
     model_kwargs: dict = None
+    dataloader_prefetch_factor: int = 2
+    tf32: Optional[bool] = None
+    chosen_field: Optional[str] = None
+    rejected_field: Optional[str] = None
+    dpo_beta: float = 0.1
     
     # Multilingual reasoning specific configurations
     # Generation parameters for multilingual reasoning

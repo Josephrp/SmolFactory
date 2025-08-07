@@ -827,7 +827,15 @@ fi
 print_step "Step 3: Experiment Details"
 echo "=============================="
 
-get_input "Experiment name" "smollm3_finetune_$(date +%Y%m%d_%H%M%S)" EXPERIMENT_NAME
+# Derive default experiment name from smolfactory + chosen model family
+if [ "$MODEL_FAMILY" = "GPT-OSS" ]; then
+    FAMILY_SLUG="gpt-oss"
+else
+    FAMILY_SLUG="smollm3"
+fi
+DEFAULT_EXPERIMENT_NAME="smolfactory-${FAMILY_SLUG}_$(date +%Y%m%d_%H%M%S)"
+
+get_input "Experiment name" "$DEFAULT_EXPERIMENT_NAME" EXPERIMENT_NAME
 
 # Configure model repository name (customizable)
 print_info "Setting up model repository name..."

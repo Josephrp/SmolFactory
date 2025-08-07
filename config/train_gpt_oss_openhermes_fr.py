@@ -119,6 +119,9 @@ config = GPTOSSEnhancedCustomConfig(
     metric_for_best_model="eval_loss",
     greater_is_better=False,
     load_best_model_at_end=True,
+    # Split ratios for automatic validation/test creation
+    eval_ratio=0.01,
+    test_ratio=0.01,
     
     # ============================================================================
     # MULTILINGUAL & FRENCH SPECIFIC SETTINGS
