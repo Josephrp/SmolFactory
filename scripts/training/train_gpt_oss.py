@@ -345,38 +345,60 @@ def create_sft_config(config, output_dir):
     
     print("Creating enhanced SFT configuration...")
     
-    # Extract training parameters from config with enhanced defaults
-    num_train_epochs = getattr(config, 'num_train_epochs', 1.0)
-    max_steps = getattr(config, 'max_steps', None)
-    warmup_ratio = getattr(config, 'warmup_ratio', 0.03)
-    warmup_steps = getattr(config, 'warmup_steps', None)
+    # Helper coercion utilities to guarantee numeric types
+    def _as_int(value, default):
+        if value is None:
+            return int(default)
+        try:
+            return int(value)
+        except Exception:
+            return int(default)
+
+    def _as_float(value, default):
+        if value is None:
+            return float(default)
+        try:
+            return float(value)
+        except Exception:
+            return float(default)
+
+    # Extract training parameters from config with enhanced defaults and coercion
+    num_train_epochs = _as_float(getattr(config, 'num_train_epochs', 1.0), 1.0)
+    # Transformers expects max_steps default -1 (disabled). Some code compares > 0
+    raw_max_steps = getattr(config, 'max_steps', None)
+    max_steps = _as_int(raw_max_steps if raw_max_steps is not None else -1, -1)
+    warmup_ratio = _as_float(getattr(config, 'warmup_ratio', 0.03), 0.03)
+    # Ensure warmup_steps is an int; default 0 to avoid None comparisons in schedulers
+    warmup_steps = _as_int(getattr(config, 'warmup_steps', 0), 0)
     
     # Learning rate configuration
-    learning_rate = config.learning_rate
+    learning_rate = _as_float(getattr(config, 'learning_rate', 2e-4), 2e-4)
     lr_scheduler_type = getattr(config, 'scheduler', 'cosine_with_min_lr')
     
     # Batch configuration
-    per_device_train_batch_size = config.batch_size
-    per_device_eval_batch_size = getattr(config, 'eval_batch_size', config.batch_size)
-    gradient_accumulation_steps = config.gradient_accumulation_steps
+    per_device_train_batch_size = _as_int(getattr(config, 'batch_size', 2), 2)
+    per_device_eval_batch_size = _as_int(getattr(config, 'eval_batch_size', per_device_train_batch_size), per_device_train_batch_size)
+    gradient_accumulation_steps = _as_int(getattr(config, 'gradient_accumulation_steps', 1), 1)
     
     # Evaluation and logging
     eval_strategy = getattr(config, 'eval_strategy', 'steps')
-    eval_steps = getattr(config, 'eval_steps', 100)
-    logging_steps = getattr(config, 'logging_steps', 10)
+    eval_steps = _as_int(getattr(config, 'eval_steps', 100), 100)
+    eval_accumulation_steps = _as_int(getattr(config, 'eval_accumulation_steps', 1), 1)
+    logging_steps = _as_int(getattr(config, 'logging_steps', 10), 10)
     
     # Saving configuration
     save_strategy = getattr(config, 'save_strategy', 'steps')
-    save_steps = getattr(config, 'save_steps', 500)
-    save_total_limit = getattr(config, 'save_total_limit', 3)
+    save_steps = _as_int(getattr(config, 'save_steps', 500), 500)
+    save_total_limit = _as_int(getattr(config, 'save_total_limit', 3), 3)
     
     # Mixed precision
-    fp16 = getattr(config, 'fp16', False)
-    bf16 = getattr(config, 'bf16', True)
+    fp16 = bool(getattr(config, 'fp16', False))
+    bf16 = bool(getattr(config, 'bf16', True))
+    tf32 = bool(getattr(config, 'tf32', False))
     
     # Regularization
-    weight_decay = getattr(config, 'weight_decay', 0.01)
-    max_grad_norm = getattr(config, 'max_grad_norm', 1.0)
+    weight_decay = _as_float(getattr(config, 'weight_decay', 0.01), 0.01)
+    max_grad_norm = _as_float(getattr(config, 'max_grad_norm', 1.0), 1.0)
     
     # HuggingFace Hub integration
     push_to_hub = getattr(config, 'push_to_hub', False)
@@ -406,12 +428,15 @@ def create_sft_config(config, output_dir):
         # Mixed precision
         "fp16": fp16,
         "bf16": bf16,
+        # Some versions support tf32
+        "tf32": tf32 if 'tf32' in TrainingArguments.__init__.__code__.co_varnames else None,
         # Regularization
         "weight_decay": weight_decay,
         "max_grad_norm": max_grad_norm,
         # Evaluation (name may vary across versions)
         "evaluation_strategy": eval_strategy,
         "eval_steps": eval_steps,
+        "eval_accumulation_steps": eval_accumulation_steps,
         # Logging
         "logging_steps": logging_steps,
         # Saving
@@ -421,8 +446,10 @@ def create_sft_config(config, output_dir):
         # Output
         "output_dir": output_dir,
         # Data loading
-        "dataloader_num_workers": getattr(config, 'dataloader_num_workers', 4),
+        "dataloader_num_workers": _as_int(getattr(config, 'dataloader_num_workers', 4), 4),
         "dataloader_pin_memory": getattr(config, 'dataloader_pin_memory', True),
+        # Optional in some versions
+        "dataloader_prefetch_factor": _as_int(getattr(config, 'dataloader_prefetch_factor', 2), 2),
         # Performance
         "group_by_length": getattr(config, 'group_by_length', True),
         "remove_unused_columns": getattr(config, 'remove_unused_columns', True),
@@ -431,6 +458,9 @@ def create_sft_config(config, output_dir):
         # Monitoring
         "report_to": ("trackio" if getattr(config, 'enable_tracking', False) else None),
     }
+
+    # Drop any None-valued kwargs
+    ta_kwargs = {k: v for k, v in ta_kwargs.items() if v is not None}
 
     # Adapt to transformers versions where 'evaluation_strategy' was renamed
     try:

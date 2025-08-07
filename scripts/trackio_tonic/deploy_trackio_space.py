@@ -411,8 +411,8 @@ class TrackioSpaceDeployer:
             
             # Wait a bit for the space to build
             import time
-            print("Waiting 180 seconds for Space to build...")
-            time.sleep(180)
+            print("Waiting 120 seconds for Space to build...")
+            time.sleep(120)
             
             # Try to access the space
             response = requests.get(self.space_url, timeout=30)
