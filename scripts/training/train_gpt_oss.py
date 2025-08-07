@@ -155,6 +155,10 @@ def build_scheduler_kwargs(config):
                 skw['min_lr_rate'] = 0.1
         except Exception:
             skw['min_lr_rate'] = 0.001
+    # Remove warmup-related keys which conflict with some TRL schedulers
+    for k in ('warmup_steps', 'num_warmup_steps', 'warmup_ratio'):
+        if k in skw:
+            skw.pop(k, None)
     return skw
 
 def apply_dataset_filtering(dataset, config):
@@ -509,6 +513,36 @@ def create_sft_config(config, output_dir):
     learning_rate = _as_float(getattr(config, 'learning_rate', 2e-4), 2e-4)
     lr_scheduler_type = getattr(config, 'scheduler', 'cosine_with_min_lr')
     lr_scheduler_kwargs = build_scheduler_kwargs(config)
+
+    # Detect TRL scheduler signature incompatibilities and fall back gracefully
+    # Some TRL versions call get_cosine_with_min_lr_schedule_with_warmup with
+    # 'warmup_steps' instead of 'num_warmup_steps', which raises:
+    #   get_cosine_with_min_lr_schedule_with_warmup() got an unexpected keyword
+    #   argument 'warmup_steps'
+    # To avoid this, we fallback to the standard 'cosine' scheduler and strip
+    # incompatible kwargs when the incompatible signature is detected.
+    if lr_scheduler_type == 'cosine_with_min_lr':
+        try:
+            from trl.trainer import utils as trl_utils  # type: ignore
+            import inspect as _inspect
+            if hasattr(trl_utils, 'get_cosine_with_min_lr_schedule_with_warmup'):
+                _sig = _inspect.signature(trl_utils.get_cosine_with_min_lr_schedule_with_warmup)
+                # If the function does NOT accept 'warmup_steps' explicitly, some TRL versions
+                # still pass it internally as a kwarg, causing a TypeError. Fallback to 'cosine'.
+                if 'warmup_steps' not in _sig.parameters:
+                    print("Warning: Incompatible TRL scheduler signature detected; falling back to 'cosine'.")
+                    lr_scheduler_type = 'cosine'
+                    lr_scheduler_kwargs = {}
+            else:
+                # Function missing; fallback
+                print("Warning: TRL min-lr cosine scheduler not available; falling back to 'cosine'.")
+                lr_scheduler_type = 'cosine'
+                lr_scheduler_kwargs = {}
+        except Exception:
+            # Any import/signature issues -> safe fallback
+            print("Warning: Unable to verify TRL scheduler; falling back to 'cosine'.")
+            lr_scheduler_type = 'cosine'
+            lr_scheduler_kwargs = {}
     
     # Batch configuration
     per_device_train_batch_size = _as_int(getattr(config, 'batch_size', 2), 2)
