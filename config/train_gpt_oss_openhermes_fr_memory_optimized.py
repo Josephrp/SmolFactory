@@ -33,7 +33,7 @@ config = GPTOSSEnhancedCustomConfig(
     use_harmony_format=True,                 # Enable GPT-OSS harmony format
     
     # Dataset sampling optimized for memory constraints
-    max_samples=200000,                      # Reduced from 800K for memory efficiency
+    max_samples=800000,                      # Reduced from 800K for memory efficiency
     min_length=15,                          # Slightly higher minimum for quality
     max_length=2048,                        # Explicit max length for memory control
     
