@@ -42,8 +42,8 @@ config = GPTOSSEnhancedCustomConfig(
     # ============================================================================
     # Batch configuration following memory optimization principles
     num_train_epochs=1.0,                   # Single epoch to reduce memory pressure
-    batch_size=2,                           # Reduced from 6 for memory efficiency
-    gradient_accumulation_steps=16,         # Increased to maintain effective batch size 32
+    batch_size=8,                           # Reduced from 6 for memory efficiency
+    gradient_accumulation_steps=8,         # Increased to maintain effective batch size 32
     
     # Learning rate optimized for single epoch + memory constraints
     learning_rate=2e-4,                     # Standard GPT-OSS learning rate
