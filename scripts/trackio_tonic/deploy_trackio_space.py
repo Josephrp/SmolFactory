@@ -381,10 +381,9 @@ class TrackioSpaceDeployer:
         """Fallback method for manual secret setup"""
         print("📝 Manual Space Secrets Configuration:")
         
-        # Use the provided token as HF_TOKEN
+        # Use the provided token as HF_TOKEN, but never display it
         hf_token = self.token
-        
-        print(f"   HF_TOKEN={hf_token}")
+        print(f"   HF_TOKEN={'*' * 10}...hidden")
         
         dataset_repo = self.dataset_repo or f"{self.username}/trackio-experiments"
         print(f"   TRACKIO_DATASET_REPO={dataset_repo}")
@@ -395,7 +394,7 @@ class TrackioSpaceDeployer:
         print("2. Navigate to the 'Repository secrets' section")
         print("3. Add the following secrets:")
         print(f"   Name: HF_TOKEN")
-        print(f"   Value: {hf_token}")
+        print(f"   Value: <your token>")
         print(f"   Name: TRACKIO_DATASET_REPO")
         print(f"   Value: {dataset_repo}")
         print(f"   Name: TRACKIO_URL")
@@ -485,7 +484,7 @@ def main():
         
         print(f"Using provided arguments:")
         print(f"  Space name: {space_name}")
-        print(f"  Token: {'*' * 10}...{token[-4:]}")
+        print(f"  Token: <hidden>")
         print(f"  Git email: {git_email or 'default'}")
         print(f"  Git name: {git_name or 'default'}")
         print(f"  Dataset repo: {dataset_repo or 'default'}")

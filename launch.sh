@@ -996,7 +996,6 @@ echo "================================"
 print_info "Setting up Hugging Face token for Python API..."
 print_status "HF token configured for Python API usage"
 print_info "Username: $HF_USERNAME (auto-detected from token)"
-print_info "Token available in environment: ${HF_TOKEN:0:10}...${HF_TOKEN: -4}"
 
 # Verify token is available in the virtual environment
 print_info "Verifying token availability in virtual environment..."

@@ -451,7 +451,7 @@ Simply start chatting with the model using the interface below!
     def _manual_secret_setup(self) -> bool:
         """Fallback method for manual secret setup"""
         logger.info("📝 Manual Space Secrets Configuration:")
-        logger.info(f"   HF_TOKEN={self.hf_token}")
+        logger.info(f"   HF_TOKEN=<hidden>")
         logger.info(f"   HF_MODEL_ID={self.model_id}")
         if self.subfolder and self.subfolder.strip():
             logger.info(f"   MODEL_SUBFOLDER={self.subfolder}")
@@ -470,7 +470,7 @@ Simply start chatting with the model using the interface below!
         logger.info("2. Navigate to the 'Repository secrets' section")
         logger.info("3. Add the following secrets:")
         logger.info(f"   Name: HF_TOKEN")
-        logger.info(f"   Value: {self.hf_token}")
+        logger.info(f"   Value: <your token>")
         logger.info(f"   Name: HF_MODEL_ID")
         logger.info(f"   Value: {self.model_id}")
         if self.subfolder and self.subfolder.strip():

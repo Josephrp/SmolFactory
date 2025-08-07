@@ -405,7 +405,6 @@ def create_sft_config(config, output_dir):
         gradient_accumulation_steps=gradient_accumulation_steps,
         
         # Model configuration
-        max_seq_length=config.max_seq_length,
         gradient_checkpointing=getattr(config, 'use_gradient_checkpointing', True),
         
         # Mixed precision
@@ -506,6 +505,8 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
         args=sft_config,
         train_dataset=dataset,
         processing_class=tokenizer,
+        dataset_text_field="text",
+        max_seq_length=getattr(config, 'max_seq_length', 2048),
     )
     
     # Start training

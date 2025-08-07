@@ -99,8 +99,9 @@ def configure_trackio():
     dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', f'{username}/trackio-experiments')
     
     # Current configuration
+    # Never expose raw tokens in logs; only track presence
     current_config = {
-        'HF_TOKEN': hf_token or 'Not set',
+        'HF_TOKEN': 'Set' if hf_token else 'Not set',
         'TRACKIO_DATASET_REPO': dataset_repo,
         'SPACE_ID': os.environ.get('SPACE_ID', 'Not set'),
         'TRACKIO_URL': os.environ.get('TRACKIO_URL', 'Not set')
@@ -139,8 +140,8 @@ def configure_trackio():
     print(f"📊 Dataset Repository: {dataset_repo}")
     
     # Test dataset access if token is available
-    test_token = current_config['HF_TOKEN']
-    if test_token != 'Not set':
+    test_token = hf_token
+    if test_token:
         print("\n🧪 Testing Dataset Access...")
         try:
             from datasets import load_dataset
@@ -193,8 +194,9 @@ def configure_trackio():
     
     # Generate configuration file
     config_file = "trackio_config.json"
+    # Do not persist raw tokens to disk; store only presence flag
     config_data = {
-        'hf_token': current_config['HF_TOKEN'],
+        'hf_token_set': bool(hf_token),
         'dataset_repo': current_config['TRACKIO_DATASET_REPO'],
         'space_id': current_config['SPACE_ID'],
         'trackio_url': current_config['TRACKIO_URL'],
@@ -211,7 +213,7 @@ def configure_trackio():
     # Show environment variable commands
     print("\n📝 Environment Variables for HF Space:")
     print("=" * 50)
-    print(f"HF_TOKEN={current_config['HF_TOKEN']}")
+    print(f"HF_TOKEN={'Set' if hf_token else 'Not set'}")
     print(f"TRACKIO_DATASET_REPO={current_config['TRACKIO_DATASET_REPO']}")
     if current_config['TRACKIO_URL'] != 'Not set':
         print(f"TRACKIO_URL={current_config['TRACKIO_URL']}")
