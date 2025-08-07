@@ -139,6 +139,24 @@ def load_dataset_from_config(config):
     
     return dataset
 
+def build_scheduler_kwargs(config):
+    """Construct lr_scheduler_kwargs ensuring one of min_lr or min_lr_rate is set.
+    Falls back to config.min_lr or a default rate of 0.1.
+    """
+    skw = getattr(config, 'lr_scheduler_kwargs', {}) or {}
+    if not isinstance(skw, dict):
+        skw = {}
+    min_lr_cfg = getattr(config, 'min_lr', 1e-6)
+    if 'min_lr' not in skw and 'min_lr_rate' not in skw:
+        try:
+            if min_lr_cfg is not None:
+                skw['min_lr'] = float(min_lr_cfg)
+            else:
+                skw['min_lr_rate'] = 0.1
+        except Exception:
+            skw['min_lr_rate'] = 0.001
+    return skw
+
 def apply_dataset_filtering(dataset, config):
     """Apply filtering based on configuration"""
     
@@ -490,6 +508,7 @@ def create_sft_config(config, output_dir):
     # Learning rate configuration
     learning_rate = _as_float(getattr(config, 'learning_rate', 2e-4), 2e-4)
     lr_scheduler_type = getattr(config, 'scheduler', 'cosine_with_min_lr')
+    lr_scheduler_kwargs = build_scheduler_kwargs(config)
     
     # Batch configuration
     per_device_train_batch_size = _as_int(getattr(config, 'batch_size', 2), 2)
@@ -533,6 +552,7 @@ def create_sft_config(config, output_dir):
         # Learning rate
         "learning_rate": learning_rate,
         "lr_scheduler_type": lr_scheduler_type,
+        "lr_scheduler_kwargs": lr_scheduler_kwargs,
         "warmup_ratio": warmup_ratio,
         "warmup_steps": warmup_steps,
         # Batch configuration

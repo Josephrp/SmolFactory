@@ -194,7 +194,7 @@ config = GPTOSSEnhancedCustomConfig(
     
     scheduler="cosine_with_min_lr",         # Stable scheduler for single epoch
     lr_scheduler_kwargs={
-        "min_lr_rate": 0.1,
+        "min_lr": 2e-6,                     # Explicit absolute floor (matches min_lr above)
         "warmup_steps": None,               # Use warmup_ratio instead
     },
     
