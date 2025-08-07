@@ -796,9 +796,10 @@ echo "=============================="
 
 get_input "Experiment name" "smollm3_finetune_$(date +%Y%m%d_%H%M%S)" EXPERIMENT_NAME
 
-# Automatically generate model repository name
-print_info "Setting up model repository automatically..."
-REPO_NAME="$HF_USERNAME/smollm3-finetuned-$(date +%Y%m%d)"
+# Configure model repository name (customizable)
+print_info "Setting up model repository name..."
+DEFAULT_REPO_NAME="$HF_USERNAME/smolfactory-$(date +%Y%m%d)"
+get_input "Model repository name (Hugging Face format: username/repo)" "$DEFAULT_REPO_NAME" REPO_NAME
 print_status "Model repository: $REPO_NAME"
 
 # Automatically create dataset repository
