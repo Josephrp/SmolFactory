@@ -158,112 +158,116 @@ except:
     fi
 }
 
-# Function to show training configurations
+# Function to show training configurations (optionally filtered by family)
 show_training_configs() {
+    local family="$1"  # Optional: "SmolLM3" or "GPT-OSS"
     echo ""
     print_header "Available Training Configurations"
     echo "======================================"
     echo ""
-    echo "=== SmolLM3 Configurations ==="
-    echo "1. Basic Training (Default)"
-    echo "   - Model: SmolLM3-3B"
-    echo "   - Dataset: SmolTalk"
-    echo "   - Epochs: 3"
-    echo "   - Batch Size: 2"
-    echo "   - Learning Rate: 5e-6"
-    echo ""
-    echo "2. H100 Lightweight (Rapid)"
-    echo "   - Model: SmolLM3-3B"
-    echo "   - Dataset: OpenHermes-FR (80K samples)"
-    echo "   - Epochs: 1"
-    echo "   - Batch Size: 16"
-    echo "   - Learning Rate: 8e-6"
-    echo "   - Sequence Length: 8192"
-    echo "   - Optimized for H100 rapid training"
-    echo ""
-    echo "3. A100 Large Scale"
-    echo "   - Model: SmolLM3-3B"
-    echo "   - Dataset: OpenHermes-FR"
-    echo "   - Epochs: 1.3 passes"
-    echo "   - Batch Size: 8"
-    echo "   - Learning Rate: 5e-6"
-    echo "   - Sequence Length: 8192"
-    echo ""
-    echo "4. Multiple Passes"
-    echo "   - Model: SmolLM3-3B"
-    echo "   - Dataset: OpenHermes-FR"
-    echo "   - Epochs: 4 passes"
-    echo "   - Batch Size: 6"
-    echo "   - Learning Rate: 3e-6"
-    echo "   - Sequence Length: 8192"
-    echo ""
-    echo "=== GPT-OSS Configurations ==="
-    echo "5. GPT-OSS Basic Training"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: Multilingual-Thinking"
-    echo "   - Epochs: 1"
-    echo "   - Batch Size: 4"
-    echo "   - Learning Rate: 2e-4"
-    echo "   - LoRA + MXFP4 Quantization"
-    echo "   - Optimized for multilingual reasoning"
-    echo ""
-    echo "6. GPT-OSS H100 Optimized"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: Multilingual-Thinking"
-    echo "   - Epochs: 2"
-    echo "   - Batch Size: 8"
-    echo "   - Learning Rate: 3e-4"
-    echo "   - Enhanced LoRA (rank 16)"
-    echo "   - Optimized for H100 performance"
-    echo ""
-    echo "7. GPT-OSS Multilingual Reasoning"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: Multilingual-Thinking"
-    echo "   - Epochs: 1"
-    echo "   - Batch Size: 4"
-    echo "   - Learning Rate: 2e-4"
-    echo "   - Specialized for reasoning tasks"
-    echo "   - Supports 10+ languages"
-    echo ""
-    echo "8. GPT-OSS Memory Optimized"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: Multilingual-Thinking"
-    echo "   - Epochs: 1"
-    echo "   - Batch Size: 1 (effective 16 with accumulation)"
-    echo "   - Learning Rate: 2e-4"
-    echo "   - 4-bit quantization + reduced LoRA"
-    echo "   - Optimized for limited GPU memory"
-    echo ""
-    echo "9. GPT-OSS OpenHermes-FR (Recommended)"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: legmlai/openhermes-fr (800K French examples)"
-    echo "   - Epochs: 1.5"
-    echo "   - Batch Size: 6 (effective 36 with accumulation)"
-    echo "   - Learning Rate: 2.5e-4"
-    echo "   - Optimized for French language training"
-    echo "   - Quality filtering enabled"
-    echo ""
-    echo "10. GPT-OSS OpenHermes-FR Memory Optimized"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: legmlai/openhermes-fr (200K samples)"
-    echo "   - Epochs: 1"
-    echo "   - Batch Size: 2 (effective 32 with accumulation)"
-    echo "   - Learning Rate: 2e-4"
-    echo "   - Native MXFP4 quantization"
-    echo "   - Memory optimized for 40-80GB GPUs"
-    echo "   - Harmony format compatible"
-    echo ""
-    echo "10. GPT-OSS Custom Dataset"
-    echo "   - Model: openai/gpt-oss-20b"
-    echo "   - Dataset: User-defined (fully customizable)"
-    echo "   - Epochs: Configurable"
-    echo "   - Batch Size: Configurable"
-    echo "   - Learning Rate: Configurable"
-    echo "   - Maximum flexibility with all parameters"
-    echo ""
-    echo "11. Custom Configuration"
-    echo "   - User-defined parameters"
-    echo ""
+
+    if [ -z "$family" ] || [ "$family" = "SmolLM3" ]; then
+        echo "=== SmolLM3 Configurations ==="
+        echo "1. Basic Training (Default)"
+        echo "   - Model: SmolLM3-3B"
+        echo "   - Dataset: SmolTalk"
+        echo "   - Epochs: 3"
+        echo "   - Batch Size: 2"
+        echo "   - Learning Rate: 5e-6"
+        echo ""
+        echo "2. H100 Lightweight (Rapid)"
+        echo "   - Model: SmolLM3-3B"
+        echo "   - Dataset: OpenHermes-FR (80K samples)"
+        echo "   - Epochs: 1"
+        echo "   - Batch Size: 16"
+        echo "   - Learning Rate: 8e-6"
+        echo "   - Sequence Length: 8192"
+        echo "   - Optimized for H100 rapid training"
+        echo ""
+        echo "3. A100 Large Scale"
+        echo "   - Model: SmolLM3-3B"
+        echo "   - Dataset: OpenHermes-FR"
+        echo "   - Epochs: 1.3 passes"
+        echo "   - Batch Size: 8"
+        echo "   - Learning Rate: 5e-6"
+        echo "   - Sequence Length: 8192"
+        echo ""
+        echo "4. Multiple Passes"
+        echo "   - Model: SmolLM3-3B"
+        echo "   - Dataset: OpenHermes-FR"
+        echo "   - Epochs: 4 passes"
+        echo "   - Batch Size: 6"
+        echo "   - Learning Rate: 3e-6"
+        echo "   - Sequence Length: 8192"
+        echo ""
+    fi
+
+    if [ -z "$family" ] || [ "$family" = "GPT-OSS" ]; then
+        echo "=== GPT-OSS Configurations ==="
+        echo "1. GPT-OSS Basic Training"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: Multilingual-Thinking"
+        echo "   - Epochs: 1"
+        echo "   - Batch Size: 4"
+        echo "   - Learning Rate: 2e-4"
+        echo "   - LoRA + MXFP4 Quantization"
+        echo "   - Optimized for multilingual reasoning"
+        echo ""
+        echo "2. GPT-OSS H100 Optimized"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: Multilingual-Thinking"
+        echo "   - Epochs: 2"
+        echo "   - Batch Size: 8"
+        echo "   - Learning Rate: 3e-4"
+        echo "   - Enhanced LoRA (rank 16)"
+        echo "   - Optimized for H100 performance"
+        echo ""
+        echo "3. GPT-OSS Multilingual Reasoning"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: Multilingual-Thinking"
+        echo "   - Epochs: 1"
+        echo "   - Batch Size: 4"
+        echo "   - Learning Rate: 2e-4"
+        echo "   - Specialized for reasoning tasks"
+        echo "   - Supports 10+ languages"
+        echo ""
+        echo "4. GPT-OSS Memory Optimized"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: Multilingual-Thinking"
+        echo "   - Epochs: 1"
+        echo "   - Batch Size: 1 (effective 16 with accumulation)"
+        echo "   - Learning Rate: 2e-4"
+        echo "   - 4-bit quantization + reduced LoRA"
+        echo "   - Optimized for limited GPU memory"
+        echo ""
+        echo "5. GPT-OSS OpenHermes-FR (Recommended)"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: legmlai/openhermes-fr (800K French examples)"
+        echo "   - Epochs: 1.5"
+        echo "   - Batch Size: 6 (effective 36 with accumulation)"
+        echo "   - Learning Rate: 2.5e-4"
+        echo "   - Optimized for French language training"
+        echo "   - Quality filtering enabled"
+        echo ""
+        echo "6. GPT-OSS OpenHermes-FR Memory Optimized"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: legmlai/openhermes-fr (200K samples)"
+        echo "   - Epochs: 1"
+        echo "   - Batch Size: 2 (effective 32 with accumulation)"
+        echo "   - Learning Rate: 2e-4"
+        echo "   - Native MXFP4 quantization"
+        echo "   - Memory optimized for 40-80GB GPUs"
+        echo "   - Harmony format compatible"
+        echo ""
+        echo "7. GPT-OSS Custom Dataset"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: User-defined (fully customizable)"
+        echo "   - Epochs: Configurable"
+        echo "   - Batch Size: Configurable"
+        echo "   - Learning Rate: Configurable"
+        echo "   - Maximum flexibility with all parameters"
+        echo ""
+    fi
 }
 
 # Function to get training configuration
@@ -785,10 +789,39 @@ HF_TOKEN="$HF_WRITE_TOKEN"
 print_step "Step 2: Training Configuration"
 echo "=================================="
 
-show_training_configs
-select_option "Select training configuration:" "Basic Training" "H100 Lightweight (Rapid)" "A100 Large Scale" "Multiple Passes" "GPT-OSS Basic Training" "GPT-OSS H100 Optimized" "GPT-OSS Multilingual Reasoning" "GPT-OSS Memory Optimized" "GPT-OSS OpenHermes-FR (Recommended)" "GPT-OSS OpenHermes-FR Memory Optimized" "GPT-OSS Custom Dataset" "Custom Configuration" TRAINING_CONFIG_TYPE
+# 2.1 Select model family first
+select_option "Select model family:" "SmolLM3" "GPT-OSS" MODEL_FAMILY
+
+# 2.2 Show only the configurations for the selected family and prompt selection
+show_training_configs "$MODEL_FAMILY"
+if [ "$MODEL_FAMILY" = "SmolLM3" ]; then
+    select_option "Select training configuration:" \
+        "Basic Training" \
+        "H100 Lightweight (Rapid)" \
+        "A100 Large Scale" \
+        "Multiple Passes" \
+        "Custom Configuration" \
+        TRAINING_CONFIG_TYPE
+else
+    select_option "Select training configuration:" \
+        "GPT-OSS Basic Training" \
+        "GPT-OSS H100 Optimized" \
+        "GPT-OSS Multilingual Reasoning" \
+        "GPT-OSS Memory Optimized" \
+        "GPT-OSS OpenHermes-FR (Recommended)" \
+        "GPT-OSS OpenHermes-FR Memory Optimized" \
+        "GPT-OSS Custom Dataset" \
+        TRAINING_CONFIG_TYPE
+fi
 
 get_training_config "$TRAINING_CONFIG_TYPE"
+
+# 2.3 Set a family-specific default model description for the model card
+if [ "$MODEL_FAMILY" = "GPT-OSS" ]; then
+    DEFAULT_MODEL_DESCRIPTION="A fine-tuned GPT-OSS-20B model optimized for multilingual reasoning and instruction following."
+else
+    DEFAULT_MODEL_DESCRIPTION="A fine-tuned SmolLM3-3B model optimized for instruction following and French language tasks."
+fi
 
 # Step 3: Get experiment details
 print_step "Step 3: Experiment Details"
@@ -1042,7 +1075,7 @@ print_info "This information will be used in the model card and citation."
 get_input "Author name for model card" "$HF_USERNAME" AUTHOR_NAME
 
 print_info "Model description will be used in the model card and repository."
-get_input "Model description" "A fine-tuned version of SmolLM3-3B for improved french language text generation and conversation capabilities." MODEL_DESCRIPTION
+get_input "Model description" "$DEFAULT_MODEL_DESCRIPTION" MODEL_DESCRIPTION
 
 # Step 9: Deploy Trackio Space (automated)
 print_step "Step 9: Deploying Trackio Space"

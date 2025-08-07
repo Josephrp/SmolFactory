@@ -9,9 +9,9 @@ import os
 import sys
 import argparse
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from peft import LoraConfig, get_peft_model
-from trl import SFTTrainer, SFTConfig
+from trl import SFTTrainer
 from datasets import load_dataset
 from pathlib import Path
 
@@ -353,7 +353,6 @@ def create_sft_config(config, output_dir):
     # Learning rate configuration
     learning_rate = config.learning_rate
     lr_scheduler_type = getattr(config, 'scheduler', 'cosine_with_min_lr')
-    lr_scheduler_kwargs = getattr(config, 'lr_scheduler_kwargs', {"min_lr_rate": 0.1})
     
     # Batch configuration
     per_device_train_batch_size = config.batch_size
@@ -387,7 +386,7 @@ def create_sft_config(config, output_dir):
     print(f"  • Gradient accumulation: {gradient_accumulation_steps}")
     print(f"  • Effective batch size: {per_device_train_batch_size * gradient_accumulation_steps}")
     
-    sft_config = SFTConfig(
+    sft_config = TrainingArguments(
         # Training duration
         num_train_epochs=num_train_epochs,
         max_steps=max_steps,
@@ -395,7 +394,6 @@ def create_sft_config(config, output_dir):
         # Learning rate
         learning_rate=learning_rate,
         lr_scheduler_type=lr_scheduler_type,
-        lr_scheduler_kwargs=lr_scheduler_kwargs,
         warmup_ratio=warmup_ratio,
         warmup_steps=warmup_steps,
         
@@ -442,7 +440,7 @@ def create_sft_config(config, output_dir):
         push_to_hub=push_to_hub,
         
         # Monitoring
-        report_to="trackio" if getattr(config, 'enable_tracking', False) else None,
+        report_to=("trackio" if getattr(config, 'enable_tracking', False) else None),
     )
     
     return sft_config
@@ -504,7 +502,7 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
         model=peft_model,
         args=sft_config,
         train_dataset=dataset,
-        processing_class=tokenizer,
+        tokenizer=tokenizer,
         dataset_text_field="text",
         max_seq_length=getattr(config, 'max_seq_length', 2048),
     )
