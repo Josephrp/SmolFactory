@@ -28,14 +28,25 @@ except Exception:
 # Ensure project root and config package are importable for configs that do `from config...` imports
 project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
+    # Put project root early so top-level packages like `config` can be resolved
     sys.path.insert(0, str(project_root))
 config_dir = project_root / "config"
 if str(config_dir) not in sys.path:
+    # Ensure the actual `config` package takes precedence over any `config.py` module elsewhere
     sys.path.insert(0, str(config_dir))
-# Ensure 'src' is importable for modules like 'monitoring', 'model', etc.
+# Ensure 'src' is importable for modules like 'monitoring', 'model', etc., but do not shadow `config`
 src_dir = project_root / "src"
 if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+    # Append to the end to avoid overshadowing the `config` package with `src/config.py`
+    sys.path.append(str(src_dir))
+
+# If a stray 'config' module (e.g., from src/config.py) is already imported, remove it so
+# that the real package `config/` (with __init__.py) can be imported with submodules.
+try:
+    if 'config' in sys.modules and not hasattr(sys.modules['config'], '__path__'):
+        del sys.modules['config']
+except Exception:
+    pass
 
 # Reduce tokenizer thread contention and improve CUDA allocator behavior
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
