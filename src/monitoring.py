@@ -206,12 +206,12 @@ class SmolLM3Monitor:
     def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
         """Save experiment data to HF Dataset with data preservation using dataset manager.
 
-        This method MERGES with any existing experiment entry to avoid overwriting data:
-        - If experiment_data contains a 'metrics' list, append new metric entries (with de-dup by step+timestamp)
-          and store using the nested structure expected by the Trackio Space (each entry has
-          {timestamp, step, metrics: {...}}).
-        - Otherwise, treat experiment_data as a parameters update and dict-merge it into existing parameters.
-        - Artifacts are merged and de-duplicated by their string value.
+        Non-destructive rules:
+        - Merge with existing experiment by experiment_id
+        - Metrics: append with de-dup (by step+timestamp), preserve nested format {timestamp, step, metrics}
+        - Parameters: dict-merge (incoming overrides keys)
+        - Artifacts/logs: union with de-dup, preserve order
+        - Top-level scalar fields (e.g., status, name, description, created_at) update only when provided
         """
         if not self.dataset_manager:
             logger.warning("⚠️ Dataset manager not available")
@@ -287,10 +287,21 @@ class SmolLM3Monitor:
                         merged_metrics.append(nested)
                 # else: ignore invalid metrics payload
             else:
-                # Treat as parameters update; merge dict
+                # Treat as parameters and/or top-level updates
                 try:
                     if isinstance(experiment_data, dict):
-                        merged_parameters.update(experiment_data)
+                        # Extract known top-level fields (do not bury into parameters)
+                        top_level_updates = {}
+                        for k in ['status', 'name', 'description', 'created_at', 'experiment_end_time', 'final_metrics_count', 'total_artifacts']:
+                            if k in experiment_data:
+                                top_level_updates[k] = experiment_data[k]
+                        # Remove them from parameters payload
+                        param_updates = {k: v for k, v in experiment_data.items() if k not in top_level_updates}
+                        # Apply param updates
+                        merged_parameters.update(param_updates)
+                        # Apply top-level updates to `existing` so they are reflected in the final record below
+                        for k, v in top_level_updates.items():
+                            existing[k] = v
                 except Exception:
                     pass
 

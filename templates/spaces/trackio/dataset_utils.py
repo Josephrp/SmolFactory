@@ -90,34 +90,45 @@ class TrackioDatasetManager:
     
     def _validate_experiment_structure(self, experiment: Dict[str, Any]) -> bool:
         """
-        Validate that an experiment has the required structure.
-        
-        Args:
-            experiment (Dict[str, Any]): Experiment dictionary to validate
-            
-        Returns:
-            bool: True if experiment structure is valid
+        Validate and SANITIZE an experiment structure to prevent destructive failures.
+
+        - Requires 'experiment_id'; otherwise skip the row.
+        - Fills defaults for missing non-JSON fields.
+        - Normalizes JSON fields to valid JSON strings.
         """
-        required_fields = [
-            'experiment_id', 'name', 'description', 'created_at', 
-            'status', 'metrics', 'parameters', 'artifacts', 'logs'
-        ]
-        
-        for field in required_fields:
-            if field not in experiment:
-                logger.warning(f"⚠️ Missing required field '{field}' in experiment")
-                return False
-        
-        # Validate JSON fields
-        json_fields = ['metrics', 'parameters', 'artifacts', 'logs']
-        for field in json_fields:
-            if isinstance(experiment[field], str):
-                try:
-                    json.loads(experiment[field])
-                except json.JSONDecodeError:
-                    logger.warning(f"⚠️ Invalid JSON in field '{field}' for experiment {experiment.get('experiment_id')}")
-                    return False
-        
+        if not experiment.get('experiment_id'):
+            logger.warning("⚠️ Missing required field 'experiment_id' in experiment; skipping row")
+            return False
+
+        defaults = {
+            'name': '',
+            'description': '',
+            'created_at': datetime.now().isoformat(),
+            'status': 'running',
+        }
+        for key, default_value in defaults.items():
+            if experiment.get(key) in (None, ''):
+                experiment[key] = default_value
+
+        def _ensure_json_string(field_name: str, default_value: Any):
+            raw_value = experiment.get(field_name)
+            try:
+                if isinstance(raw_value, str):
+                    if raw_value.strip() == '':
+                        experiment[field_name] = json.dumps(default_value, default=str)
+                    else:
+                        json.loads(raw_value)
+                else:
+                    experiment[field_name] = json.dumps(
+                        raw_value if raw_value is not None else default_value,
+                        default=str
+                    )
+            except Exception:
+                experiment[field_name] = json.dumps(default_value, default=str)
+
+        for json_field, default in (('metrics', []), ('parameters', {}), ('artifacts', []), ('logs', [])):
+            _ensure_json_string(json_field, default)
+
         return True
     
     def save_experiments(self, experiments: List[Dict[str, Any]], commit_message: Optional[str] = None) -> bool:

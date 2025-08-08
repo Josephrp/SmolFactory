@@ -90,82 +90,180 @@ class TrackioDatasetManager:
     
     def _validate_experiment_structure(self, experiment: Dict[str, Any]) -> bool:
         """
-        Validate that an experiment has the required structure.
-        
-        Args:
-            experiment (Dict[str, Any]): Experiment dictionary to validate
-            
-        Returns:
-            bool: True if experiment structure is valid
+        Validate and SANITIZE an experiment structure to prevent destructive failures.
+
+        - Requires 'experiment_id'; otherwise skip the row.
+        - Fills defaults for missing non-JSON fields.
+        - Normalizes JSON fields to valid JSON strings.
         """
-        required_fields = [
-            'experiment_id', 'name', 'description', 'created_at', 
-            'status', 'metrics', 'parameters', 'artifacts', 'logs'
-        ]
-        
-        for field in required_fields:
-            if field not in experiment:
-                logger.warning(f"⚠️ Missing required field '{field}' in experiment")
-                return False
-        
-        # Validate JSON fields
-        json_fields = ['metrics', 'parameters', 'artifacts', 'logs']
-        for field in json_fields:
-            if isinstance(experiment[field], str):
-                try:
-                    json.loads(experiment[field])
-                except json.JSONDecodeError:
-                    logger.warning(f"⚠️ Invalid JSON in field '{field}' for experiment {experiment.get('experiment_id')}")
-                    return False
-        
+        if not experiment.get('experiment_id'):
+            logger.warning("⚠️ Missing required field 'experiment_id' in experiment; skipping row")
+            return False
+
+        defaults = {
+            'name': '',
+            'description': '',
+            'created_at': datetime.now().isoformat(),
+            'status': 'running',
+        }
+        for key, default_value in defaults.items():
+            if experiment.get(key) in (None, ''):
+                experiment[key] = default_value
+
+        def _ensure_json_string(field_name: str, default_value: Any):
+            raw_value = experiment.get(field_name)
+            try:
+                if isinstance(raw_value, str):
+                    if raw_value.strip() == '':
+                        experiment[field_name] = json.dumps(default_value, default=str)
+                    else:
+                        json.loads(raw_value)
+                else:
+                    experiment[field_name] = json.dumps(
+                        raw_value if raw_value is not None else default_value,
+                        default=str
+                    )
+            except Exception:
+                experiment[field_name] = json.dumps(default_value, default=str)
+
+        for json_field, default in (('metrics', []), ('parameters', {}), ('artifacts', []), ('logs', [])):
+            _ensure_json_string(json_field, default)
+
         return True
     
     def save_experiments(self, experiments: List[Dict[str, Any]], commit_message: Optional[str] = None) -> bool:
         """
-        Save a list of experiments to the dataset, preserving data integrity.
-        
-        Args:
-            experiments (List[Dict[str, Any]]): List of experiment dictionaries
-            commit_message (Optional[str]): Custom commit message
-            
-        Returns:
-            bool: True if save was successful, False otherwise
+        Save experiments using a non-destructive UNION-MERGE by experiment_id.
+
+        - Loads existing experiments and merges JSON fields non-destructively
+        - Incoming scalar fields override existing scalars
+        - JSON fields are merged with de-duplication
         """
         try:
             if not experiments:
                 logger.warning("⚠️ No experiments to save")
                 return False
-            
-            # Validate all experiments before saving
-            valid_experiments = []
+
+            # Helpers
+            def _parse_json_field(value, default):
+                try:
+                    if value is None:
+                        return default
+                    if isinstance(value, str):
+                        return json.loads(value) if value else default
+                    return value
+                except Exception:
+                    return default
+
+            def _metrics_key(entry: Dict[str, Any]):
+                if isinstance(entry, dict):
+                    return (entry.get('step'), entry.get('timestamp'))
+                return (None, json.dumps(entry, sort_keys=True))
+
+            # Load existing experiments for union merge
+            existing = {}
+            try:
+                for row in self.load_existing_experiments():
+                    exp_id = row.get('experiment_id')
+                    if exp_id:
+                        existing[exp_id] = row
+            except Exception:
+                existing = {}
+
+            merged_map: Dict[str, Dict[str, Any]] = {exp_id: row for exp_id, row in existing.items()}
+
+            # Validate and merge incoming experiments
             for exp in experiments:
-                if self._validate_experiment_structure(exp):
-                    # Ensure last_updated is set
-                    if 'last_updated' not in exp:
-                        exp['last_updated'] = datetime.now().isoformat()
-                    valid_experiments.append(exp)
-                else:
+                if not self._validate_experiment_structure(exp):
                     logger.error(f"❌ Invalid experiment structure: {exp.get('experiment_id', 'unknown')}")
                     return False
-            
-            # Create dataset
-            dataset = Dataset.from_list(valid_experiments)
-            
-            # Generate commit message if not provided
+                exp_id = exp['experiment_id']
+                incoming = exp
+                if exp_id not in merged_map:
+                    incoming['last_updated'] = incoming.get('last_updated') or datetime.now().isoformat()
+                    merged_map[exp_id] = incoming
+                    continue
+
+                # Merge with existing
+                base = merged_map[exp_id]
+                base_metrics = _parse_json_field(base.get('metrics'), [])
+                base_params = _parse_json_field(base.get('parameters'), {})
+                base_artifacts = _parse_json_field(base.get('artifacts'), [])
+                base_logs = _parse_json_field(base.get('logs'), [])
+                inc_metrics = _parse_json_field(incoming.get('metrics'), [])
+                inc_params = _parse_json_field(incoming.get('parameters'), {})
+                inc_artifacts = _parse_json_field(incoming.get('artifacts'), [])
+                inc_logs = _parse_json_field(incoming.get('logs'), [])
+
+                # Merge metrics with de-dup
+                merged_metrics = []
+                seen = set()
+                for entry in list(base_metrics) + list(inc_metrics):
+                    try:
+                        key = _metrics_key(entry)
+                    except Exception:
+                        key = (None, None)
+                    if key not in seen:
+                        seen.add(key)
+                        merged_metrics.append(entry)
+
+                # Merge params (incoming overrides)
+                merged_params = {}
+                if isinstance(base_params, dict):
+                    merged_params.update(base_params)
+                if isinstance(inc_params, dict):
+                    merged_params.update(inc_params)
+
+                # Merge artifacts/logs with de-dup while preserving order
+                def _dedup_list(lst):
+                    out = []
+                    seen_local = set()
+                    for item in lst:
+                        key = json.dumps(item, sort_keys=True, default=str) if not isinstance(item, str) else item
+                        if key not in seen_local:
+                            seen_local.add(key)
+                            out.append(item)
+                    return out
+
+                merged_artifacts = _dedup_list(list(base_artifacts) + list(inc_artifacts))
+                merged_logs = _dedup_list(list(base_logs) + list(inc_logs))
+
+                # Rebuild merged record preferring incoming scalars
+                merged_rec = dict(base)
+                merged_rec.update({k: v for k, v in incoming.items() if k not in ('metrics', 'parameters', 'artifacts', 'logs')})
+                merged_rec['metrics'] = json.dumps(merged_metrics, default=str)
+                merged_rec['parameters'] = json.dumps(merged_params, default=str)
+                merged_rec['artifacts'] = json.dumps(merged_artifacts, default=str)
+                merged_rec['logs'] = json.dumps(merged_logs, default=str)
+                merged_rec['last_updated'] = datetime.now().isoformat()
+                merged_map[exp_id] = merged_rec
+
+            # Normalize final list
+            normalized = []
+            for rec in merged_map.values():
+                for f, default in (('metrics', []), ('parameters', {}), ('artifacts', []), ('logs', [])):
+                    val = rec.get(f)
+                    if not isinstance(val, str):
+                        rec[f] = json.dumps(val if val is not None else default, default=str)
+                if 'last_updated' not in rec:
+                    rec['last_updated'] = datetime.now().isoformat()
+                normalized.append(rec)
+
+            dataset = Dataset.from_list(normalized)
+
             if not commit_message:
-                commit_message = f"Update dataset with {len(valid_experiments)} experiments ({datetime.now().isoformat()})"
-            
-            # Push to hub
+                commit_message = f"Union-merge update with {len(normalized)} experiments ({datetime.now().isoformat()})"
+
             dataset.push_to_hub(
                 self.dataset_repo,
                 token=self.hf_token,
                 private=True,
                 commit_message=commit_message
             )
-            
-            logger.info(f"✅ Successfully saved {len(valid_experiments)} experiments to {self.dataset_repo}")
+
+            logger.info(f"✅ Successfully saved {len(normalized)} experiments (union-merged) to {self.dataset_repo}")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to save experiments to dataset: {e}")
             return False
