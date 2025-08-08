@@ -6,7 +6,7 @@ accelerate>=0.20.0
 peft>=0.17.0  # Updated for GPT-OSS LoRA support
 trl>=0.20.0  # Updated for GPT-OSS compatibility
 kernels
-
+openai-harmony
 # Hugging Face Hub for model and space management
 huggingface_hub>=0.19.0
 

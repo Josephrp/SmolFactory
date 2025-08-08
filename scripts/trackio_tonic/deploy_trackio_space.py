@@ -199,10 +199,14 @@ class TrackioSpaceDeployer:
             templates_dir = project_root / "templates" / "spaces" / "trackio"
             
             # Files to copy from templates/spaces/trackio
+            # Include dataset_utils.py and trackio_api_client.py to enable
+            # safe dataset upserts and local API client usage on the Space.
             files_to_copy = [
                 "app.py",
                 "requirements.txt",
-                "README.md"
+                "README.md",
+                "dataset_utils.py",
+                "trackio_api_client.py",
             ]
             
             # Copy files from templates/spaces/trackio to temp directory

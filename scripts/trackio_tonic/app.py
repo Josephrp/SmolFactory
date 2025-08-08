@@ -26,6 +26,7 @@ class TrackioSpace:
         self.experiments = {}
         self.current_experiment = None
         self.backup_mode = False
+        self.dataset_manager = None
         
         # Get dataset repository and HF token from parameters or environment variables
         # Respect explicit values; avoid hardcoded defaults that might point to test repos
@@ -37,6 +38,17 @@ class TrackioSpace:
         
         if not self.hf_token:
             logger.warning("⚠️ HF_TOKEN not found. Some features may not work.")
+        
+        # Initialize dataset manager for safe, non-destructive operations
+        try:
+            import sys
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+            from dataset_utils import TrackioDatasetManager  # type: ignore
+            if self.hf_token and self.dataset_repo:
+                self.dataset_manager = TrackioDatasetManager(self.dataset_repo, self.hf_token)
+                logger.info("✅ Dataset manager initialized (data preservation enabled)")
+        except Exception as e:
+            logger.warning(f"⚠️ Dataset manager not available, using legacy save mode: {e}")
         
         self._load_experiments()
         
@@ -314,13 +326,45 @@ class TrackioSpace:
         self.current_experiment = 'exp_20250720_134319'
         logger.info(f"✅ Loaded {len(backup_experiments)} backup experiments")
     
+    def _upsert_experiment(self, experiment_id: str):
+        """Non-destructive upsert of a single experiment to the dataset if manager available."""
+        try:
+            if not self.dataset_manager or not self.hf_token:
+                # Fallback to legacy save method
+                self._save_experiments()
+                return
+            exp = self.experiments.get(experiment_id)
+            if not exp:
+                return
+            # Build dataset row with JSON-encoded fields
+            payload = {
+                'experiment_id': experiment_id,
+                'name': exp.get('name', ''),
+                'description': exp.get('description', ''),
+                'created_at': exp.get('created_at', ''),
+                'status': exp.get('status', 'running'),
+                'metrics': json.dumps(exp.get('metrics', []), default=str),
+                'parameters': json.dumps(exp.get('parameters', {}), default=str),
+                'artifacts': json.dumps(exp.get('artifacts', []), default=str),
+                'logs': json.dumps(exp.get('logs', []), default=str),
+                'last_updated': datetime.now().isoformat()
+            }
+            self.dataset_manager.upsert_experiment(payload)
+        except Exception as e:
+            logger.warning(f"⚠️ Upsert failed, falling back to legacy save: {e}")
+            self._save_experiments()
+    
     def _save_experiments(self):
-        """Save experiments to HF Dataset"""
+        """Save experiments to HF Dataset (legacy fallback).
+
+        Prefer using dataset manager upserts in per-operation paths. This method is
+        retained as a fallback when the manager isn't available.
+        """
         try:
             if self.backup_mode:
                 logger.warning("⚠️ Backup mode active; skipping dataset save to avoid overwriting real data with demo values")
                 return
-            if self.hf_token:
+            if self.hf_token and not self.dataset_manager:
                 from datasets import Dataset
                 from huggingface_hub import HfApi
                 
@@ -351,10 +395,10 @@ class TrackioSpace:
                     private=True  # Make it private for security
                 )
                 
-                logger.info(f"✅ Saved {len(dataset_data)} experiments to {self.dataset_repo}")
+                logger.info(f"✅ Saved {len(dataset_data)} experiments to {self.dataset_repo} (legacy mode)")
                 
             else:
-                logger.warning("⚠️ No HF_TOKEN available, experiments not saved to dataset")
+                logger.warning("⚠️ No dataset manager and/or HF_TOKEN available, experiments not saved to dataset")
                 
         except Exception as e:
             logger.error(f"Failed to save experiments to dataset: {e}")
@@ -389,7 +433,8 @@ class TrackioSpace:
         
         self.experiments[experiment_id] = experiment
         self.current_experiment = experiment_id
-        self._save_experiments()
+        # Prefer non-destructive upsert
+        self._upsert_experiment(experiment_id)
         
         logger.info(f"Created experiment: {experiment_id} - {name}")
         return experiment
@@ -406,7 +451,7 @@ class TrackioSpace:
         }
         
         self.experiments[experiment_id]['metrics'].append(metric_entry)
-        self._save_experiments()
+        self._upsert_experiment(experiment_id)
         logger.info(f"Logged metrics for experiment {experiment_id}: {metrics}")
     
     def log_parameters(self, experiment_id: str, parameters: Dict[str, Any]):
@@ -415,7 +460,7 @@ class TrackioSpace:
             raise ValueError(f"Experiment {experiment_id} not found")
         
         self.experiments[experiment_id]['parameters'].update(parameters)
-        self._save_experiments()
+        self._upsert_experiment(experiment_id)
         logger.info(f"Logged parameters for experiment {experiment_id}: {parameters}")
     
     def log_artifact(self, experiment_id: str, artifact_name: str, artifact_data: str):
@@ -430,7 +475,7 @@ class TrackioSpace:
         }
         
         self.experiments[experiment_id]['artifacts'].append(artifact_entry)
-        self._save_experiments()
+        self._upsert_experiment(experiment_id)
         logger.info(f"Logged artifact for experiment {experiment_id}: {artifact_name}")
     
     def get_experiment(self, experiment_id: str) -> Optional[Dict[str, Any]]:
@@ -449,7 +494,7 @@ class TrackioSpace:
         """Update experiment status"""
         if experiment_id in self.experiments:
             self.experiments[experiment_id]['status'] = status
-            self._save_experiments()
+            self._upsert_experiment(experiment_id)
             logger.info(f"Updated experiment {experiment_id} status to {status}")
     
     def get_metrics_dataframe(self, experiment_id: str) -> pd.DataFrame:

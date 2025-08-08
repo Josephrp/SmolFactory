@@ -37,16 +37,20 @@ class TrackioSpace:
         self.dataset_manager = None
         if self.hf_token and self.dataset_repo:
             try:
-                # Import dataset manager
-                import sys
-                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-                from dataset_utils import TrackioDatasetManager
+                # Prefer local dataset_utils in Space repo
+                from dataset_utils import TrackioDatasetManager  # type: ignore
                 self.dataset_manager = TrackioDatasetManager(self.dataset_repo, self.hf_token)
-                logger.info("✅ Dataset manager initialized for safe operations")
-            except ImportError:
-                logger.warning("⚠️ Dataset manager not available, using legacy data handling")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to initialize dataset manager: {e}")
+                logger.info("✅ Dataset manager initialized for safe operations (local)")
+            except Exception as local_e:
+                try:
+                    # Fallback: try project src layout if present
+                    import sys
+                    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+                    from dataset_utils import TrackioDatasetManager  # type: ignore
+                    self.dataset_manager = TrackioDatasetManager(self.dataset_repo, self.hf_token)
+                    logger.info("✅ Dataset manager initialized for safe operations (fallback src)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Dataset manager not available, using legacy data handling: {local_e or e}")
         
         logger.info(f"🔧 Using dataset repository: {self.dataset_repo}")
         
@@ -426,7 +430,11 @@ class TrackioSpace:
         logger.info(f"✅ Loaded {len(backup_experiments)} backup experiments")
     
     def _save_experiments(self):
-        """Save experiments to HF Dataset with data preservation"""
+        """Save experiments to HF Dataset with data preservation
+
+        Note: This saves the full in-memory set. Prefer per-operation upsert via
+        dataset manager when available to reduce overwrite risk.
+        """
         try:
             if self.using_backup_data:
                 logger.warning("⚠️ Using backup data; skip saving to dataset to avoid overwriting with demo values")
@@ -474,6 +482,33 @@ class TrackioSpace:
             logger.error(f"❌ Failed to save experiments: {e}")
             # Fallback to legacy method
             self._save_experiments_legacy()
+
+    def _upsert_experiment(self, experiment_id: str):
+        """Non-destructive upsert of a single experiment when dataset manager is available."""
+        try:
+            if not self.dataset_manager:
+                # Fallback to legacy save of full set
+                self._save_experiments()
+                return
+            exp = self.experiments.get(experiment_id)
+            if not exp:
+                return
+            payload = {
+                'experiment_id': experiment_id,
+                'name': exp.get('name', ''),
+                'description': exp.get('description', ''),
+                'created_at': exp.get('created_at', ''),
+                'status': exp.get('status', 'running'),
+                'metrics': json.dumps(exp.get('metrics', []), default=str),
+                'parameters': json.dumps(exp.get('parameters', {}), default=str),
+                'artifacts': json.dumps(exp.get('artifacts', []), default=str),
+                'logs': json.dumps(exp.get('logs', []), default=str),
+                'last_updated': datetime.now().isoformat()
+            }
+            self.dataset_manager.upsert_experiment(payload)
+        except Exception as e:
+            logger.warning(f"⚠️ Upsert failed, falling back to legacy save: {e}")
+            self._save_experiments()
     
     def _save_experiments_legacy(self):
         """Legacy save method without data preservation (fallback only)"""
@@ -550,7 +585,7 @@ class TrackioSpace:
         
         self.experiments[experiment_id] = experiment
         self.current_experiment = experiment_id
-        self._save_experiments()
+        self._upsert_experiment(experiment_id)
         
         logger.info(f"Created experiment: {experiment_id} - {name}")
         return experiment
@@ -567,7 +602,7 @@ class TrackioSpace:
         }
         
         self.experiments[experiment_id]['metrics'].append(metric_entry)
-        self._save_experiments()
+        self._upsert_experiment(experiment_id)
         logger.info(f"Logged metrics for experiment {experiment_id}: {metrics}")
     
     def log_parameters(self, experiment_id: str, parameters: Dict[str, Any]):
@@ -576,7 +611,7 @@ class TrackioSpace:
             raise ValueError(f"Experiment {experiment_id} not found")
         
         self.experiments[experiment_id]['parameters'].update(parameters)
-        self._save_experiments()
+        self._upsert_experiment(experiment_id)
         logger.info(f"Logged parameters for experiment {experiment_id}: {parameters}")
     
     def log_artifact(self, experiment_id: str, artifact_name: str, artifact_data: str):
@@ -610,7 +645,7 @@ class TrackioSpace:
         """Update experiment status"""
         if experiment_id in self.experiments:
             self.experiments[experiment_id]['status'] = status
-            self._save_experiments()
+            self._upsert_experiment(experiment_id)
             logger.info(f"Updated experiment {experiment_id} status to {status}")
     
     def get_metrics_dataframe(self, experiment_id: str) -> pd.DataFrame:

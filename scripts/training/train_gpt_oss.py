@@ -61,13 +61,20 @@ def load_gpt_oss_model_and_tokenizer(config):
         # No quantization
         quantization_config = None
     
-    # Model kwargs as per tutorial
-    model_kwargs = {
+    # Build model kwargs with sensible defaults and allow config overrides
+    default_model_kwargs = {
         "attn_implementation": "eager",
         "torch_dtype": torch.bfloat16,
         "use_cache": False,
         "device_map": "auto",
     }
+
+    cfg_model_kwargs = getattr(config, "model_kwargs", None)
+    if isinstance(cfg_model_kwargs, dict):
+        # Config overrides defaults (e.g., attn_implementation="kernels-community/vllm-flash-attn3")
+        model_kwargs = {**default_model_kwargs, **cfg_model_kwargs}
+    else:
+        model_kwargs = default_model_kwargs.copy()
     
     # Only add quantization_config if it's not None
     if quantization_config is not None:

@@ -204,36 +204,128 @@ class SmolLM3Monitor:
             self.experiment_id = f"exp_{timestamp}"
     
     def _save_to_hf_dataset(self, experiment_data: Dict[str, Any]):
-        """Save experiment data to HF Dataset with data preservation using dataset manager"""
+        """Save experiment data to HF Dataset with data preservation using dataset manager.
+
+        This method MERGES with any existing experiment entry to avoid overwriting data:
+        - If experiment_data contains a 'metrics' list, append new metric entries (with de-dup by step+timestamp)
+          and store using the nested structure expected by the Trackio Space (each entry has
+          {timestamp, step, metrics: {...}}).
+        - Otherwise, treat experiment_data as a parameters update and dict-merge it into existing parameters.
+        - Artifacts are merged and de-duplicated by their string value.
+        """
         if not self.dataset_manager:
             logger.warning("⚠️ Dataset manager not available")
             return False
-        
+
         try:
-            # Prepare current experiment data with standardized structure
+            experiment_id = self.experiment_id or f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            # Load existing experiment (if any)
+            existing = self.dataset_manager.get_experiment_by_id(experiment_id) or {}
+
+            # Helper to safely parse JSON fields from existing
+            def _parse_json_field(value, default):
+                try:
+                    if value is None:
+                        return default
+                    if isinstance(value, str):
+                        return json.loads(value) if value else default
+                    return value
+                except Exception:
+                    return default
+
+            existing_metrics = _parse_json_field(existing.get('metrics'), [])
+            existing_parameters = _parse_json_field(existing.get('parameters'), {})
+            existing_artifacts = _parse_json_field(existing.get('artifacts'), [])
+            existing_logs = _parse_json_field(existing.get('logs'), [])
+
+            # Start from existing fields
+            merged_metrics = list(existing_metrics) if isinstance(existing_metrics, list) else []
+            merged_parameters = dict(existing_parameters) if isinstance(existing_parameters, dict) else {}
+            merged_artifacts = list(existing_artifacts) if isinstance(existing_artifacts, list) else []
+
+            # Merge incoming data
+            if 'metrics' in experiment_data:
+                # Accept either a list of metric dicts or a single metrics dict
+                incoming_metrics = experiment_data.get('metrics')
+
+                # Build a set of (step, timestamp) to deduplicate
+                def _entry_key(entry: Dict[str, Any]):
+                    return (entry.get('step'), entry.get('timestamp'))
+
+                existing_keys = set()
+                for entry in merged_metrics:
+                    # Support both nested and flat formats in existing data
+                    if isinstance(entry, dict) and 'metrics' in entry:
+                        existing_keys.add(_entry_key(entry))
+                    elif isinstance(entry, dict):
+                        existing_keys.add((entry.get('step'), entry.get('timestamp')))
+
+                def _to_nested_entry(metric: Dict[str, Any]) -> Dict[str, Any]:
+                    # If already nested, return as-is
+                    if isinstance(metric, dict) and 'metrics' in metric:
+                        return metric
+                    # Convert flat dict into nested format expected by the Space
+                    step_val = metric.get('step')
+                    ts_val = metric.get('timestamp')
+                    metrics_only = {k: v for k, v in metric.items() if k not in ('step', 'timestamp')}
+                    return {
+                        'timestamp': ts_val,
+                        'step': step_val,
+                        'metrics': metrics_only
+                    }
+
+                if isinstance(incoming_metrics, list):
+                    for m in incoming_metrics:
+                        nested = _to_nested_entry(m if isinstance(m, dict) else {})
+                        if _entry_key(nested) not in existing_keys:
+                            merged_metrics.append(nested)
+                            existing_keys.add(_entry_key(nested))
+                elif isinstance(incoming_metrics, dict):
+                    nested = _to_nested_entry(incoming_metrics)
+                    if _entry_key(nested) not in existing_keys:
+                        merged_metrics.append(nested)
+                # else: ignore invalid metrics payload
+            else:
+                # Treat as parameters update; merge dict
+                try:
+                    if isinstance(experiment_data, dict):
+                        merged_parameters.update(experiment_data)
+                except Exception:
+                    pass
+
+            # Merge artifacts if provided
+            if 'artifacts' in experiment_data and isinstance(experiment_data['artifacts'], list):
+                # De-duplicate while preserving order
+                seen = set(merged_artifacts)
+                for a in experiment_data['artifacts']:
+                    if a not in seen:
+                        merged_artifacts.append(a)
+                        seen.add(a)
+
+            # Build the experiment payload to upsert
             current_experiment = {
-                'experiment_id': self.experiment_id or f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                'name': self.experiment_name,
-                'description': "SmolLM3 fine-tuning experiment",
-                'created_at': self.start_time.isoformat(),
-                'status': 'running',
-                'metrics': json.dumps(self.metrics_history, default=str),
-                'parameters': json.dumps(experiment_data, default=str),
-                'artifacts': json.dumps(self.artifacts, default=str),
-                'logs': json.dumps([], default=str),
+                'experiment_id': experiment_id,
+                'name': existing.get('name') or self.experiment_name,
+                'description': existing.get('description') or "SmolLM3 fine-tuning experiment",
+                'created_at': existing.get('created_at') or self.start_time.isoformat(),
+                'status': existing.get('status') or 'running',
+                'metrics': json.dumps(merged_metrics, default=str),
+                'parameters': json.dumps(merged_parameters, default=str),
+                'artifacts': json.dumps(merged_artifacts, default=str),
+                'logs': json.dumps(existing_logs, default=str),
                 'last_updated': datetime.now().isoformat()
             }
-            
-            # Use dataset manager to safely upsert the experiment
+
             success = self.dataset_manager.upsert_experiment(current_experiment)
-            
+
             if success:
                 logger.info(f"✅ Experiment data saved to HF Dataset: {self.dataset_repo}")
                 return True
             else:
-                logger.error(f"❌ Failed to save experiment data to HF Dataset")
+                logger.error("❌ Failed to save experiment data to HF Dataset")
                 return False
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to save to HF Dataset: {e}")
             return False

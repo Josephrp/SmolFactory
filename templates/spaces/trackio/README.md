@@ -6,7 +6,7 @@ colorTo: yellow
 sdk: gradio
 sdk_version: 5.38.0
 app_file: app.py
-pinned: true
+pinned: false
 license: mit
 short_description: trackio for training monitoring
 tags:
