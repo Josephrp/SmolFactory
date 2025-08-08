@@ -109,6 +109,9 @@ class GPTOSSEnhancedCustomConfig:
     # Field Mapping - Customize for your dataset format
     input_field: str = "prompt"  # Field containing the input/prompt
     target_field: str = "accepted_completion"  # Field containing the target/completion
+    # Optional global conversational context
+    system_message: Optional[str] = None
+    developer_message: Optional[str] = None
     
     # OpenHermes-FR specific fields
     filter_bad_entries: bool = True  # Filter entries marked as bad
@@ -127,7 +130,14 @@ class GPTOSSEnhancedCustomConfig:
     max_length: Optional[int] = None  # Maximum sequence length (None = use max_seq_length)
     
     # Custom Dataset Formats Support
-    dataset_format: str = "openhermes_fr"  # "openhermes_fr", "messages", "text", "custom"
+    dataset_format: str = "openhermes_fr"  # "openhermes_fr", "messages", "text", "custom", "medical_o1_sft", "preference"
+
+    # Medical o1 SFT (FreedomIntelligence/medical-o1-reasoning-SFT) mapping
+    question_field: str = "Question"
+    reasoning_field: str = "Complex_CoT"
+    response_field: str = "Response"
+    reason_prefix: str = "Reasoning: "
+    answer_prefix: str = "Final Answer: "
     
     # GPT-OSS Harmony Format Configuration
     use_harmony_format: bool = True  # Enable GPT-OSS harmony format
@@ -344,7 +354,7 @@ class GPTOSSEnhancedCustomConfig:
             raise ValueError("max_seq_length must be >= 1")
             
         # Validate dataset format
-        valid_formats = ["openhermes_fr", "messages", "text", "custom"]
+        valid_formats = ["openhermes_fr", "messages", "text", "custom", "medical_o1_sft", "preference"]
         if self.dataset_format not in valid_formats:
             raise ValueError(f"dataset_format must be one of {valid_formats}")
     
@@ -383,6 +393,12 @@ class GPTOSSEnhancedCustomConfig:
         print(f"   • Target Field: {self.target_field}")
         print(f"   • Filter Bad Entries: {self.filter_bad_entries}")
         print(f"   • Max Samples: {self.max_samples or 'All'}")
+        if self.system_message or self.developer_message:
+            print("   • Context messages set:")
+            if self.system_message:
+                print("     - system message: provided")
+            if self.developer_message:
+                print("     - developer message: provided")
         
         print(f"\n💾 Memory & Performance:")
         print(f"   • Mixed Precision: {'BF16' if self.bf16 else 'FP32'}")

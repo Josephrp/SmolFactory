@@ -277,31 +277,66 @@ def apply_dataset_filtering(dataset, config):
     
     return dataset
 
-def format_gpt_oss_harmony(prompt, completion, add_eos_token=True):
+def _build_harmony_text(
+    user_content: str,
+    assistant_content: str,
+    add_eos_token: bool = True,
+    system_message: str | None = None,
+    developer_message: str | None = None,
+) -> str:
+    """Compose a Harmony-formatted conversation with optional system/developer messages.
+
+    Structure (training):
+      <|start|>system<|message|>...<|end|> (optional)
+      <|start|>developer<|message|>...<|end|> (optional)
+      <|start|>user<|message|>...<|end|>
+      <|start|>assistant<|channel|>final<|message|>...<|return|>
+    """
+    parts: list[str] = []
+    if system_message:
+        parts.append(f"<|start|>system<|message|>{system_message}<|end|>")
+    if developer_message:
+        parts.append(f"<|start|>developer<|message|>{developer_message}<|end|>")
+    parts.append(f"<|start|>user<|message|>{user_content}<|end|>")
+    parts.append(f"<|start|>assistant<|channel|>final<|message|>{assistant_content}")
+    if add_eos_token:
+        parts[-1] += "<|return|>"
+    else:
+        parts[-1] += "<|end|>"
+    return "".join(parts)
+
+def format_gpt_oss_harmony(
+    prompt: str,
+    completion: str,
+    add_eos_token: bool = True,
+    system_message: str | None = None,
+    developer_message: str | None = None,
+) -> str:
     """
     Format data for GPT-OSS Harmony format following the exact template structure.
-    Based on: https://huggingface.co/openai/gpt-oss-20b/raw/main/chat_template.jinja
+    Spec: `https://huggingface.co/openai/gpt-oss-20b/raw/main/chat_template.jinja`.
     """
-    # GPT-OSS Harmony format structure (exact template compliance)
-    # User message: <|start|>user<|message|>content<|end|>
-    # Assistant message: <|start|>assistant<|channel|>final<|message|>content<|end|> (inference)
-    # Assistant message: <|start|>assistant<|channel|>final<|message|>content<|return|> (training)
-    
-    harmony_text = f"<|start|>user<|message|>{prompt}<|end|><|start|>assistant<|channel|>final<|message|>{completion}"
-    
-    if add_eos_token:
-        # Use <|return|> for training as per template specification
-        # This indicates the end of generation in training
-        harmony_text += "<|return|>"
-    else:
-        # Use <|end|> for inference
-        harmony_text += "<|end|>"
-    
-    return harmony_text
+    return _build_harmony_text(
+        user_content=prompt,
+        assistant_content=completion,
+        add_eos_token=add_eos_token,
+        system_message=system_message,
+        developer_message=developer_message,
+    )
 
-def format_gpt_oss_harmony_prompt(prompt: str) -> str:
-    """Prefix-only Harmony prompt up to assistant content marker for DPO."""
-    return f"<|start|>user<|message|>{prompt}<|end|><|start|>assistant<|channel|>final<|message|>"
+def format_gpt_oss_harmony_prompt(
+    prompt: str,
+    system_message: str | None = None,
+    developer_message: str | None = None,
+) -> str:
+    """Prefix-only Harmony prompt up to assistant content marker for DPO, with optional context."""
+    parts: list[str] = []
+    if system_message:
+        parts.append(f"<|start|>system<|message|>{system_message}<|end|>")
+    if developer_message:
+        parts.append(f"<|start|>developer<|message|>{developer_message}<|end|>")
+    parts.append(f"<|start|>user<|message|>{prompt}<|end|><|start|>assistant<|channel|>final<|message|>")
+    return "".join(parts)
 
 def process_dataset_format(dataset, config):
     """Process dataset based on format configuration with exact GPT-OSS Harmony compliance"""
@@ -321,6 +356,8 @@ def process_dataset_format(dataset, config):
     add_eos_token = getattr(config, 'add_eos_token', True)
     use_harmony_format = getattr(config, 'use_harmony_format', True)
     trainer_type = getattr(config, 'trainer_type', 'sft')
+    system_message = getattr(config, 'system_message', None)
+    developer_message = getattr(config, 'developer_message', None)
     
     print(f"Processing dataset format: {dataset_format}")
     print(f"Input field: {input_field}, Target field: {target_field}")
@@ -338,7 +375,11 @@ def process_dataset_format(dataset, config):
                 chosen_val = example.get('chosen', example.get(chosen_field or 'chosen', ''))
                 rejected_val = example.get('rejected', example.get(rejected_field or 'rejected', ''))
                 if use_harmony_format:
-                    prompt_text = format_gpt_oss_harmony_prompt(prompt_val)
+                    prompt_text = format_gpt_oss_harmony_prompt(
+                        prompt_val,
+                        system_message=system_message,
+                        developer_message=developer_message,
+                    )
                     chosen_text = (chosen_val or '') + ("<|return|>" if add_eos_token else '')
                     rejected_text = (rejected_val or '') + ("<|return|>" if add_eos_token else '')
                     return {"prompt": prompt_text, "chosen": chosen_text, "rejected": rejected_text}
@@ -355,7 +396,11 @@ def process_dataset_format(dataset, config):
                 chosen_val = example.get(chosen_field, '')
                 rejected_val = example.get(rejected_field, '')
                 if use_harmony_format:
-                    prompt_text = format_gpt_oss_harmony_prompt(prompt_val)
+                    prompt_text = format_gpt_oss_harmony_prompt(
+                        prompt_val,
+                        system_message=system_message,
+                        developer_message=developer_message,
+                    )
                     chosen_text = (chosen_val or '') + ("<|return|>" if add_eos_token else '')
                     rejected_text = (rejected_val or '') + ("<|return|>" if add_eos_token else '')
                     return {"prompt": prompt_text, "chosen": chosen_text, "rejected": rejected_text}
@@ -376,7 +421,13 @@ def process_dataset_format(dataset, config):
             if concatenate_fields:
                 if use_harmony_format:
                     # Use exact GPT-OSS Harmony format from template
-                    text = format_gpt_oss_harmony(prompt, completion, add_eos_token)
+                    text = format_gpt_oss_harmony(
+                        prompt,
+                        completion,
+                        add_eos_token,
+                        system_message=system_message,
+                        developer_message=developer_message,
+                    )
                 else:
                     # Fallback to standard format with separator
                     text = prompt + field_separator + completion
@@ -414,7 +465,13 @@ def process_dataset_format(dataset, config):
                 
                 if user_message and assistant_message:
                     # Use GPT-OSS Harmony format
-                    text = format_gpt_oss_harmony(user_message, assistant_message, add_eos_token)
+                    text = format_gpt_oss_harmony(
+                        user_message,
+                        assistant_message,
+                        add_eos_token,
+                        system_message=system_message,
+                        developer_message=developer_message,
+                    )
                 else:
                     # Fallback to simple concatenation
                     text = ""
@@ -438,6 +495,44 @@ def process_dataset_format(dataset, config):
         
         dataset = dataset.map(format_messages, remove_columns=dataset.column_names, num_proc=num_proc)
         
+    elif dataset_format == "medical_o1_sft":
+        # Process Medical-o1 SFT format: Question | Complex_CoT | Response
+        # Defaults align with FreedomIntelligence/medical-o1-reasoning-SFT
+        question_field = getattr(config, 'question_field', input_field or 'Question')
+        reasoning_field = getattr(config, 'reasoning_field', 'Complex_CoT')
+        response_field = getattr(config, 'response_field', target_field or 'Response')
+        reason_prefix = getattr(config, 'reason_prefix', 'Reasoning: ')
+        answer_prefix = getattr(config, 'answer_prefix', 'Final Answer: ')
+
+        def format_medical(example):
+            q = example.get(question_field, '') or ''
+            cot = example.get(reasoning_field, '') or ''
+            ans = example.get(response_field, '') or ''
+
+            # Combine reasoning and final answer in a single assistant turn
+            assistant_text = "\n\n".join(
+                [s for s in [
+                    f"{reason_prefix}{cot}".strip() if cot else '',
+                    f"{answer_prefix}{ans}".strip() if ans else ''
+                ] if s]
+            ) or ans
+
+            if use_harmony_format:
+                text = format_gpt_oss_harmony(
+                    q,
+                    assistant_text,
+                    add_eos_token,
+                    system_message=system_message,
+                    developer_message=developer_message,
+                )
+            else:
+                text = f"Q: {q}\n\n{assistant_text}"
+                if add_eos_token:
+                    text += "</s>"
+            return {"text": text}
+
+        dataset = dataset.map(format_medical, remove_columns=dataset.column_names, num_proc=num_proc)
+
     elif dataset_format == "text":
         # Process plain text format
         text_field = input_field

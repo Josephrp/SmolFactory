@@ -267,6 +267,12 @@ show_training_configs() {
         echo "   - Learning Rate: Configurable"
         echo "   - Maximum flexibility with all parameters"
         echo ""
+        echo "8. GPT-OSS Medical o1 SFT (Reasoning)"
+        echo "   - Model: openai/gpt-oss-20b"
+        echo "   - Dataset: FreedomIntelligence/medical-o1-reasoning-SFT"
+        echo "   - Format: Question | Complex_CoT | Response"
+        echo "   - Harmony formatting with optional system/developer messages"
+        echo ""
     fi
 }
 
@@ -376,6 +382,17 @@ get_training_config() {
             MAX_SEQ_LENGTH=1024
             CONFIG_FILE="config/train_gpt_oss_openhermes_fr_memory_optimized.py"
             ;;
+        "GPT-OSS Medical o1 SFT (Reasoning)")
+            MODEL_NAME="openai/gpt-oss-20b"
+            DATASET_NAME="FreedomIntelligence/medical-o1-reasoning-SFT"
+            MAX_EPOCHS=1
+            BATCH_SIZE=2
+            GRADIENT_ACCUMULATION_STEPS=8
+            LEARNING_RATE=2e-4
+            MAX_SEQ_LENGTH=2048
+            CONFIG_FILE="config/train_gpt_oss_medical_o1_sft.py"
+            generate_medical_o1_sft_config
+            ;;
         "GPT-OSS Custom Dataset")
             MODEL_NAME="openai/gpt-oss-20b"
             DATASET_NAME="legmlai/openhermes-fr"  # Will be customizable
@@ -411,10 +428,11 @@ get_custom_dataset_config() {
     echo "1. OpenHermes-FR (prompt + accepted_completion fields)"
     echo "2. Messages format (chat conversations)"
     echo "3. Text format (plain text field)"
-    echo "4. Custom format (specify field names)"
+    echo "4. Medical o1 SFT (Question | Complex_CoT | Response)"
+    echo "5. Custom format (specify field names)"
     echo ""
-    
-    select_option "Select dataset format:" "OpenHermes-FR" "Messages format" "Text format" "Custom format" DATASET_FORMAT
+
+    select_option "Select dataset format:" "OpenHermes-FR" "Messages format" "Text format" "Medical o1 SFT" "Custom format" DATASET_FORMAT
     
     case "$DATASET_FORMAT" in
         "OpenHermes-FR")
@@ -435,6 +453,18 @@ get_custom_dataset_config() {
             DATASET_FORMAT_CODE="text"
             FILTER_BAD_ENTRIES="false"
             ;;
+        "Medical o1 SFT")
+            INPUT_FIELD="Question"
+            TARGET_FIELD="Response"
+            DATASET_FORMAT_CODE="medical_o1_sft"
+            FILTER_BAD_ENTRIES="false"
+            # Field mappings and prefixes
+            get_input "Question field name" "Question" MED_Q_FIELD
+            get_input "Reasoning field name" "Complex_CoT" MED_REASON_FIELD
+            get_input "Response field name" "Response" MED_RESP_FIELD
+            get_input "Reason prefix (before reasoning)" "Reasoning: " MED_REASON_PREFIX
+            get_input "Answer prefix (before final answer)" "Final Answer: " MED_ANSWER_PREFIX
+            ;;
         "Custom format")
             get_input "Input field name" "prompt" INPUT_FIELD
             get_input "Target field name (leave empty if not needed)" "accepted_completion" TARGET_FIELD
@@ -442,6 +472,12 @@ get_custom_dataset_config() {
             get_input "Filter bad entries? (true/false)" "false" FILTER_BAD_ENTRIES
             ;;
     esac
+
+    # Optional Harmony context
+    echo ""
+    print_info "💬 Harmony Context (optional)"
+    get_input "System message" "You are GPT-Tonic, a large language model trained by TonicAI." SYSTEM_MESSAGE
+    get_input "Developer message" "You are an intelligent assistant that can answer customer service queries" DEVELOPER_MESSAGE
     
     # Dataset Filtering Options
     echo ""
@@ -490,6 +526,22 @@ get_custom_dataset_config() {
     
     # Update the custom config file with user's choices
     update_enhanced_gpt_oss_config
+}
+
+# Function to materialize a default Medical o1 SFT config file
+generate_medical_o1_sft_config() {
+    print_info "Ensuring medical o1 SFT configuration exists..."
+    if [ -f "config/train_gpt_oss_medical_o1_sft.py" ]; then
+        print_status "Medical o1 SFT config already present"
+        return
+    fi
+    cat > config/train_gpt_oss_medical_o1_sft.py << 'EOF'
+"""
+Auto-generated placeholder. A richer version will be imported at runtime.
+"""
+from config.train_gpt_oss_medical_o1_sft import config  # reuse main config
+EOF
+    print_status "Medical o1 SFT config placeholder created"
 }
 
 # Function to get custom configuration
@@ -573,6 +625,18 @@ config = GPTOSSEnhancedCustomConfig(
     max_samples=$(if [ -n "$MAX_SAMPLES" ]; then echo "$MAX_SAMPLES"; else echo "None"; fi),
     min_length=$MIN_LENGTH,
     max_length=$(if [ -n "$MAX_LENGTH" ]; then echo "$MAX_LENGTH"; else echo "None"; fi),
+    
+    # Harmony context
+    system_message=$(if [ -n "$SYSTEM_MESSAGE" ]; then printf '%s' "\"$SYSTEM_MESSAGE\""; else echo "None"; fi),
+    developer_message=$(if [ -n "$DEVELOPER_MESSAGE" ]; then printf '%s' "\"$DEVELOPER_MESSAGE\""; else echo "None"; fi),
+    use_harmony_format=True,
+
+    # Medical o1 SFT mapping (ignored unless dataset_format == 'medical_o1_sft')
+    question_field=$(if [ -n "$MED_Q_FIELD" ]; then echo "\"$MED_Q_FIELD\""; else echo "\"Question\""; fi),
+    reasoning_field=$(if [ -n "$MED_REASON_FIELD" ]; then echo "\"$MED_REASON_FIELD\""; else echo "\"Complex_CoT\""; fi),
+    response_field=$(if [ -n "$MED_RESP_FIELD" ]; then echo "\"$MED_RESP_FIELD\""; else echo "\"Response\""; fi),
+    reason_prefix=$(if [ -n "$MED_REASON_PREFIX" ]; then printf '%s' "\"$MED_REASON_PREFIX\""; else echo "\"Reasoning: \""; fi),
+    answer_prefix=$(if [ -n "$MED_ANSWER_PREFIX" ]; then printf '%s' "\"$MED_ANSWER_PREFIX\""; else echo "\"Final Answer: \""; fi),
     
     # ============================================================================
     # TRAINING HYPERPARAMETERS
@@ -811,6 +875,7 @@ else
         "GPT-OSS OpenHermes-FR (Recommended)" \
         "GPT-OSS OpenHermes-FR Memory Optimized" \
         "GPT-OSS Custom Dataset" \
+        "GPT-OSS Medical o1 SFT (Reasoning)" \
         TRAINING_CONFIG_TYPE
 fi
 
