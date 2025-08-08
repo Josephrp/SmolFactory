@@ -50,6 +50,11 @@ class SmolLM3Monitor:
         self.log_artifacts = log_artifacts
         self.log_metrics_enabled = log_metrics  # Rename to avoid conflict
         self.log_config_enabled = log_config  # Rename to avoid conflict
+        # Flush interval for dataset persistence (metrics)
+        try:
+            self.flush_interval = int(os.environ.get('TRACKIO_FLUSH_INTERVAL', '10'))
+        except Exception:
+            self.flush_interval = 10
         
         # HF Datasets configuration
         self.hf_token = hf_token or os.environ.get('HF_TOKEN')
@@ -343,12 +348,12 @@ class SmolLM3Monitor:
     
     def log_configuration(self, config: Dict[str, Any]):
         """Log experiment configuration"""
-        if not self.enable_tracking or not self.log_config_enabled:
+        if not self.log_config_enabled:
             return
         
         try:
             # Log configuration as parameters
-            if self.trackio_client:
+            if self.enable_tracking and self.trackio_client:
                 try:
                     result = self.trackio_client.log_parameters(
                         experiment_id=self.experiment_id,
@@ -390,7 +395,7 @@ class SmolLM3Monitor:
         - throughput, step_time, batch_size, seq_len
         - token_acc, train/gate_ortho, train/center, etc.
         """
-        if not self.enable_tracking or not self.log_metrics_enabled:
+        if not self.log_metrics_enabled:
             return
         
         try:
@@ -400,7 +405,7 @@ class SmolLM3Monitor:
                 metrics['step'] = step
             
             # Log to Trackio (if available)
-            if self.trackio_client:
+            if self.enable_tracking and self.trackio_client:
                 try:
                     result = self.trackio_client.log_metrics(
                         experiment_id=self.experiment_id,
@@ -418,8 +423,8 @@ class SmolLM3Monitor:
             # Store locally
             self.metrics_history.append(metrics)
             
-            # Save to HF Dataset periodically
-            if len(self.metrics_history) % 10 == 0:  # Save every 10 metrics
+            # Save to HF Dataset periodically (configurable)
+            if self.flush_interval > 0 and (len(self.metrics_history) % self.flush_interval == 0):
                 self._save_to_hf_dataset({'metrics': self.metrics_history})
             
             logger.debug("Metrics logged: %s", metrics)
@@ -429,7 +434,7 @@ class SmolLM3Monitor:
     
     def log_model_checkpoint(self, checkpoint_path: str, step: Optional[int] = None):
         """Log model checkpoint"""
-        if not self.enable_tracking or not self.log_artifacts:
+        if not self.log_artifacts:
             return
         
         try:
@@ -441,7 +446,7 @@ class SmolLM3Monitor:
                 "checkpoint_size": os.path.getsize(checkpoint_path) if os.path.exists(checkpoint_path) else 0
             }
             
-            if self.trackio_client:
+            if self.enable_tracking and self.trackio_client:
                 result = self.trackio_client.log_parameters(
                     experiment_id=self.experiment_id,
                     parameters=checkpoint_info
@@ -453,6 +458,11 @@ class SmolLM3Monitor:
                     logger.error("Failed to log checkpoint to Trackio: %s", result)
             
             self.artifacts.append(checkpoint_path)
+            # Also preserve checkpoint info in HF dataset
+            try:
+                self._save_to_hf_dataset({'artifacts': [checkpoint_path], **checkpoint_info})
+            except Exception:
+                pass
             logger.info("Checkpoint logged: %s", checkpoint_path)
             
         except Exception as e:
@@ -460,9 +470,6 @@ class SmolLM3Monitor:
     
     def log_evaluation_results(self, results: Dict[str, Any], step: Optional[int] = None):
         """Log evaluation results"""
-        if not self.enable_tracking:
-            return
-        
         try:
             # Add evaluation prefix to metrics
             eval_metrics = {f"eval_{k}": v for k, v in results.items()}
@@ -485,9 +492,6 @@ class SmolLM3Monitor:
     
     def log_system_metrics(self, step: Optional[int] = None):
         """Log system metrics (GPU, memory, etc.)"""
-        if not self.enable_tracking:
-            return
-        
         try:
             system_metrics = {}
             
@@ -513,9 +517,6 @@ class SmolLM3Monitor:
     
     def log_training_summary(self, summary: Dict[str, Any]):
         """Log training summary at the end"""
-        if not self.enable_tracking:
-            return
-        
         try:
             # Add experiment duration
             end_time = datetime.now()
@@ -524,7 +525,7 @@ class SmolLM3Monitor:
             summary['experiment_duration_hours'] = duration / 3600
             
             # Log final summary to Trackio
-            if self.trackio_client:
+            if self.enable_tracking and self.trackio_client:
                 result = self.trackio_client.log_parameters(
                     experiment_id=self.experiment_id,
                     parameters=summary

@@ -78,6 +78,7 @@ class SmolLM3Trainer:
         # Add simple console callback for basic monitoring
         from transformers import TrainerCallback
         
+        outer = self
         class SimpleConsoleCallback(TrainerCallback):
             def on_init_end(self, args, state, control, **kwargs):
                 """Called when training initialization is complete"""
@@ -99,6 +100,16 @@ class SmolLM3Trainer:
                     else:
                         lr_str = str(lr)
                     print(f"Step {step}: loss={loss_str}, lr={lr_str}")
+
+                    # Persist metrics via our monitor when Trackio callback isn't active
+                    try:
+                        if outer.monitor:
+                            # Avoid double logging when Trackio callback is used
+                            if not outer.monitor.enable_tracking:
+                                outer.monitor.log_metrics(dict(logs), step if isinstance(step, int) else None)
+                                outer.monitor.log_system_metrics(step if isinstance(step, int) else None)
+                    except Exception as e:
+                        logger.warning("SimpleConsoleCallback metrics persistence failed: %s", e)
             
             def on_train_begin(self, args, state, control, **kwargs):
                 print("🚀 Training started!")
@@ -109,28 +120,40 @@ class SmolLM3Trainer:
             def on_save(self, args, state, control, **kwargs):
                 step = state.global_step if hasattr(state, 'global_step') else 'unknown'
                 print(f"💾 Checkpoint saved at step {step}")
+                try:
+                    if outer.monitor and not outer.monitor.enable_tracking:
+                        checkpoint_path = os.path.join(args.output_dir, f"checkpoint-{step}")
+                        if os.path.exists(checkpoint_path):
+                            outer.monitor.log_model_checkpoint(checkpoint_path, step if isinstance(step, int) else None)
+                except Exception as e:
+                    logger.warning("SimpleConsoleCallback checkpoint persistence failed: %s", e)
             
             def on_evaluate(self, args, state, control, metrics=None, **kwargs):
                 if metrics and isinstance(metrics, dict):
                     step = state.global_step if hasattr(state, 'global_step') else 'unknown'
                     eval_loss = metrics.get('eval_loss', 'N/A')
                     print(f"📊 Evaluation at step {step}: eval_loss={eval_loss}")
+                    try:
+                        if outer.monitor and not outer.monitor.enable_tracking:
+                            outer.monitor.log_evaluation_results(dict(metrics), step if isinstance(step, int) else None)
+                    except Exception as e:
+                        logger.warning("SimpleConsoleCallback eval persistence failed: %s", e)
         
         # Add console callback
         callbacks.append(SimpleConsoleCallback())
         logger.info("Added simple console monitoring callback")
         
-        # Add Trackio callback if available
-        if self.monitor and self.monitor.enable_tracking:
+        # Add monitoring callback if available (always attach; it persists to dataset even if Trackio is disabled)
+        if self.monitor:
             try:
                 trackio_callback = self.monitor.create_monitoring_callback()
                 if trackio_callback:
                     callbacks.append(trackio_callback)
-                    logger.info("Added Trackio monitoring callback")
+                    logger.info("Added monitoring callback")
                 else:
-                    logger.warning("Failed to create Trackio callback")
+                    logger.warning("Failed to create monitoring callback")
             except Exception as e:
-                logger.error("Error creating Trackio callback: %s", e)
+                logger.error("Error creating monitoring callback: %s", e)
                 logger.info("Continuing with console monitoring only")
         
         logger.info("Total callbacks: %d", len(callbacks))
@@ -220,16 +243,20 @@ class SmolLM3Trainer:
         """Start training"""
         logger.info("Starting training")
         
-        # Log configuration to Trackio
-        if self.monitor and self.monitor.enable_tracking:
-            config_dict = {k: v for k, v in self.config.__dict__.items() 
-                          if not k.startswith('_')}
-            self.monitor.log_config(config_dict)
-            
-            # Log experiment URL
-            experiment_url = self.monitor.get_experiment_url()
-            if experiment_url:
-                logger.info("Trackio experiment URL: %s", experiment_url)
+        # Log configuration (always persist to dataset; Trackio if enabled)
+        if self.monitor:
+            try:
+                config_dict = {k: v for k, v in self.config.__dict__.items() if not k.startswith('_')}
+                self.monitor.log_config(config_dict)
+            except Exception as e:
+                logger.warning("Failed to log configuration: %s", e)
+            # Log experiment URL only if available
+            try:
+                experiment_url = self.monitor.get_experiment_url()
+                if experiment_url:
+                    logger.info("Trackio experiment URL: %s", experiment_url)
+            except Exception:
+                pass
         
         # Load checkpoint if resuming
         if self.init_from == "resume":
@@ -251,17 +278,20 @@ class SmolLM3Trainer:
             with open(os.path.join(self.output_dir, "train_results.json"), "w") as f:
                 json.dump(train_result.metrics, f, indent=2)
             
-            # Log training summary to Trackio
-            if self.monitor and self.monitor.enable_tracking:
-                summary = {
-                    'final_loss': train_result.metrics.get('train_loss', 0),
-                    'total_steps': train_result.metrics.get('train_runtime', 0),
-                    'training_time': train_result.metrics.get('train_runtime', 0),
-                    'output_dir': self.output_dir,
-                    'model_name': getattr(self.config, 'model_name', 'unknown'),
-                }
-                self.monitor.log_training_summary(summary)
-                self.monitor.close()
+            # Log training summary (always persist to dataset; Trackio if enabled)
+            if self.monitor:
+                try:
+                    summary = {
+                        'final_loss': train_result.metrics.get('train_loss', 0),
+                        'total_steps': train_result.metrics.get('train_runtime', 0),
+                        'training_time': train_result.metrics.get('train_runtime', 0),
+                        'output_dir': self.output_dir,
+                        'model_name': getattr(self.config, 'model_name', 'unknown'),
+                    }
+                    self.monitor.log_training_summary(summary)
+                    self.monitor.close()
+                except Exception as e:
+                    logger.warning("Failed to log training summary: %s", e)
             
             # Finish trackio experiment
             try:
@@ -276,9 +306,12 @@ class SmolLM3Trainer:
             
         except Exception as e:
             logger.error("Training failed: %s", e)
-            # Close monitoring on error
-            if self.monitor and self.monitor.enable_tracking:
-                self.monitor.close()
+            # Close monitoring on error (still persist final status to dataset)
+            if self.monitor:
+                try:
+                    self.monitor.close(final_status="failed")
+                except Exception:
+                    pass
             
             # Finish trackio experiment on error
             try:

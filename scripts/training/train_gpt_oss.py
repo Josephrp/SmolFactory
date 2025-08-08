@@ -19,6 +19,11 @@ except Exception:  # pragma: no cover - optional import depending on TRL version
     DPOTrainer = None
 from datasets import load_dataset
 from pathlib import Path
+# Import monitoring utilities from project src for persistent logging
+try:
+    from src.monitoring import create_monitor_from_config  # type: ignore
+except Exception:
+    create_monitor_from_config = None  # type: ignore
 
 # Ensure project root and config package are importable for configs that do `from config...` imports
 project_root = Path(__file__).resolve().parents[2]
@@ -876,6 +881,23 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     # Setup Trackio tracking
     trackio_client = setup_trackio_tracking(config)
     
+    # Initialize project monitor (HF Datasets + Trackio Space if configured)
+    monitor = None
+    monitor_callback = None
+    if create_monitor_from_config is not None:
+        try:
+            monitor = create_monitor_from_config(config, experiment_name=experiment_name)
+            # Persist configuration immediately
+            try:
+                cfg_dict = {k: v for k, v in config.__dict__.items() if not k.startswith('_')}
+                monitor.log_config(cfg_dict)
+            except Exception:
+                pass
+            # Create callback for SFTTrainer
+            monitor_callback = monitor.create_monitoring_callback()
+        except Exception:
+            monitor = None
+    
     # Create SFT configuration
     sft_config = create_sft_config(config, output_dir)
     
@@ -949,6 +971,10 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
         if "packing" in sft_params:
             sft_kwargs["packing"] = getattr(config, 'packing', False)
 
+        # Attach monitoring callback if supported
+        if "callbacks" in sft_params:
+            sft_kwargs["callbacks"] = ([monitor_callback] if monitor_callback is not None else [])
+
         # Remove any None values
         sft_kwargs = {k: v for k, v in sft_kwargs.items() if v is not None}
 
@@ -959,7 +985,15 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     
     # Start training
     print("Starting GPT-OSS training...")
-    trainer.train()
+    try:
+        trainer.train()
+    finally:
+        # Ensure periodic metrics are flushed at the end even if interrupted
+        try:
+            if monitor is not None:
+                monitor._save_to_hf_dataset({'status': 'running'})
+        except Exception:
+            pass
     
     # Save model
     print("Saving trained model...")
@@ -970,6 +1004,18 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
         print("Pushing model to Hugging Face Hub...")
         trainer.push_to_hub(dataset_name="HuggingFaceH4/Multilingual-Thinking")
     
+    # Log training summary and close monitor
+    try:
+        if monitor is not None:
+            summary = {
+                'output_dir': output_dir,
+                'model_name': getattr(config, 'model_name', 'unknown'),
+            }
+            monitor.log_training_summary(summary)
+            monitor.close()
+    except Exception:
+        pass
+
     print("GPT-OSS training completed successfully!")
     
     return trainer
