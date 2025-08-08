@@ -173,13 +173,24 @@ class TrackioDatasetManager:
             
             # Load existing experiments for union merge
             existing = {}
+            dataset_exists = self.check_dataset_exists()
             try:
-                for row in self.load_existing_experiments():
+                existing_list = self.load_existing_experiments()
+                for row in existing_list:
                     exp_id = row.get('experiment_id')
                     if exp_id:
                         existing[exp_id] = row
             except Exception:
                 existing = {}
+
+            # Safety guard: avoid destructive overwrite if dataset exists but
+            # we failed to read any existing records (e.g., transient HF issue)
+            if dataset_exists and len(existing) == 0 and len(experiments) <= 3:
+                logger.error(
+                    "❌ Refusing to overwrite dataset: existing records could not be loaded "
+                    "but repository exists. Skipping save to prevent data loss."
+                )
+                return False
             
             # Validate and merge
             merged_map: Dict[str, Dict[str, Any]] = {}

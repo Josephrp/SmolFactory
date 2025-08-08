@@ -424,9 +424,18 @@ class SmolLM3Monitor:
             self.metrics_history.append(metrics)
             
             # Save to HF Dataset periodically (configurable)
-            flush_every = getattr(self, 'flush_interval', 10)
-            if flush_every and (len(self.metrics_history) % flush_every == 0):
-                self._save_to_hf_dataset({'metrics': self.metrics_history})
+            flush_every = max(1, int(getattr(self, 'flush_interval', 10)))
+            # Only append the delta since last flush to minimize risk
+            try:
+                if not hasattr(self, '_last_flushed_index'):
+                    self._last_flushed_index = 0
+                if len(self.metrics_history) - self._last_flushed_index >= flush_every:
+                    new_slice = self.metrics_history[self._last_flushed_index:]
+                    # Persist only the tail slice; merge code will union-append
+                    self._save_to_hf_dataset({'metrics': new_slice})
+                    self._last_flushed_index = len(self.metrics_history)
+            except Exception:
+                pass
             
             logger.debug("Metrics logged: %s", metrics)
             
@@ -690,20 +699,23 @@ class SmolLM3Monitor:
         # Final save to HF Dataset with proper status update
         if self.dataset_manager:
             try:
-                # Update experiment with final status
+                # Update experiment with final status without clobbering metrics
                 final_experiment_data = {
                     'status': final_status,
                     'experiment_end_time': datetime.now().isoformat(),
                     'final_metrics_count': len(self.metrics_history),
                     'total_artifacts': len(self.artifacts)
                 }
-                
-                success = self._save_to_hf_dataset(final_experiment_data)
-                if success:
-                    logger.info("✅ Final experiment data saved to HF Dataset")
-                else:
-                    logger.error("❌ Failed to save final experiment data")
-                    
+                self._save_to_hf_dataset(final_experiment_data)
+                # Also persist any unflushed metrics tail
+                try:
+                    last_idx = getattr(self, '_last_flushed_index', 0)
+                    if len(self.metrics_history) > last_idx:
+                        tail = self.metrics_history[last_idx:]
+                        self._save_to_hf_dataset({'metrics': tail})
+                        self._last_flushed_index = len(self.metrics_history)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"❌ Failed to save final experiment data: {e}")
         
