@@ -116,7 +116,11 @@ class TrackioSpace:
             from datasets import load_dataset
             
             logger.info(f"🔍 Loading experiments directly from {self.dataset_repo}")
-            dataset = load_dataset(self.dataset_repo, token=self.hf_token)
+            try:
+                dataset = load_dataset(self.dataset_repo, token=self.hf_token)
+            except Exception:
+                # Relax verification to handle split metadata mismatches
+                dataset = load_dataset(self.dataset_repo, token=self.hf_token, verification_mode="no_checks")  # type: ignore[arg-type]
             logger.info(f"✅ Successfully loaded dataset from {self.dataset_repo}")
             
             # Convert dataset to experiments dict
@@ -704,8 +708,11 @@ def test_dataset_connection(hf_token: str, dataset_repo: str) -> str:
         
         from datasets import load_dataset
         
-        # Test loading the dataset
-        dataset = load_dataset(dataset_repo, token=hf_token)
+        # Test loading the dataset (with relaxed verification fallback)
+        try:
+            dataset = load_dataset(dataset_repo, token=hf_token)
+        except Exception:
+            dataset = load_dataset(dataset_repo, token=hf_token, verification_mode="no_checks")  # type: ignore[arg-type]
         
         # Count experiments and analyze structure
         experiment_count = len(dataset['train']) if 'train' in dataset else 0
@@ -2139,4 +2146,4 @@ with gr.Blocks(title="Trackio - Experiment Tracking", theme=gr.themes.Soft()) as
 
 # Launch the app
 if __name__ == "__main__":
-    demo.launch() 
+    demo.launch(show_error=True) 

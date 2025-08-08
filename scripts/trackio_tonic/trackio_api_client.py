@@ -44,7 +44,12 @@ class TrackioAPIClient:
         # Initialize gradio client
         if GRADIO_CLIENT_AVAILABLE and self.space_url:
             try:
-                self.client = Client(self.space_url)
+                # Ensure we pass hf_token if Client supports it (older versions ignore extra kwargs)
+                try:
+                    self.client = Client(self.space_url, hf_token=self.hf_token)  # type: ignore
+                except TypeError:
+                    # Fallback for older gradio_client versions without hf_token param
+                    self.client = Client(self.space_url)
                 logger.info(f"✅ Connected to Trackio Space: {self.space_id}")
             except Exception as e:
                 logger.error(f"❌ Failed to connect to Trackio Space: {e}")
@@ -125,6 +130,14 @@ class TrackioAPIClient:
         result = self._make_api_call("/create_experiment_interface", name, description)
         
         if "success" in result:
+            # Gradio returns [message, dropdown] when two outputs are wired
+            # Normalize to a string for logging
+            try:
+                payload = result.get("data")
+                if isinstance(payload, (list, tuple)):
+                    result["data"] = payload[0]
+            except Exception:
+                pass
             logger.info(f"Experiment created successfully: {result['data']}")
             return result
         else:
