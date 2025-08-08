@@ -147,3 +147,14 @@ class GPTOSSMemoryOptimizedConfig:
         print(f"Quantization: {self.quantization_config}")
         print(f"Max memory per GPU: {self.model_kwargs.get('max_memory', 'Auto')}")
         print("==================================================") 
+
+# Provide a module-level config instance for dynamic loaders
+config = GPTOSSMemoryOptimizedConfig()
+
+def get_config(config_path: str) -> GPTOSSMemoryOptimizedConfig:
+    """Return a configured GPTOSSMemoryOptimizedConfig instance.
+
+    The config_path argument is accepted for API compatibility with other
+    get_config functions, but is not used to alter the configuration here.
+    """
+    return GPTOSSMemoryOptimizedConfig()

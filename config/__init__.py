@@ -2,26 +2,63 @@
 Configuration package for SmolLM3 and GPT-OSS training
 """
 
-from .train_smollm3 import SmolLM3Config, get_config as get_base_config
-from .train_smollm3_openhermes_fr import SmolLM3ConfigOpenHermesFR, get_config as get_openhermes_fr_config
-from .train_smollm3_openhermes_fr_a100_large import SmolLM3ConfigOpenHermesFRA100Large, get_config as get_a100_large_config
-from .train_smollm3_openhermes_fr_a100_multiple_passes import SmolLM3ConfigOpenHermesFRMultiplePasses, get_config as get_multiple_passes_config
-from .train_smollm3_openhermes_fr_a100_max_performance import SmolLM3ConfigOpenHermesFRMaxPerformance, get_config as get_max_performance_config
+try:
+    from .train_smollm3 import SmolLM3Config, get_config as get_base_config
+except Exception:
+    SmolLM3Config = None  # type: ignore
+    def get_base_config(config_path: str):  # type: ignore
+        raise ImportError("train_smollm3 not available")
+try:
+    from .train_smollm3_openhermes_fr import SmolLM3ConfigOpenHermesFR, get_config as get_openhermes_fr_config
+except Exception:
+    SmolLM3ConfigOpenHermesFR = None  # type: ignore
+    get_openhermes_fr_config = None  # type: ignore
+try:
+    from .train_smollm3_openhermes_fr_a100_large import SmolLM3ConfigOpenHermesFRA100Large, get_config as get_a100_large_config
+except Exception:
+    SmolLM3ConfigOpenHermesFRA100Large = None  # type: ignore
+    get_a100_large_config = None  # type: ignore
+try:
+    from .train_smollm3_openhermes_fr_a100_multiple_passes import SmolLM3ConfigOpenHermesFRMultiplePasses, get_config as get_multiple_passes_config
+except Exception:
+    SmolLM3ConfigOpenHermesFRMultiplePasses = None  # type: ignore
+    get_multiple_passes_config = None  # type: ignore
+try:
+    from .train_smollm3_openhermes_fr_a100_max_performance import SmolLM3ConfigOpenHermesFRMaxPerformance, get_config as get_max_performance_config
+except Exception:
+    SmolLM3ConfigOpenHermesFRMaxPerformance = None  # type: ignore
+    get_max_performance_config = None  # type: ignore
 
 # GPT-OSS configurations
-from .train_gpt_oss_basic import GPTOSSBasicConfig, get_config as get_gpt_oss_basic_config
-from .train_gpt_oss_multilingual_reasoning import (
-    GPTOSSMultilingualReasoningConfig,
-    get_config as get_gpt_oss_multilingual_reasoning_config,
-)
-from .train_gpt_oss_h100_optimized import (
-    GPTOSSH100OptimizedConfig,
-    get_config as get_gpt_oss_h100_optimized_config,
-)
-from .train_gpt_oss_memory_optimized import (
-    GPTOSSMemoryOptimizedConfig,
-    get_config as get_gpt_oss_memory_optimized_config,
-)
+try:
+    from .train_gpt_oss_basic import GPTOSSBasicConfig, get_config as get_gpt_oss_basic_config
+except Exception:
+    GPTOSSBasicConfig = None  # type: ignore
+    get_gpt_oss_basic_config = None  # type: ignore
+try:
+    from .train_gpt_oss_multilingual_reasoning import (
+        GPTOSSMultilingualReasoningConfig,
+        get_config as get_gpt_oss_multilingual_reasoning_config,
+    )
+except Exception:
+    GPTOSSMultilingualReasoningConfig = None  # type: ignore
+    get_gpt_oss_multilingual_reasoning_config = None  # type: ignore
+try:
+    from .train_gpt_oss_h100_optimized import (
+        GPTOSSH100OptimizedConfig,
+        get_config as get_gpt_oss_h100_optimized_config,
+    )
+except Exception:
+    GPTOSSH100OptimizedConfig = None  # type: ignore
+    get_gpt_oss_h100_optimized_config = None  # type: ignore
+try:
+    from .train_gpt_oss_memory_optimized import (
+        GPTOSSMemoryOptimizedConfig,
+        get_config as get_gpt_oss_memory_optimized_config,
+    )
+except Exception:
+    GPTOSSMemoryOptimizedConfig = None  # type: ignore
+    get_gpt_oss_memory_optimized_config = None  # type: ignore
 from .train_gpt_oss_custom import GPTOSSEnhancedCustomConfig
 
 # Pre-baked GPT-OSS configs exposing a `config` instance
@@ -38,17 +75,18 @@ def get_config(config_path: str):
     import importlib.util as _importlib
     
     if not os.path.exists(config_path):
-        return get_base_config(config_path)
+        # Fall back to base config accessor if available
+        return get_base_config(config_path) if get_base_config else None
     
     # Try to determine config type based on filename
     if "a100_large" in config_path:
-        return get_a100_large_config(config_path)
+        return get_a100_large_config(config_path) if get_a100_large_config else None
     elif "a100_multiple_passes" in config_path:
-        return get_multiple_passes_config(config_path)
+        return get_multiple_passes_config(config_path) if get_multiple_passes_config else None
     elif "a100_max_performance" in config_path:
-        return get_max_performance_config(config_path)
+        return get_max_performance_config(config_path) if get_max_performance_config else None
     elif "openhermes_fr" in config_path:
-        return get_openhermes_fr_config(config_path)
+        return get_openhermes_fr_config(config_path) if get_openhermes_fr_config else None
     elif "gpt_oss" in config_path:
         # Load GPT-OSS style config module dynamically and return its `config` instance if present
         try:
@@ -61,9 +99,9 @@ def get_config(config_path: str):
         except Exception:
             # Fallback to base config if dynamic load fails
             pass
-        return get_base_config(config_path)
+        return get_base_config(config_path) if get_base_config else None
     else:
-        return get_base_config(config_path)
+        return get_base_config(config_path) if get_base_config else None
 
 __all__ = [
     'SmolLM3Config',
