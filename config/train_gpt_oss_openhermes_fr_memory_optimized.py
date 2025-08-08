@@ -35,7 +35,7 @@ config = GPTOSSEnhancedCustomConfig(
     # Dataset sampling optimized for memory constraints
     max_samples=800000,                      # Reduced from 800K for memory efficiency
     min_length=15,                          # Slightly higher minimum for quality
-    max_length=2048,                        # Explicit max length for memory control
+    max_length=4096,                        # Explicit max length for memory control
     
     # ============================================================================
     # MEMORY-OPTIMIZED TRAINING HYPERPARAMETERS
@@ -56,7 +56,7 @@ config = GPTOSSEnhancedCustomConfig(
     # MODEL CONFIGURATION - Memory Optimized for GPT-OSS
     # ============================================================================
     model_name="openai/gpt-oss-20b",
-    max_seq_length=1024,                    # Reduced from 3072 for memory optimization
+    max_seq_length=4096,                    # Reduced from 3072 for memory optimization
     use_flash_attention=True,               # Critical for memory efficiency
     use_gradient_checkpointing=True,        # Essential for memory optimization
     
@@ -106,7 +106,7 @@ config = GPTOSSEnhancedCustomConfig(
     # ============================================================================
     # Model loading with memory constraints
     model_kwargs={
-        "attn_implementation": "eager",     # Memory-safe attention
+        "attn_implementation": "kernels-community/vllm-flash-attn3",  # Much faster attention on A100/H100
         "torch_dtype": "auto",              # Let model decide (MXFP4 compatible)
         "use_cache": False,                 # Disable KV cache for training
         "device_map": "auto",               # Automatic device mapping
@@ -114,10 +114,10 @@ config = GPTOSSEnhancedCustomConfig(
         "max_memory": {0: "75GB"},          # Reserve memory for other processes
     },
     
-    # Data loading optimized for memory efficiency
-    dataloader_num_workers=2,               # Reduced workers to save memory
-    dataloader_pin_memory=False,            # Disable to save memory
-    dataloader_prefetch_factor=1,           # Minimal prefetch for memory
+    # Data loading optimized for throughput
+    dataloader_num_workers=4,                # More workers for faster loading
+    dataloader_pin_memory=True,              # Pin memory for faster host->GPU copies
+    dataloader_prefetch_factor=2,            
     
     # Memory management optimizations
     max_memory_per_gpu="75GB",              # Explicit memory limit
@@ -126,7 +126,7 @@ config = GPTOSSEnhancedCustomConfig(
     remove_unused_columns=True,             # Remove unnecessary data
     
     # ============================================================================
-    # EVALUATION & LOGGING - Memory Efficient
+    # EVALUATION & LOGGING - Fast Iterations
     # ============================================================================
     eval_strategy="steps",
     eval_steps=500,                         # Less frequent evaluation for memory
@@ -134,7 +134,7 @@ config = GPTOSSEnhancedCustomConfig(
     
     save_strategy="steps", 
     save_steps=1000,                        # Less frequent saves for memory/storage
-    save_total_limit=2,                     # Keep only 2 checkpoints for memory
+    save_total_limit=3,                     # Keep only 2 checkpoints for memory
     save_only_model=True,                   # Save only model weights
     
     metric_for_best_model="eval_loss",

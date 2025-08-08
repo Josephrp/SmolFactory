@@ -25,10 +25,11 @@ class TrackioSpace:
     def __init__(self, hf_token: Optional[str] = None, dataset_repo: Optional[str] = None):
         self.experiments = {}
         self.current_experiment = None
+        self.backup_mode = False
         
         # Get dataset repository and HF token from parameters or environment variables
-        # Use dynamic default based on environment or fallback to generic default
-        default_dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'trackio-experiments')
+        # Respect explicit values; avoid hardcoded defaults that might point to test repos
+        default_dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
         self.dataset_repo = dataset_repo or default_dataset_repo
         self.hf_token = hf_token or os.environ.get('HF_TOKEN')
         
@@ -75,12 +76,14 @@ class TrackioSpace:
                     # Fall back to backup data
                     self._load_backup_experiments()
             else:
-                # No HF token, use backup data
+                # No HF token, use backup data but do not allow saving to dataset from backup
                 self._load_backup_experiments()
+                self.backup_mode = True
                 
         except Exception as e:
             logger.error(f"Failed to load experiments: {e}")
             self._load_backup_experiments()
+            self.backup_mode = True
     
     def _load_backup_experiments(self):
         """Load backup experiments when dataset is not available"""
@@ -314,6 +317,9 @@ class TrackioSpace:
     def _save_experiments(self):
         """Save experiments to HF Dataset"""
         try:
+            if self.backup_mode:
+                logger.warning("⚠️ Backup mode active; skipping dataset save to avoid overwriting real data with demo values")
+                return
             if self.hf_token:
                 from datasets import Dataset
                 from huggingface_hub import HfApi
@@ -565,17 +571,20 @@ def create_dataset_repository(hf_token: str, dataset_repo: str) -> str:
     except Exception as e:
         return f"❌ Failed to create dataset: {str(e)}\n\n💡 Troubleshooting:\n1. Check your HF token has write permissions\n2. Verify the username in the repository name\n3. Ensure the dataset name is valid"
 
-# Initialize API client for remote data
+# Initialize API client for remote data if environment provides a space id/url
 api_client = None
 try:
-    from trackio_api_client import create_trackio_client
-    api_client = create_trackio_client()
-    if api_client:
+    from trackio_api_client import TrackioAPIClient
+    space_id = os.environ.get('TRACKIO_URL') or os.environ.get('TRACKIO_SPACE_ID')
+    if space_id:
+        api_client = TrackioAPIClient(space_id, os.environ.get('HF_TOKEN'))
         logger.info("✅ API client initialized for remote data access")
     else:
-        logger.warning("⚠️ Could not initialize API client, using local data only")
+        logger.info("No TRACKIO_URL/TRACKIO_SPACE_ID set; remote API client disabled")
 except ImportError:
     logger.warning("⚠️ API client not available, using local data only")
+except Exception as e:
+    logger.warning(f"⚠️ Could not initialize API client: {e}")
 
 # Add Hugging Face Spaces compatibility
 def is_huggingface_spaces():
@@ -590,8 +599,8 @@ def get_persistent_data_path():
     else:
         return "trackio_experiments.json"
 
-# Override the data file path for HF Spaces
-if is_huggingface_spaces():
+# Override the data file path for HF Spaces if attribute exists
+if is_huggingface_spaces() and hasattr(trackio_space, 'data_file'):
     logger.info("🚀 Running on Hugging Face Spaces - using persistent storage")
     trackio_space.data_file = get_persistent_data_path()
 

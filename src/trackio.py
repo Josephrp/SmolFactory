@@ -40,7 +40,12 @@ def init(
             project_name = os.environ.get('EXPERIMENT_NAME', 'smollm3_experiment')
         
         # Extract configuration from kwargs
-        trackio_url = kwargs.get('trackio_url') or os.environ.get('TRACKIO_URL')
+        # Accept both TRACKIO_URL (full URL or org/space) and TRACKIO_SPACE_ID
+        trackio_url = (
+            kwargs.get('trackio_url')
+            or os.environ.get('TRACKIO_URL')
+            or os.environ.get('TRACKIO_SPACE_ID')
+        )
         trackio_token = kwargs.get('trackio_token') or os.environ.get('TRACKIO_TOKEN')
         hf_token = kwargs.get('hf_token') or os.environ.get('HF_TOKEN')
         dataset_repo = kwargs.get('dataset_repo') or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')

@@ -120,12 +120,18 @@ class SmolLM3Monitor:
         """Setup Trackio API client"""
         try:
             # Get Trackio configuration from environment or parameters
-            space_id = trackio_url or os.getenv('TRACKIO_SPACE_ID')
-            
+            # Accept either a full URL or an org/space identifier
+            # Prefer explicit parameter, then environment variables
+            space_id = (
+                trackio_url
+                or os.getenv('TRACKIO_URL')
+                or os.getenv('TRACKIO_SPACE_ID')
+            )
+
             if not space_id:
-                # Use the deployed Trackio Space ID
-                space_id = "Tonic/trackio-monitoring-20250727"
-                logger.info(f"Using default Trackio Space ID: {space_id}")
+                logger.warning("No Trackio Space configured via param or env (TRACKIO_URL/TRACKIO_SPACE_ID). Disabling Trackio tracking.")
+                self.enable_tracking = False
+                return
             
             # Get HF token for Space resolution
             hf_token = self.hf_token or trackio_token or os.getenv('HF_TOKEN')

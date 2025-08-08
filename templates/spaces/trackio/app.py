@@ -27,6 +27,7 @@ class TrackioSpace:
     def __init__(self, hf_token: Optional[str] = None, dataset_repo: Optional[str] = None):
         self.experiments = {}
         self.current_experiment = None
+        self.using_backup_data = False
         
         # Get dataset repository and HF token from parameters or environment variables
         self.dataset_repo = dataset_repo or os.environ.get('TRACKIO_DATASET_REPO', 'Tonic/trackio-experiments')
@@ -80,10 +81,11 @@ class TrackioSpace:
                     reverse=True
                 ))
                 
-                # If no experiments found, use backup
+                # If no experiments found, use backup but mark backup mode to avoid accidental writes
                 if not self.experiments:
                     logger.info("📊 No experiments found in dataset, using backup data")
                     self._load_backup_experiments()
+                    self.using_backup_data = True
                 
                 return
             
@@ -91,15 +93,18 @@ class TrackioSpace:
             if self.hf_token:
                 success = self._load_experiments_direct()
                 if success:
+                    self.using_backup_data = False
                     return
             
             # Final fallback to backup data
             logger.info("🔄 Using backup data")
             self._load_backup_experiments()
+            self.using_backup_data = True
                 
         except Exception as e:
             logger.error(f"❌ Failed to load experiments: {e}")
             self._load_backup_experiments()
+            self.using_backup_data = True
     
     def _load_experiments_direct(self) -> bool:
         """Load experiments directly from HF Dataset without dataset manager"""
@@ -423,6 +428,9 @@ class TrackioSpace:
     def _save_experiments(self):
         """Save experiments to HF Dataset with data preservation"""
         try:
+            if self.using_backup_data:
+                logger.warning("⚠️ Using backup data; skip saving to dataset to avoid overwriting with demo values")
+                return
             # Use dataset manager for safe operations if available
             if self.dataset_manager:
                 logger.info("💾 Saving experiments using dataset manager (data preservation)")
@@ -782,21 +790,27 @@ def create_dataset_repository(hf_token: str, dataset_repo: str) -> str:
     except Exception as e:
         return f"❌ Failed to create dataset: {str(e)}\n\n💡 Troubleshooting:\n1. Check your HF token has write permissions\n2. Verify the username in the repository name\n3. Ensure the dataset name is valid\n4. Check internet connectivity"
 
-# Initialize API client for remote data
+"""
+Initialize API client for remote data. We do not hardcode a default test URL to avoid
+overwriting dataset content with demo data. The API client will only be initialized
+when TRACKIO_URL or TRACKIO_SPACE_ID is present.
+"""
 api_client = None
 try:
     from trackio_api_client import TrackioAPIClient
-    # Get Trackio URL from environment or use default
-    trackio_url = os.environ.get('TRACKIO_URL', 'https://tonic-test-trackio-test.hf.space')
-    
-    # Clean up URL to avoid double protocol issues
-    if trackio_url.startswith('https://https://'):
-        trackio_url = trackio_url.replace('https://https://', 'https://')
-    elif trackio_url.startswith('http://http://'):
-        trackio_url = trackio_url.replace('http://http://', 'http://')
-    
-    api_client = TrackioAPIClient(trackio_url)
-    logger.info(f"✅ API client initialized for remote data access: {trackio_url}")
+    # Resolve Trackio space from environment
+    trackio_url_env = os.environ.get('TRACKIO_URL') or os.environ.get('TRACKIO_SPACE_ID')
+    if trackio_url_env:
+        # Clean up URL to avoid double protocol issues
+        trackio_url = trackio_url_env
+        if trackio_url.startswith('https://https://'):
+            trackio_url = trackio_url.replace('https://https://', 'https://')
+        elif trackio_url.startswith('http://http://'):
+            trackio_url = trackio_url.replace('http://http://', 'http://')
+        api_client = TrackioAPIClient(trackio_url)
+        logger.info(f"✅ API client initialized for remote data access: {trackio_url}")
+    else:
+        logger.info("No TRACKIO_URL/TRACKIO_SPACE_ID set; remote API client disabled")
 except ImportError:
     logger.warning("⚠️ API client not available, using local data only")
 except Exception as e:

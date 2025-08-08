@@ -458,11 +458,17 @@ def split_dataset(dataset, config):
 def setup_trackio_tracking(config):
     """Setup Trackio tracking if enabled"""
     
-    if not config.enable_tracking or not config.trackio_url:
+    if not getattr(config, 'enable_tracking', False):
         print("Trackio tracking disabled or URL not provided")
         return None
     
-    print(f"Setting up Trackio tracking: {config.trackio_url}")
+    # Resolve Trackio URL from config or environment
+    trackio_url = getattr(config, 'trackio_url', None) or os.environ.get('TRACKIO_URL') or os.environ.get('TRACKIO_SPACE_ID')
+    if not trackio_url:
+        print("Trackio tracking enabled but no TRACKIO_URL/TRACKIO_SPACE_ID provided; skipping Trackio setup")
+        return None
+
+    print(f"Setting up Trackio tracking: {trackio_url}")
     
     # Import the correct TrackioAPIClient
     import sys
@@ -472,8 +478,8 @@ def setup_trackio_tracking(config):
     
     # Initialize Trackio client using the correct API
     trackio_client = TrackioAPIClient(
-        space_id=config.trackio_url,
-        hf_token=config.trackio_token
+        space_id=trackio_url,
+        hf_token=getattr(config, 'trackio_token', None) or os.environ.get('HF_TOKEN')
     )
     
     return trackio_client
