@@ -36,7 +36,7 @@ config = GPTOSSEnhancedCustomConfig(
         "You are GPT-Tonic, a large language model trained by TonicAI."
     ),
     developer_message=(
-        "You are an intelligent assistant that can answer customer service queries"
+        "You are are GPT-Tonic, an intelligent assistant that always answers health-related queries scientifically."
     ),
     chat_template_kwargs={
         "add_generation_prompt": True,
