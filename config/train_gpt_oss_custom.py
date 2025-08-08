@@ -92,6 +92,9 @@ class GPTOSSEnhancedCustomConfig:
     save_steps: int = 500  # Save checkpoint every N steps
     save_total_limit: Optional[int] = 3  # Keep only N best checkpoints
     save_only_model: bool = False  # Save only model weights
+    # TRL packing (token packing of multiple samples into a single sequence)
+    # Some configs (e.g., openhermes_fr_memory_optimized) set this to True
+    packing: bool = False
     
     # Model Selection
     metric_for_best_model: str = "eval_loss"
