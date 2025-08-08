@@ -122,12 +122,20 @@ class TrackioDatasetManager:
     
     def save_experiments(self, experiments: List[Dict[str, Any]], commit_message: Optional[str] = None) -> bool:
         """
-        Save a list of experiments to the dataset, preserving data integrity.
-        
+        Save a list of experiments to the dataset using a non-destructive union merge.
+
+        - Loads existing experiments (if any) and builds a union by `experiment_id`.
+        - For overlapping IDs, merges JSON fields:
+          - metrics: concatenates lists and de-duplicates by (step, timestamp) for nested entries
+          - parameters: dict-update (new values override)
+          - artifacts: union with de-dup
+          - logs: concatenation with de-dup
+        - Non-JSON scalar fields from incoming experiments take precedence.
+
         Args:
             experiments (List[Dict[str, Any]]): List of experiment dictionaries
             commit_message (Optional[str]): Custom commit message
-            
+
         Returns:
             bool: True if save was successful, False otherwise
         """
@@ -136,24 +144,120 @@ class TrackioDatasetManager:
                 logger.warning("⚠️ No experiments to save")
                 return False
             
-            # Validate all experiments before saving
-            valid_experiments = []
+            # Helpers
+            def _parse_json_field(value, default):
+                try:
+                    if value is None:
+                        return default
+                    if isinstance(value, str):
+                        return json.loads(value) if value else default
+                    return value
+                except Exception:
+                    return default
+            
+            def _metrics_key(entry: Dict[str, Any]):
+                if isinstance(entry, dict):
+                    return (entry.get('step'), entry.get('timestamp'))
+                return (None, json.dumps(entry, sort_keys=True))
+            
+            # Load existing experiments for union merge
+            existing = {}
+            try:
+                for row in self.load_existing_experiments():
+                    exp_id = row.get('experiment_id')
+                    if exp_id:
+                        existing[exp_id] = row
+            except Exception:
+                existing = {}
+            
+            # Validate and merge
+            merged_map: Dict[str, Dict[str, Any]] = {}
+            # Seed with existing
+            for exp_id, row in existing.items():
+                merged_map[exp_id] = row
+            
+            # Apply incoming
             for exp in experiments:
-                if self._validate_experiment_structure(exp):
-                    # Ensure last_updated is set
-                    if 'last_updated' not in exp:
-                        exp['last_updated'] = datetime.now().isoformat()
-                    valid_experiments.append(exp)
-                else:
+                if not self._validate_experiment_structure(exp):
                     logger.error(f"❌ Invalid experiment structure: {exp.get('experiment_id', 'unknown')}")
                     return False
+                exp_id = exp['experiment_id']
+                incoming = exp
+                if exp_id not in merged_map:
+                    incoming['last_updated'] = incoming.get('last_updated') or datetime.now().isoformat()
+                    merged_map[exp_id] = incoming
+                    continue
+                # Merge with existing
+                base = merged_map[exp_id]
+                # Parse JSON fields
+                base_metrics = _parse_json_field(base.get('metrics'), [])
+                base_params = _parse_json_field(base.get('parameters'), {})
+                base_artifacts = _parse_json_field(base.get('artifacts'), [])
+                base_logs = _parse_json_field(base.get('logs'), [])
+                inc_metrics = _parse_json_field(incoming.get('metrics'), [])
+                inc_params = _parse_json_field(incoming.get('parameters'), {})
+                inc_artifacts = _parse_json_field(incoming.get('artifacts'), [])
+                inc_logs = _parse_json_field(incoming.get('logs'), [])
+                # Merge metrics with de-dup
+                merged_metrics = []
+                seen = set()
+                for entry in base_metrics + inc_metrics:
+                    try:
+                        # Use the original entry so _metrics_key can properly
+                        # distinguish dict vs non-dict entries
+                        key = _metrics_key(entry)
+                    except Exception:
+                        key = (None, None)
+                    if key not in seen:
+                        seen.add(key)
+                        merged_metrics.append(entry)
+                # Merge params
+                merged_params = {}
+                if isinstance(base_params, dict):
+                    merged_params.update(base_params)
+                if isinstance(inc_params, dict):
+                    merged_params.update(inc_params)
+                # Merge artifacts and logs with de-dup
+                def _dedup_list(lst):
+                    out = []
+                    seen_local = set()
+                    for item in lst:
+                        key = json.dumps(item, sort_keys=True, default=str) if not isinstance(item, str) else item
+                        if key not in seen_local:
+                            seen_local.add(key)
+                            out.append(item)
+                    return out
+                merged_artifacts = _dedup_list(list(base_artifacts) + list(inc_artifacts))
+                merged_logs = _dedup_list(list(base_logs) + list(inc_logs))
+                # Rebuild merged record preferring incoming scalars
+                merged_rec = dict(base)
+                merged_rec.update({k: v for k, v in incoming.items() if k not in ('metrics', 'parameters', 'artifacts', 'logs')})
+                merged_rec['metrics'] = json.dumps(merged_metrics, default=str)
+                merged_rec['parameters'] = json.dumps(merged_params, default=str)
+                merged_rec['artifacts'] = json.dumps(merged_artifacts, default=str)
+                merged_rec['logs'] = json.dumps(merged_logs, default=str)
+                merged_rec['last_updated'] = datetime.now().isoformat()
+                merged_map[exp_id] = merged_rec
             
-            # Create dataset
-            dataset = Dataset.from_list(valid_experiments)
+            # Prepare final list
+            valid_experiments = list(merged_map.values())
+            # Ensure all have mandatory fields encoded
+            normalized = []
+            for rec in valid_experiments:
+                # Normalize json fields to strings
+                for f, default in (('metrics', []), ('parameters', {}), ('artifacts', []), ('logs', [])):
+                    val = rec.get(f)
+                    if not isinstance(val, str):
+                        rec[f] = json.dumps(val if val is not None else default, default=str)
+                if 'last_updated' not in rec:
+                    rec['last_updated'] = datetime.now().isoformat()
+                normalized.append(rec)
+            
+            dataset = Dataset.from_list(normalized)
             
             # Generate commit message if not provided
             if not commit_message:
-                commit_message = f"Update dataset with {len(valid_experiments)} experiments ({datetime.now().isoformat()})"
+                commit_message = f"Union-merge update with {len(normalized)} experiments ({datetime.now().isoformat()})"
             
             # Push to hub
             dataset.push_to_hub(
@@ -163,7 +267,7 @@ class TrackioDatasetManager:
                 commit_message=commit_message
             )
             
-            logger.info(f"✅ Successfully saved {len(valid_experiments)} experiments to {self.dataset_repo}")
+            logger.info(f"✅ Successfully saved {len(normalized)} experiments (union-merged) to {self.dataset_repo}")
             return True
             
         except Exception as e:
