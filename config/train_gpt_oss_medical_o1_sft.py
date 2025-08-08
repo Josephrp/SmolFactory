@@ -55,7 +55,7 @@ config = GPTOSSEnhancedCustomConfig(
     # ============================================================================
     # TRAINING HYPERPARAMETERS
     # ============================================================================
-    num_train_epochs=1.0,
+    num_train_epochs=2.0,
     batch_size=4,
     gradient_accumulation_steps=4,
     learning_rate=2e-4,
