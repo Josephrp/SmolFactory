@@ -41,9 +41,9 @@ config = GPTOSSEnhancedCustomConfig(
     # MEMORY-OPTIMIZED TRAINING HYPERPARAMETERS
     # ============================================================================
     # Batch configuration following memory optimization principles
-    num_train_epochs=1.0,                   # Single epoch to reduce memory pressure
-    batch_size=8,                           # Reduced from 6 for memory efficiency
-    gradient_accumulation_steps=8,         # Increased to maintain effective batch size 32
+    num_train_epochs=1.0,                    # Single epoch to reduce memory pressure
+    batch_size=2,                            # A100-safe per-device batch size
+    gradient_accumulation_steps=16,          # Maintain reasonable effective batch size
     
     # Learning rate optimized for single epoch + memory constraints
     learning_rate=2e-4,                     # Standard GPT-OSS learning rate
@@ -56,7 +56,7 @@ config = GPTOSSEnhancedCustomConfig(
     # MODEL CONFIGURATION - Memory Optimized for GPT-OSS
     # ============================================================================
     model_name="openai/gpt-oss-20b",
-    max_seq_length=4096,                    # Reduced from 3072 for memory optimization
+    max_seq_length=4096,                     # Maximize sequence length for A100 VRAM utilization
     use_flash_attention=True,               # Critical for memory efficiency
     use_gradient_checkpointing=True,        # Essential for memory optimization
     
@@ -92,6 +92,7 @@ config = GPTOSSEnhancedCustomConfig(
     # QUANTIZATION - GPT-OSS Native MXFP4 Optimization
     # ============================================================================
     use_quantization=True,
+    # MXFP4 per tutorial: https://cookbook.openai.com/articles/gpt-oss/fine-tune-transfomers
     quantization_config={
         "dequantize": True,                 # Use native MXFP4 as per GPT-OSS specs
         "load_in_4bit": False,              # Don't use BNB 4-bit with MXFP4
@@ -106,40 +107,39 @@ config = GPTOSSEnhancedCustomConfig(
     # ============================================================================
     # Model loading with memory constraints
     model_kwargs={
-        "attn_implementation": "kernels-community/vllm-flash-attn3",  # Much faster attention on A100/H100
+        # Rely on training script to set eager + bf16 for MXFP4
         "torch_dtype": "auto",              # Let model decide (MXFP4 compatible)
         "use_cache": False,                 # Disable KV cache for training
         "device_map": "auto",               # Automatic device mapping
         "low_cpu_mem_usage": True,          # Critical for memory optimization
-        "max_memory": {0: "75GB"},          # Reserve memory for other processes
     },
     
     # Data loading optimized for throughput
     dataloader_num_workers=4,                # More workers for faster loading
     dataloader_pin_memory=True,              # Pin memory for faster host->GPU copies
-    dataloader_prefetch_factor=2,            
+    dataloader_prefetch_factor=1,            # Lower prefetch to keep VRAM headroom
     
     # Memory management optimizations
-    max_memory_per_gpu="75GB",              # Explicit memory limit
+    max_memory_per_gpu=None,                 # No explicit memory limit; use as much VRAM as available
     low_cpu_mem_usage=True,                 # Essential for large models
     group_by_length=True,                   # Efficient batching for memory
     remove_unused_columns=True,             # Remove unnecessary data
     
     # ============================================================================
-    # EVALUATION & LOGGING - Fast Iterations
+    # EVALUATION & LOGGING - Memory Safe
     # ============================================================================
     eval_strategy="steps",
-    eval_steps=500,                         # Less frequent evaluation for memory
-    logging_steps=50,                       # Reduced logging frequency
+    eval_steps=200,                         
+    logging_steps=10,                       
     
     save_strategy="steps", 
-    save_steps=1000,                        # Less frequent saves for memory/storage
+    save_steps=500,                        # Less frequent saves for memory/storage
     save_total_limit=3,                     # Keep only 2 checkpoints for memory
     save_only_model=True,                   # Save only model weights
     
     metric_for_best_model="eval_loss",
     greater_is_better=False,
-    load_best_model_at_end=True,
+    load_best_model_at_end=False,            # Skip best model selection to save memory
     
     # Evaluation memory optimization
     eval_accumulation_steps=4,              # Accumulate eval outputs to save memory
@@ -164,7 +164,7 @@ config = GPTOSSEnhancedCustomConfig(
     
     # Generation config optimized for GPT-OSS harmony format (exact template compliance)
     generation_config={
-        "max_new_tokens": 256,              # Reduced for memory efficiency
+        "max_new_tokens": 1024,              
         "do_sample": True,
         "temperature": 0.6,                 # Slightly lower for more focused training
         "top_p": 0.9,
@@ -214,7 +214,7 @@ config = GPTOSSEnhancedCustomConfig(
 # Configuration validation and optimization tips
 print("\n🔧 GPT-OSS Memory-Optimized OpenHermes-FR Configuration")
 print("=" * 60)
-print(f"📊 Dataset: {config.dataset_name} (200K samples)")
+print(f"📊 Dataset: {config.dataset_name} (600K samples)")
 print(f"🗣️  Language: French with GPT-OSS Harmony Format")
 print(f"📈 Training: {config.num_train_epochs} epoch (memory optimized)")
 print(f"🔄 Effective Batch Size: {config.batch_size * config.gradient_accumulation_steps}")
@@ -230,7 +230,7 @@ print("  • Native MXFP4 quantization for GPT-OSS MoE layers")
 print("  • Reduced batch size with increased gradient accumulation")
 print("  • Limited sequence length for memory efficiency")
 print("  • Reduced LoRA rank while maintaining effectiveness")
-print("  • Dataset sampling (200K from 800K) for faster training")
+print("  • Dataset sampling (600K from 800K) for faster training")
 print("  • Gradient checkpointing and efficient data loading")
 print("  • Exact GPT-OSS Harmony format with <|return|> tokens")
 print("=" * 60)

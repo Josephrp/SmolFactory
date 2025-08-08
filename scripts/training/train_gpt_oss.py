@@ -28,6 +28,10 @@ config_dir = project_root / "config"
 if str(config_dir) not in sys.path:
     sys.path.insert(0, str(config_dir))
 
+# Reduce tokenizer thread contention and improve CUDA allocator behavior
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 def load_gpt_oss_model_and_tokenizer(config):
     """Load GPT-OSS model and tokenizer with proper configuration"""
     
@@ -48,7 +52,13 @@ def load_gpt_oss_model_and_tokenizer(config):
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4"
         )
-    elif config.quantization_config and config.quantization_config.get("dequantize"):
+    elif config.quantization_config and (
+        config.quantization_config.get("dequantize")
+        or (
+            isinstance(config.quantization_config.get("mxfp4_config"), dict)
+            and config.quantization_config["mxfp4_config"].get("enabled", False)
+        )
+    ):
         # Try to use Mxfp4Config if available (as per tutorial)
         try:
             from transformers import Mxfp4Config
@@ -75,11 +85,40 @@ def load_gpt_oss_model_and_tokenizer(config):
         model_kwargs = {**default_model_kwargs, **cfg_model_kwargs}
     else:
         model_kwargs = default_model_kwargs.copy()
+
+    # Normalize torch_dtype if provided as a string in config
+    if isinstance(model_kwargs.get("torch_dtype"), str):
+        dtype_str = str(model_kwargs["torch_dtype"]).lower()
+        if dtype_str in {"bf16", "bfloat16"}:
+            model_kwargs["torch_dtype"] = torch.bfloat16
+        elif dtype_str in {"fp16", "float16", "half"}:
+            model_kwargs["torch_dtype"] = torch.float16
+        elif dtype_str == "auto":
+            # Leave as-is for HF to decide
+            pass
+        else:
+            # Fallback to bfloat16 for safer memory footprint on A100/H100
+            model_kwargs["torch_dtype"] = torch.bfloat16
+
+    # Ensure we have an offload folder for tight-memory setups
+    model_kwargs.setdefault("offload_folder", os.path.join(str(project_root), "offload"))
     
     # Only add quantization_config if it's not None
     if quantization_config is not None:
         model_kwargs["quantization_config"] = quantization_config
     
+    # If using MXFP4, follow tutorial exactly: eager attention + bf16
+    try:
+        from transformers import Mxfp4Config as _Mxfp4Config
+        if isinstance(quantization_config, _Mxfp4Config):
+            model_kwargs["attn_implementation"] = "eager"
+            model_kwargs["torch_dtype"] = torch.bfloat16
+            model_kwargs["use_cache"] = False
+            model_kwargs["device_map"] = model_kwargs.get("device_map", "auto")
+            model_kwargs["quantization_config"] = quantization_config
+    except Exception:
+        pass
+
     model = AutoModelForCausalLM.from_pretrained(config.model_name, **model_kwargs)
     
     return model, tokenizer
