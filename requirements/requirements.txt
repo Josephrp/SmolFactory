@@ -19,7 +19,8 @@ numpy>=1.24.0
 tqdm>=4.65.0
 
 # Experiment tracking
-trackio>=0.1.0
+# trackio>=0.1.0
+gradio>=5.0.0
 
 # Optional: for evaluation (commented out to reduce conflicts)
 # lighteval>=0.1.0

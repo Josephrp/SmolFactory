@@ -191,12 +191,26 @@ def load_dataset_from_config(config):
     return dataset
 
 def build_scheduler_kwargs(config):
-    """Construct lr_scheduler_kwargs ensuring one of min_lr or min_lr_rate is set.
-    Falls back to config.min_lr or a default rate of 0.1.
+    """Construct lr_scheduler_kwargs compatibly across TRL/Transformers versions.
+
+    - For TRL's 'cosine_with_min_lr' scheduler, ensure a min_lr/min_lr_rate is set.
+    - For all other schedulers, strip TRL-specific keys to avoid unexpected kwargs
+      errors in Transformers' native schedulers.
     """
     skw = getattr(config, 'lr_scheduler_kwargs', {}) or {}
     if not isinstance(skw, dict):
         skw = {}
+
+    scheduler_type = getattr(config, 'scheduler', None)
+
+    # If we're NOT using TRL's special scheduler, drop incompatible keys early
+    if scheduler_type != 'cosine_with_min_lr':
+        for k in ('min_lr', 'min_lr_rate', 'warmup_steps', 'num_warmup_steps', 'warmup_ratio'):
+            if k in skw:
+                skw.pop(k, None)
+        return skw
+
+    # TRL cosine-with-min-lr: ensure one of min_lr or min_lr_rate is provided
     min_lr_cfg = getattr(config, 'min_lr', 1e-6)
     if 'min_lr' not in skw and 'min_lr_rate' not in skw:
         try:
@@ -206,6 +220,7 @@ def build_scheduler_kwargs(config):
                 skw['min_lr_rate'] = 0.1
         except Exception:
             skw['min_lr_rate'] = 0.001
+
     # Remove warmup-related keys which conflict with some TRL schedulers
     for k in ('warmup_steps', 'num_warmup_steps', 'warmup_ratio'):
         if k in skw:
@@ -683,7 +698,8 @@ def create_sft_config(config, output_dir):
     
     # Learning rate configuration
     learning_rate = _as_float(getattr(config, 'learning_rate', 2e-4), 2e-4)
-    lr_scheduler_type = getattr(config, 'scheduler', 'cosine_with_min_lr')
+    # Allow CLI/env override of scheduler
+    lr_scheduler_type = os.environ.get('GPT_OSS_SCHEDULER', getattr(config, 'scheduler', 'cosine'))
     lr_scheduler_kwargs = build_scheduler_kwargs(config)
 
     # Detect TRL scheduler signature incompatibilities and fall back gracefully
@@ -865,6 +881,57 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     config.experiment_name = experiment_name
     config.trackio_url = trackio_url
     config.trainer_type = trainer_type
+
+    # Optional: scheduler overrides via environment variables set by CLI
+    try:
+        env_scheduler = os.environ.get("GPT_OSS_SCHEDULER")
+        if env_scheduler:
+            # Apply scheduler override
+            config.scheduler = env_scheduler
+            # Prepare/normalize lr scheduler kwargs container
+            if not hasattr(config, 'lr_scheduler_kwargs') or config.lr_scheduler_kwargs is None:
+                config.lr_scheduler_kwargs = {}
+
+            # Apply min lr overrides only when using TRL's special scheduler
+            if env_scheduler == 'cosine_with_min_lr':
+                env_min_lr = os.environ.get("GPT_OSS_MIN_LR")
+                env_min_lr_rate = os.environ.get("GPT_OSS_MIN_LR_RATE")
+                # Clear conflicting warmup keys to avoid signature issues
+                for k in ('warmup_steps', 'num_warmup_steps', 'warmup_ratio'):
+                    if k in config.lr_scheduler_kwargs:
+                        config.lr_scheduler_kwargs.pop(k, None)
+                # Prefer absolute min_lr if provided
+                if env_min_lr is not None:
+                    try:
+                        config.min_lr = float(env_min_lr)
+                        config.lr_scheduler_kwargs['min_lr'] = config.min_lr
+                        # Remove relative rate if present
+                        config.lr_scheduler_kwargs.pop('min_lr_rate', None)
+                    except Exception:
+                        pass
+                elif env_min_lr_rate is not None:
+                    try:
+                        config.lr_scheduler_kwargs['min_lr_rate'] = float(env_min_lr_rate)
+                        # Remove absolute min_lr if present in kwargs (leave config.min_lr untouched)
+                        config.lr_scheduler_kwargs.pop('min_lr', None)
+                    except Exception:
+                        pass
+                else:
+                    # Ensure at least one constraint exists; prefer absolute from config if valid
+                    try:
+                        if hasattr(config, 'min_lr') and config.min_lr is not None:
+                            config.lr_scheduler_kwargs['min_lr'] = float(config.min_lr)
+                        else:
+                            config.lr_scheduler_kwargs.setdefault('min_lr_rate', 0.1)
+                    except Exception:
+                        config.lr_scheduler_kwargs.setdefault('min_lr_rate', 0.1)
+            else:
+                # Non-TRL scheduler: strip TRL-specific keys to avoid unexpected kwargs
+                if hasattr(config, 'lr_scheduler_kwargs') and isinstance(config.lr_scheduler_kwargs, dict):
+                    for k in ('min_lr', 'min_lr_rate'):
+                        config.lr_scheduler_kwargs.pop(k, None)
+    except Exception:
+        pass
     
     # Load model and tokenizer
     model, tokenizer = load_gpt_oss_model_and_tokenizer(config)
@@ -1027,6 +1094,24 @@ def main():
     parser.add_argument("--output-dir", required=True, help="Output directory for checkpoints")
     parser.add_argument("--trackio-url", help="Trackio URL for monitoring")
     parser.add_argument("--trainer-type", default="sft", choices=["sft", "dpo"], help="Trainer type")
+    # Optional LR scheduler overrides (applied across any GPT-OSS config)
+    parser.add_argument(
+        "--scheduler",
+        choices=["linear", "cosine", "cosine_with_min_lr", "constant"],
+        help="Override LR scheduler for this run",
+    )
+    parser.add_argument(
+        "--min-lr",
+        type=float,
+        dest="min_lr",
+        help="Absolute floor for LR (used when scheduler is 'cosine_with_min_lr')",
+    )
+    parser.add_argument(
+        "--min-lr-rate",
+        type=float,
+        dest="min_lr_rate",
+        help="Relative LR floor rate in (0,1) for TRL scheduler (used when scheduler is 'cosine_with_min_lr')",
+    )
     
     args = parser.parse_args()
     
@@ -1039,7 +1124,16 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     try:
-        train_gpt_oss(
+        # If provided, expose scheduler overrides via environment so they can be picked up consistently
+        # across helper functions if needed.
+        if args.scheduler:
+            os.environ["GPT_OSS_SCHEDULER"] = args.scheduler
+        if args.min_lr is not None:
+            os.environ["GPT_OSS_MIN_LR"] = str(args.min_lr)
+        if args.min_lr_rate is not None:
+            os.environ["GPT_OSS_MIN_LR_RATE"] = str(args.min_lr_rate)
+
+        trainer = train_gpt_oss(
             config_path=args.config,
             experiment_name=args.experiment_name,
             output_dir=args.output_dir,

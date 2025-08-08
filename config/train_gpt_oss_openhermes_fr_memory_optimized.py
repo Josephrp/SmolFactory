@@ -193,11 +193,9 @@ config = GPTOSSEnhancedCustomConfig(
     beta2=0.95,                             # GPT-OSS optimized beta2
     eps=1e-8,
     
-    scheduler="cosine_with_min_lr",         # Stable scheduler for single epoch
-    lr_scheduler_kwargs={
-        "min_lr": 2e-6,                     # Explicit absolute floor (matches min_lr above)
-        "warmup_steps": None,               # Use warmup_ratio instead
-    },
+    # Use standard cosine for broad compatibility; TRL min-lr scheduler is optional
+    scheduler="cosine",
+    lr_scheduler_kwargs={},
 
     # Packing to increase token utilization per step (supported by TRL)
     packing=True,

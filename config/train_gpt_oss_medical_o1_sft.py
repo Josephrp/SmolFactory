@@ -65,6 +65,10 @@ config = GPTOSSEnhancedCustomConfig(
     warmup_steps=50,
     max_grad_norm=1.0,
 
+    # Scheduler: use broadly compatible cosine by default to avoid TRL signature issues
+    scheduler="cosine",
+    lr_scheduler_kwargs={},
+
     # Sequence length
     max_seq_length=2048,
 

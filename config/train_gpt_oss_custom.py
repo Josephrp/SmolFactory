@@ -59,7 +59,7 @@ class GPTOSSEnhancedCustomConfig:
     # ============================================================================
     # SCHEDULER CONFIGURATION
     # ============================================================================
-    scheduler: str = "cosine_with_min_lr"  # "linear", "cosine", "cosine_with_min_lr", "constant"
+    scheduler: str = "cosine"  # Default to broadly compatible scheduler; TRL special is opt-in
     lr_scheduler_kwargs: Optional[Dict] = None
     
     # ============================================================================
@@ -299,7 +299,8 @@ class GPTOSSEnhancedCustomConfig:
         # SCHEDULER CONFIGURATION DEFAULTS
         # ============================================================================
         if self.lr_scheduler_kwargs is None:
-            self.lr_scheduler_kwargs = {"min_lr_rate": 0.1}
+            # Leave empty; training script will add TRL-specific keys only when needed
+            self.lr_scheduler_kwargs = {}
         
         # ============================================================================
         # CHAT TEMPLATE CONFIGURATION DEFAULTS (GPT-OSS Harmony Format)
