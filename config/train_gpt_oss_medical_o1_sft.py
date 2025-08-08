@@ -56,12 +56,13 @@ config = GPTOSSEnhancedCustomConfig(
     # TRAINING HYPERPARAMETERS
     # ============================================================================
     num_train_epochs=1.0,
-    batch_size=2,
-    gradient_accumulation_steps=8,
+    batch_size=4,
+    gradient_accumulation_steps=4,
     learning_rate=2e-4,
     min_lr=2e-5,
     weight_decay=0.01,
     warmup_ratio=0.03,
+    warmup_steps=50,
     max_grad_norm=1.0,
 
     # Sequence length
@@ -113,7 +114,7 @@ config = GPTOSSEnhancedCustomConfig(
     # LOGGING & EVAL
     # ============================================================================
     eval_strategy="steps",
-    eval_steps=200,
+    eval_steps=100,
     logging_steps=10,
     save_strategy="steps",
     save_steps=500,
@@ -124,8 +125,8 @@ config = GPTOSSEnhancedCustomConfig(
     load_best_model_at_end=False,
     eval_accumulation_steps=2,
     eval_batch_size=1,
-    eval_ratio=0.01,
-    test_ratio=0.01,
+    eval_ratio=0.001,
+    test_ratio=0.0005,
 
     # ============================================================================
     # MONITORING & HUB
