@@ -210,6 +210,13 @@ def build_scheduler_kwargs(config):
 def apply_dataset_filtering(dataset, config):
     """Apply filtering based on configuration"""
     
+    # Parallel workers for datasets ops
+    try:
+        import os as _os
+        num_proc = getattr(config, 'dataset_num_proc', None) or (_os.cpu_count() or 1)
+    except Exception:
+        num_proc = 1
+
     # Filter bad entries if specified
     if getattr(config, 'filter_bad_entries', False):
         bad_entry_field = getattr(config, 'bad_entry_field', 'bad_entry')
@@ -220,17 +227,23 @@ def apply_dataset_filtering(dataset, config):
         
         # Filter out bad entries
         if bad_entry_field in dataset.column_names:
-            dataset = dataset.filter(lambda x: not x.get(bad_entry_field, False))
+            def _keep_not_bad_entry(example, _field=bad_entry_field):
+                return not example.get(_field, False)
+            dataset = dataset.filter(_keep_not_bad_entry, num_proc=num_proc)
             print(f"Filtered {original_size - len(dataset)} bad entries")
         
         # Filter out bad prompts
         if bad_prompt_field in dataset.column_names:
-            dataset = dataset.filter(lambda x: not x.get(bad_prompt_field, False))
+            def _keep_not_bad_prompt(example, _field=bad_prompt_field):
+                return not example.get(_field, False)
+            dataset = dataset.filter(_keep_not_bad_prompt, num_proc=num_proc)
             print(f"Filtered bad prompts, remaining: {len(dataset)} examples")
         
         # Filter out bad responses
         if bad_response_field in dataset.column_names:
-            dataset = dataset.filter(lambda x: not x.get(bad_response_field, False))
+            def _keep_not_bad_response(example, _field=bad_response_field):
+                return not example.get(_field, False)
+            dataset = dataset.filter(_keep_not_bad_response, num_proc=num_proc)
             print(f"Filtered bad responses, remaining: {len(dataset)} examples")
     
     # Apply length filtering
@@ -253,7 +266,7 @@ def apply_dataset_filtering(dataset, config):
             return True
         
         original_size = len(dataset)
-        dataset = dataset.filter(length_filter)
+        dataset = dataset.filter(length_filter, num_proc=num_proc)
         print(f"Length filtering: {original_size} -> {len(dataset)} examples")
     
     # Apply sampling if specified
@@ -293,6 +306,13 @@ def format_gpt_oss_harmony_prompt(prompt: str) -> str:
 def process_dataset_format(dataset, config):
     """Process dataset based on format configuration with exact GPT-OSS Harmony compliance"""
     
+    # Parallel workers for datasets ops
+    try:
+        import os as _os
+        num_proc = getattr(config, 'dataset_num_proc', None) or (_os.cpu_count() or 1)
+    except Exception:
+        num_proc = 1
+
     dataset_format = getattr(config, 'dataset_format', 'openhermes_fr')
     input_field = getattr(config, 'input_field', 'prompt')
     target_field = getattr(config, 'target_field', 'accepted_completion')
@@ -325,7 +345,7 @@ def process_dataset_format(dataset, config):
                 return {"prompt": prompt_val, "chosen": chosen_val, "rejected": rejected_val}
 
             keep_cols = [c for c in ['prompt', 'chosen', 'rejected'] if c in dataset.column_names]
-            dataset = dataset.map(id_map, remove_columns=dataset.column_names if keep_cols else dataset.column_names)
+            dataset = dataset.map(id_map, remove_columns=dataset.column_names if keep_cols else dataset.column_names, num_proc=num_proc)
             return dataset
 
         # Custom preference mapping via configured field names
@@ -341,7 +361,7 @@ def process_dataset_format(dataset, config):
                     return {"prompt": prompt_text, "chosen": chosen_text, "rejected": rejected_text}
                 return {"prompt": prompt_val, "chosen": chosen_val, "rejected": rejected_val}
 
-            dataset = dataset.map(to_pref, remove_columns=dataset.column_names)
+            dataset = dataset.map(to_pref, remove_columns=dataset.column_names, num_proc=num_proc)
             return dataset
 
         # If we reach here, we don't have required fields for DPO
@@ -371,7 +391,7 @@ def process_dataset_format(dataset, config):
                     "output": completion
                 }
         
-        dataset = dataset.map(format_openhermes_fr, remove_columns=dataset.column_names)
+        dataset = dataset.map(format_openhermes_fr, remove_columns=dataset.column_names, num_proc=num_proc)
         
     elif dataset_format == "messages":
         # Process messages format (like HuggingFaceH4/Multilingual-Thinking)
@@ -416,7 +436,7 @@ def process_dataset_format(dataset, config):
             
             return {"text": text}
         
-        dataset = dataset.map(format_messages, remove_columns=dataset.column_names)
+        dataset = dataset.map(format_messages, remove_columns=dataset.column_names, num_proc=num_proc)
         
     elif dataset_format == "text":
         # Process plain text format
@@ -427,7 +447,7 @@ def process_dataset_format(dataset, config):
                 text += "</s>"
             return {"text": text}
         
-        dataset = dataset.map(format_text, remove_columns=dataset.column_names)
+        dataset = dataset.map(format_text, remove_columns=dataset.column_names, num_proc=num_proc)
     
     elif dataset_format == "custom":
         # Custom format - user handles this in their config
@@ -652,6 +672,8 @@ def create_sft_config(config, output_dir):
         "bf16": bf16,
         # Some versions support tf32
         "tf32": tf32 if 'tf32' in TrainingArguments.__init__.__code__.co_varnames else None,
+        # Optimizer (optionally use fused AdamW if available through config)
+        "optim": getattr(config, 'optimizer', 'adamw_torch'),
         # Regularization
         "weight_decay": weight_decay,
         "max_grad_norm": max_grad_norm,
@@ -827,6 +849,10 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
         # Pass max sequence length if supported
         if "max_seq_length" in sft_params:
             sft_kwargs["max_seq_length"] = getattr(config, 'max_seq_length', 2048)
+
+        # Enable sequence packing if supported by TRL (speeds up token utilization)
+        if "packing" in sft_params:
+            sft_kwargs["packing"] = getattr(config, 'packing', False)
 
         # Remove any None values
         sft_kwargs = {k: v for k, v in sft_kwargs.items() if v is not None}

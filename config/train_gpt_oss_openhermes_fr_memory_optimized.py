@@ -56,7 +56,7 @@ config = GPTOSSEnhancedCustomConfig(
     # MODEL CONFIGURATION - Memory Optimized for GPT-OSS
     # ============================================================================
     model_name="openai/gpt-oss-20b",
-    max_seq_length=4096,                     # Maximize sequence length for A100 VRAM utilization
+    max_seq_length=2048,                     # Shorter context speeds steps without reducing sample count
     use_flash_attention=True,               # Critical for memory efficiency
     use_gradient_checkpointing=True,        # Essential for memory optimization
     
@@ -115,9 +115,10 @@ config = GPTOSSEnhancedCustomConfig(
     },
     
     # Data loading optimized for throughput
-    dataloader_num_workers=4,                # More workers for faster loading
+    dataloader_num_workers=8,                # More workers for faster loading
     dataloader_pin_memory=True,              # Pin memory for faster host->GPU copies
-    dataloader_prefetch_factor=1,            # Lower prefetch to keep VRAM headroom
+    dataloader_prefetch_factor=2,            # Slightly higher prefetch for throughput
+    dataset_num_proc=8,                      # Parallelize HF datasets map/filter
     
     # Memory management optimizations
     max_memory_per_gpu=None,                 # No explicit memory limit; use as much VRAM as available
@@ -197,6 +198,9 @@ config = GPTOSSEnhancedCustomConfig(
         "min_lr": 2e-6,                     # Explicit absolute floor (matches min_lr above)
         "warmup_steps": None,               # Use warmup_ratio instead
     },
+
+    # Packing to increase token utilization per step (supported by TRL)
+    packing=True,
     
     # ============================================================================
     # MONITORING & HUB INTEGRATION
