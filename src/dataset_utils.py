@@ -253,19 +253,58 @@ class TrackioDatasetManager:
                 inc_params = _parse_json_field(incoming.get('parameters'), {})
                 inc_artifacts = _parse_json_field(incoming.get('artifacts'), [])
                 inc_logs = _parse_json_field(incoming.get('logs'), [])
-                # Merge metrics with de-dup
+                # Merge metrics with de-dup (by step+timestamp) then collapse per step
                 merged_metrics = []
                 seen = set()
                 for entry in base_metrics + inc_metrics:
                     try:
-                        # Use the original entry so _metrics_key can properly
-                        # distinguish dict vs non-dict entries
                         key = _metrics_key(entry)
                     except Exception:
                         key = (None, None)
                     if key not in seen:
                         seen.add(key)
                         merged_metrics.append(entry)
+
+                # Collapse duplicate steps by merging their metric dicts and keeping the latest timestamp
+                try:
+                    step_to_entry: Dict[Any, Dict[str, Any]] = {}
+                    for e in merged_metrics:
+                        if not isinstance(e, dict):
+                            continue
+                        # Ensure nested structure {timestamp, step, metrics}
+                        if 'metrics' not in e:
+                            e = {
+                                'timestamp': e.get('timestamp'),
+                                'step': e.get('step'),
+                                'metrics': {k: v for k, v in e.items() if k not in ('step', 'timestamp')}
+                            }
+                        step_val = e.get('step')
+                        if step_val in step_to_entry:
+                            existing_e = step_to_entry[step_val]
+                            try:
+                                existing_metrics_dict = existing_e.get('metrics', {})
+                                if isinstance(existing_metrics_dict, dict):
+                                    existing_metrics_dict.update(e.get('metrics', {}))
+                                else:
+                                    existing_e['metrics'] = e.get('metrics', {})
+                            except Exception:
+                                existing_e['metrics'] = e.get('metrics', {})
+                            try:
+                                if str(e.get('timestamp', '')) > str(existing_e.get('timestamp', '')):
+                                    existing_e['timestamp'] = e.get('timestamp')
+                            except Exception:
+                                pass
+                        else:
+                            step_to_entry[step_val] = dict(e)
+                    def _step_key(x: Dict[str, Any]):
+                        try:
+                            return float(x.get('step'))
+                        except Exception:
+                            return -1.0
+                    merged_metrics = sorted(step_to_entry.values(), key=_step_key)
+                except Exception:
+                    # On any error, keep the de-duplicated list
+                    pass
                 # Merge params
                 merged_params = {}
                 if isinstance(base_params, dict):

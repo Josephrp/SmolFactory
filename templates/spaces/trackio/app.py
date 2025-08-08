@@ -661,18 +661,32 @@ class TrackioSpace:
         if not experiment['metrics']:
             return pd.DataFrame()
         
-        # Convert metrics to DataFrame
+        # Convert metrics to DataFrame (merge duplicate steps)
         data = []
         for metric_entry in experiment['metrics']:
             step = metric_entry.get('step', 0)
             timestamp = metric_entry.get('timestamp', '')
             metrics = metric_entry.get('metrics', {})
-            
+
             row = {'step': step, 'timestamp': timestamp}
             row.update(metrics)
             data.append(row)
-        
-        return pd.DataFrame(data)
+
+        if not data:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(data)
+        # Ensure step exists even if None
+        if 'step' not in df.columns:
+            df['step'] = 0
+        # For duplicate steps, keep the latest timestamp and merge columns by last valid value
+        try:
+            df.sort_values(['step', 'timestamp'], inplace=True)
+            # Take the last row per step (latest timestamp)
+            df = df.groupby('step', as_index=False).last()
+        except Exception:
+            pass
+        return df
 
 # Global instance
 trackio_space = TrackioSpace()

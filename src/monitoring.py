@@ -310,6 +310,54 @@ class SmolLM3Monitor:
                 except Exception:
                     pass
 
+            # Collapse duplicate step entries by merging their metric dictionaries
+            try:
+                def _collapse_by_step(entries: list) -> list:
+                    step_to_entry: dict = {}
+                    for e in entries:
+                        if not isinstance(e, dict):
+                            continue
+                        # Normalize to nested structure
+                        if 'metrics' not in e:
+                            e = {
+                                'timestamp': e.get('timestamp'),
+                                'step': e.get('step'),
+                                'metrics': {k: v for k, v in e.items() if k not in ('step', 'timestamp')}
+                            }
+                        step_val = e.get('step')
+                        if step_val in step_to_entry:
+                            # Merge metrics into existing entry for the same step
+                            existing_e = step_to_entry[step_val]
+                            try:
+                                existing_e_metrics = existing_e.get('metrics', {})
+                                if isinstance(existing_e_metrics, dict):
+                                    existing_e_metrics.update(e.get('metrics', {}))
+                                else:
+                                    existing_e['metrics'] = e.get('metrics', {})
+                            except Exception:
+                                existing_e['metrics'] = e.get('metrics', {})
+                            # Prefer the latest timestamp (ISO strings compare lexicographically)
+                            try:
+                                if str(e.get('timestamp', '')) > str(existing_e.get('timestamp', '')):
+                                    existing_e['timestamp'] = e.get('timestamp')
+                            except Exception:
+                                pass
+                        else:
+                            step_to_entry[step_val] = dict(e)
+                    # Sort by step (fallback to 0 for None/non-numeric)
+                    def _step_key(x):
+                        val = x.get('step')
+                        try:
+                            return float(val)
+                        except Exception:
+                            return -1.0
+                    return sorted(step_to_entry.values(), key=_step_key)
+
+                merged_metrics = _collapse_by_step(merged_metrics)
+            except Exception:
+                # If anything goes wrong, keep original list
+                pass
+
             # Merge artifacts if provided
             if 'artifacts' in experiment_data and isinstance(experiment_data['artifacts'], list):
                 # De-duplicate while preserving order
