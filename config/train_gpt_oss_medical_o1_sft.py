@@ -78,7 +78,6 @@ config = GPTOSSEnhancedCustomConfig(
     dataloader_num_workers=4,
     dataloader_pin_memory=True,
     dataloader_prefetch_factor=2,
-    dataset_num_proc=4,
     group_by_length=True,
     remove_unused_columns=True,
 
@@ -87,8 +86,8 @@ config = GPTOSSEnhancedCustomConfig(
     # ============================================================================
     use_lora=True,
     lora_config={
-        "r": 8,
-        "lora_alpha": 16,
+        "r": 16,
+        "lora_alpha": 32,
         "lora_dropout": 0.05,
         "target_modules": "all-linear",
         "target_parameters": [

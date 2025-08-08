@@ -203,6 +203,7 @@ class GPTOSSEnhancedCustomConfig:
     dataloader_num_workers: int = 4  # Number of data loading workers
     dataloader_pin_memory: bool = True  # Pin memory for faster GPU transfer
     dataloader_prefetch_factor: int = 2  # Prefetch factor for data loading
+    dataset_num_proc: Optional[int] = None  # Parallel CPU processes for datasets map/filter ops
     
     # Memory Management
     max_memory_per_gpu: Optional[str] = None  # e.g., "80GB", "40GB"
