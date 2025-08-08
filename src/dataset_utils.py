@@ -45,12 +45,24 @@ class TrackioDatasetManager:
             bool: True if dataset exists and is accessible, False otherwise
         """
         try:
+            # Try standard load first
             load_dataset(self.dataset_repo, token=self.hf_token)
             logger.info(f"✅ Dataset {self.dataset_repo} exists and is accessible")
             return True
         except Exception as e:
-            logger.info(f"📊 Dataset {self.dataset_repo} doesn't exist or isn't accessible: {e}")
-            return False
+            # Some hubs raise a split-metadata mismatch; retry with relaxed verification
+            try:
+                logger.info(f"📊 Standard load failed: {e}. Retrying with relaxed verification...")
+                load_dataset(
+                    self.dataset_repo,
+                    token=self.hf_token,
+                    verification_mode="no_checks"  # type: ignore[arg-type]
+                )
+                logger.info(f"✅ Dataset {self.dataset_repo} accessible with relaxed verification")
+                return True
+            except Exception as e2:
+                logger.info(f"📊 Dataset {self.dataset_repo} doesn't exist or isn't accessible: {e2}")
+                return False
     
     def load_existing_experiments(self) -> List[Dict[str, Any]]:
         """
@@ -64,7 +76,11 @@ class TrackioDatasetManager:
                 logger.info("📊 No existing dataset found, returning empty list")
                 return []
             
-            dataset = load_dataset(self.dataset_repo, token=self.hf_token)
+            # Load with relaxed verification to avoid split-metadata mismatches blocking reads
+            try:
+                dataset = load_dataset(self.dataset_repo, token=self.hf_token)
+            except Exception:
+                dataset = load_dataset(self.dataset_repo, token=self.hf_token, verification_mode="no_checks")  # type: ignore[arg-type]
             
             if 'train' not in dataset:
                 logger.info("📊 No 'train' split found in dataset")

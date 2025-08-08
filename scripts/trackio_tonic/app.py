@@ -721,13 +721,16 @@ def get_metrics_dataframe(experiment_id: str) -> pd.DataFrame:
     logger.info(f"Using local data for {experiment_id}")
     return trackio_space.get_metrics_dataframe(experiment_id)
 
-def create_experiment_interface(name: str, description: str) -> str:
+def create_experiment_interface(name: str, description: str):
     """Create a new experiment"""
     try:
         experiment = trackio_space.create_experiment(name, description)
-        return f"✅ Experiment created successfully!\nID: {experiment['id']}\nName: {experiment['name']}\nStatus: {experiment['status']}"
+        msg = f"✅ Experiment created successfully!\nID: {experiment['id']}\nName: {experiment['name']}\nStatus: {experiment['status']}"
+        dropdown = gr.Dropdown(choices=list(trackio_space.experiments.keys()), value=experiment['id'])
+        return msg, dropdown
     except Exception as e:
-        return f"❌ Error creating experiment: {str(e)}"
+        dropdown = gr.Dropdown(choices=list(trackio_space.experiments.keys()), value=None)
+        return f"❌ Error creating experiment: {str(e)}", dropdown
 
 def log_metrics_interface(experiment_id: str, metrics_json: str, step: str) -> str:
     """Log metrics for an experiment"""
