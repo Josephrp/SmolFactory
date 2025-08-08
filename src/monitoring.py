@@ -347,7 +347,7 @@ class SmolLM3Monitor:
             return False
     
     def log_configuration(self, config: Dict[str, Any]):
-        """Log experiment configuration"""
+        """Log experiment configuration (always attempts dataset persistence)"""
         if not self.log_config_enabled:
             return
         
@@ -424,7 +424,8 @@ class SmolLM3Monitor:
             self.metrics_history.append(metrics)
             
             # Save to HF Dataset periodically (configurable)
-            if self.flush_interval > 0 and (len(self.metrics_history) % self.flush_interval == 0):
+            flush_every = getattr(self, 'flush_interval', 10)
+            if flush_every and (len(self.metrics_history) % flush_every == 0):
                 self._save_to_hf_dataset({'metrics': self.metrics_history})
             
             logger.debug("Metrics logged: %s", metrics)

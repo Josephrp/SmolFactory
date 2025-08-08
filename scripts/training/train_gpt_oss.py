@@ -32,6 +32,10 @@ if str(project_root) not in sys.path:
 config_dir = project_root / "config"
 if str(config_dir) not in sys.path:
     sys.path.insert(0, str(config_dir))
+# Ensure 'src' is importable for modules like 'monitoring', 'model', etc.
+src_dir = project_root / "src"
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 # Reduce tokenizer thread contention and improve CUDA allocator behavior
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -945,25 +949,55 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
     # Split into train/eval/test
     train_dataset, eval_dataset, test_dataset = split_dataset(dataset, config)
     
-    # Setup Trackio tracking
+    # Ensure TRACKIO_URL env is set so SmolLM3Monitor picks it up
+    if trackio_url and not os.environ.get('TRACKIO_URL'):
+        os.environ['TRACKIO_URL'] = trackio_url
+        os.environ.setdefault('TRACKIO_SPACE_ID', trackio_url)
+
+    # Setup Trackio tracking (Space API client) and monitoring (dataset + Space)
     trackio_client = setup_trackio_tracking(config)
+    # Create unified monitor to ensure metrics get logged to dataset/Space
+    monitor = None
+    try:
+        from monitoring import SmolLM3Monitor
+        monitor = SmolLM3Monitor(
+            experiment_name=experiment_name,
+            trackio_url=trackio_url,
+            trackio_token=getattr(config, 'trackio_token', None) or os.environ.get('HF_TOKEN'),
+            enable_tracking=True,
+            log_artifacts=True,
+            log_metrics=True,
+            log_config=True,
+            hf_token=os.environ.get('HF_TOKEN'),
+            dataset_repo=os.environ.get('TRACKIO_DATASET_REPO')
+        )
+        # Log configuration once
+        try:
+            cfg_dict = {k: getattr(config, k) for k in dir(config) if not k.startswith('_') and not callable(getattr(config, k))}
+            monitor.log_configuration(cfg_dict)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"Warning: failed to initialize monitor: {e}")
     
     # Initialize project monitor (HF Datasets + Trackio Space if configured)
-    monitor = None
     monitor_callback = None
     if create_monitor_from_config is not None:
         try:
-            monitor = create_monitor_from_config(config, experiment_name=experiment_name)
+            project_monitor = create_monitor_from_config(config, experiment_name=experiment_name)
             # Persist configuration immediately
             try:
                 cfg_dict = {k: v for k, v in config.__dict__.items() if not k.startswith('_')}
-                monitor.log_config(cfg_dict)
+                project_monitor.log_config(cfg_dict)
             except Exception:
                 pass
             # Create callback for SFTTrainer
-            monitor_callback = monitor.create_monitoring_callback()
+            monitor_callback = project_monitor.create_monitoring_callback()
+            # If we didn't initialize the explicit monitor above, use this one for summary/close
+            if monitor is None:
+                monitor = project_monitor
         except Exception:
-            monitor = None
+            pass
     
     # Create SFT configuration
     sft_config = create_sft_config(config, output_dir)
@@ -1042,6 +1076,14 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
         if "callbacks" in sft_params:
             sft_kwargs["callbacks"] = ([monitor_callback] if monitor_callback is not None else [])
 
+        # Attach monitoring callback if supported
+        if monitor is not None:
+            try:
+                if "callbacks" in sft_params:
+                    sft_kwargs["callbacks"] = [monitor.create_monitoring_callback()]
+            except Exception:
+                pass
+
         # Remove any None values
         sft_kwargs = {k: v for k, v in sft_kwargs.items() if v is not None}
 
@@ -1079,6 +1121,13 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
                 'model_name': getattr(config, 'model_name', 'unknown'),
             }
             monitor.log_training_summary(summary)
+            monitor.close()
+    except Exception:
+        pass
+
+    # Close monitor cleanly
+    try:
+        if monitor is not None:
             monitor.close()
     except Exception:
         pass
