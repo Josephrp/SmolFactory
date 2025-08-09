@@ -158,17 +158,23 @@ class SmolLM3Trainer:
         
         logger.info("Total callbacks: %d", len(callbacks))
         
-        # Initialize trackio for TRL compatibility
+        # Initialize trackio for TRL compatibility without creating a second experiment
         try:
             import trackio
-            # Initialize trackio with our configuration and use the same experiment ID
-            if self.monitor and self.monitor.experiment_id:
-                # Use the experiment ID from our monitor
-                experiment_id = self.monitor.experiment_id
-                logger.info(f"Using existing experiment ID: {experiment_id}")
+            if self.monitor:
+                # Share the same monitor/experiment with the trackio shim
+                try:
+                    trackio.set_monitor(self.monitor)  # type: ignore[attr-defined]
+                except Exception:
+                    # Fallback: ensure the shim at least knows the current ID
+                    pass
+                logger.info(
+                    "Using shared Trackio monitor with experiment ID: %s",
+                    getattr(self.monitor, 'experiment_id', None)
+                )
             else:
-                # Initialize trackio with our configuration
-                experiment_id = trackio.init(
+                # Last resort: initialize via shim
+                _ = trackio.init(
                     project_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
                     experiment_name=getattr(self.config, 'experiment_name', 'smollm3_experiment'),
                     trackio_url=getattr(self.config, 'trackio_url', None),
@@ -176,15 +182,9 @@ class SmolLM3Trainer:
                     hf_token=getattr(self.config, 'hf_token', None),
                     dataset_repo=getattr(self.config, 'dataset_repo', None)
                 )
-                logger.info(f"Trackio initialized with experiment ID: {experiment_id}")
-                
-                # Update our monitor with the same experiment ID
-                if self.monitor:
-                    self.monitor.experiment_id = experiment_id
-                    logger.info(f"Updated monitor with experiment ID: {experiment_id}")
         except Exception as e:
-            logger.warning(f"Failed to initialize trackio: {e}")
-            logger.info("Continuing without trackio integration")
+            logger.warning(f"Failed to wire trackio shim: {e}")
+            logger.info("Continuing without trackio shim integration")
         
         # Try SFTTrainer first (better for instruction tuning)
         logger.info("Creating SFTTrainer with training arguments...")

@@ -65,15 +65,12 @@ def init(
             hf_token=hf_token,
             dataset_repo=dataset_repo
         )
-        
-        # Generate experiment ID - use the same format as our monitoring system
-        experiment_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        _monitor.experiment_id = experiment_id
-        
+        # The monitor constructor creates the experiment remotely and sets
+        # `experiment_id`. Do NOT overwrite it with a locally generated ID.
+        experiment_id = getattr(_monitor, "experiment_id", None)
         logger.info(f"Trackio initialized for experiment: {exp_name}")
         logger.info(f"Experiment ID: {experiment_id}")
-        
-        return experiment_id
+        return experiment_id or f"exp_fallback_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
     except Exception as e:
         logger.error(f"Failed to initialize trackio: {e}")
@@ -127,6 +124,20 @@ def finish():
         
     except Exception as e:
         logger.error(f"Failed to finish trackio experiment: {e}")
+
+def set_monitor(monitor: SmolLM3Monitor) -> None:
+    """Set the shared monitor instance used by this module.
+
+    This allows external code (e.g., our trainer) to create a
+    `SmolLM3Monitor` once and have `trackio.log/finish` operate on
+    the exact same object, preventing mismatched experiment IDs.
+    """
+    global _monitor
+    _monitor = monitor
+    try:
+        logger.info("trackio monitor set: experiment_id=%s", getattr(monitor, "experiment_id", None))
+    except Exception:
+        pass
 
 def log_config(config: Dict[str, Any]):
     """

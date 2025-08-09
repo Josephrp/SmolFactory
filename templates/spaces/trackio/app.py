@@ -1143,12 +1143,25 @@ def create_metrics_plot(experiment_id: str, metric_name: str = "loss") -> go.Fig
             )
             return fig
         
+        # Ensure steps are numeric and monotonically increasing to avoid zig-zag lines
+        try:
+            df = df.copy()
+            df['step'] = pd.to_numeric(df['step'], errors='coerce').fillna(-1)
+            df.sort_values('step', inplace=True)
+        except Exception:
+            pass
         fig = px.line(df, x='step', y=metric_name, title=f'{metric_name} over time')
         fig.update_layout(
             xaxis_title="Training Step",
             yaxis_title=metric_name.title(),
             hovermode='x unified'
         )
+        # Avoid interpolating across missing steps which can create odd visuals
+        try:
+            for trace in fig.data:
+                trace.connectgaps = False
+        except Exception:
+            pass
         return fig
     
     except Exception as e:
@@ -1530,16 +1543,23 @@ def create_combined_metrics_plot(experiment_id: str) -> go.Figure:
                 col = (i % n_cols) + 1
                 color = colors[i % len(colors)]
                 
+                # Clean steps for each subplot too
+                try:
+                    df_sub = df.copy()
+                    df_sub['step'] = pd.to_numeric(df_sub['step'], errors='coerce').fillna(-1)
+                    df_sub.sort_values('step', inplace=True)
+                except Exception:
+                    df_sub = df
                 fig.add_trace(
                     go.Scatter(
-                        x=df['step'].tolist(),
-                        y=df[metric].tolist(),
+                        x=df_sub['step'].tolist(),
+                        y=df_sub[metric].tolist(),
                         mode='lines+markers',
                         name=metric,
                         line=dict(width=2, color=color),
                         marker=dict(size=4, color=color),
                         showlegend=False,
-                        connectgaps=True
+                        connectgaps=False
                     ),
                     row=row, col=col
                 )
