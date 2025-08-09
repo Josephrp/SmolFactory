@@ -1146,7 +1146,17 @@ def create_metrics_plot(experiment_id: str, metric_name: str = "loss") -> go.Fig
         # Ensure steps are numeric and monotonically increasing to avoid zig-zag lines
         try:
             df = df.copy()
-            df['step'] = pd.to_numeric(df['step'], errors='coerce').fillna(-1)
+            # If step looks constant or missing, try to derive it from a common field
+            if 'step' not in df or df['step'].nunique() <= 1:
+                for alt in ['train/global_step', 'global_step', 'train/step']:
+                    if alt in df.columns and df[alt].notna().any():
+                        df['step'] = pd.to_numeric(df[alt], errors='coerce')
+                        break
+            # If still missing or constant, fallback to an inferred counter by order of arrival
+            if 'step' not in df.columns or df['step'].isna().all() or df['step'].nunique() <= 1:
+                df['step'] = range(1, len(df) + 1)
+            else:
+                df['step'] = pd.to_numeric(df.get('step', -1), errors='coerce').fillna(-1)
             df.sort_values('step', inplace=True)
         except Exception:
             pass
@@ -1546,7 +1556,15 @@ def create_combined_metrics_plot(experiment_id: str) -> go.Figure:
                 # Clean steps for each subplot too
                 try:
                     df_sub = df.copy()
-                    df_sub['step'] = pd.to_numeric(df_sub['step'], errors='coerce').fillna(-1)
+                    if 'step' not in df_sub or df_sub['step'].nunique() <= 1:
+                        for alt in ['train/global_step', 'global_step', 'train/step']:
+                            if alt in df_sub.columns and df_sub[alt].notna().any():
+                                df_sub['step'] = pd.to_numeric(df_sub[alt], errors='coerce')
+                                break
+                    if 'step' not in df_sub.columns or df_sub['step'].isna().all() or df_sub['step'].nunique() <= 1:
+                        df_sub['step'] = range(1, len(df_sub) + 1)
+                    else:
+                        df_sub['step'] = pd.to_numeric(df_sub.get('step', -1), errors='coerce').fillna(-1)
                     df_sub.sort_values('step', inplace=True)
                 except Exception:
                     df_sub = df

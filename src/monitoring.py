@@ -449,6 +449,20 @@ class SmolLM3Monitor:
         try:
             # Add timestamp
             metrics['timestamp'] = datetime.now().isoformat()
+            # If caller didn't provide step, try to infer it from common keys emitted by HF/TRL
+            if step is None:
+                try:
+                    for step_key in (
+                        'global_step',
+                        'train/global_step',
+                        'step',
+                        'train/step',
+                    ):
+                        if step_key in metrics and metrics[step_key] is not None:
+                            step = int(metrics[step_key])
+                            break
+                except Exception:
+                    step = step  # keep None if parsing fails
             if step is not None:
                 metrics['step'] = step
             
