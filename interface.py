@@ -598,6 +598,8 @@ class PipelineInputs:
     scheduler_override: Optional[str]
     min_lr: Optional[float]
     min_lr_rate: Optional[float]
+    # Optional override config path generated from Advanced tab
+    override_config_path: Optional[str] = None
 
 
 def make_defaults(model_family: str) -> Tuple[str, str]:
@@ -641,17 +643,28 @@ def run_pipeline(params: PipelineInputs) -> Generator[str, None, None]:
         yield ("✅ " if ok else "⚠️ ") + msg
         dataset_repo = rid
 
-    # Resolve config file and model name
+    # Resolve config file and model name (allow override from Advanced tab)
     conf_map = get_config_map(params.model_family)
-    if params.config_choice not in conf_map:
-        yield f"❌ Unknown config choice: {params.config_choice}"
-        return
-    config_file = PROJECT_ROOT / conf_map[params.config_choice]["config_file"]
-    base_model_fallback = conf_map[params.config_choice]["default_model"]
-    if not config_file.exists():
-        yield f"❌ Config file not found: {config_file}"
-        return
-    cfg_obj = import_config_object(config_file)
+    if params.override_config_path:
+        config_file = Path(params.override_config_path)
+        if not config_file.exists():
+            yield f"❌ Generated config file not found: {config_file}"
+            return
+        # Best-effort to infer base model from generated config
+        cfg_obj = import_config_object(config_file)
+        base_model_fallback = getattr(cfg_obj, "model_name", None) or (
+            conf_map.get(params.config_choice, {}).get("default_model", "")
+        )
+    else:
+        if params.config_choice not in conf_map:
+            yield f"❌ Unknown config choice: {params.config_choice}"
+            return
+        config_file = PROJECT_ROOT / conf_map[params.config_choice]["config_file"]
+        base_model_fallback = conf_map[params.config_choice]["default_model"]
+        if not config_file.exists():
+            yield f"❌ Config file not found: {config_file}"
+            return
+        cfg_obj = import_config_object(config_file)
     base_model = getattr(cfg_obj, "model_name", base_model_fallback) if cfg_obj else base_model_fallback
     dataset_name = getattr(cfg_obj, "dataset_name", None) if cfg_obj else None
     batch_size = getattr(cfg_obj, "batch_size", None) if cfg_obj else None
@@ -679,6 +692,26 @@ def run_pipeline(params: PipelineInputs) -> Generator[str, None, None]:
             dataset_repo,
         ]
         for line in run_command_stream(args, env, cwd=PROJECT_ROOT / "scripts/trackio_tonic"):
+            yield line
+
+    # Dataset setup and Trackio configuration (mirror launch.sh) when monitoring is enabled
+    if params.monitoring_mode != "none":
+        # Ensure HF Dataset structure
+        yield f"\n=== Setting up HF Dataset: {dataset_repo} ==="
+        ds_args = [
+            str(PROJECT_ROOT / "scripts/dataset_tonic/setup_hf_dataset.py"),
+            write_token,
+        ]
+        for line in run_command_stream(ds_args, env, cwd=PROJECT_ROOT / "scripts/dataset_tonic"):
+            yield line
+        # Configure Trackio Space
+        yield f"\n=== Configuring Trackio Space ({params.trackio_space_name or 'N/A'}) ==="
+        conf_args = [str(PROJECT_ROOT / "scripts/trackio_tonic/configure_trackio.py")]
+        # Use space deploy token (READ for dataset-only; WRITE otherwise)
+        conf_env = env.copy()
+        conf_env["HF_TOKEN"] = space_deploy_token
+        conf_env["HUGGING_FACE_HUB_TOKEN"] = space_deploy_token
+        for line in run_command_stream(conf_args, conf_env, cwd=PROJECT_ROOT / "scripts/trackio_tonic"):
             yield line
 
     # Training output directory
@@ -856,16 +889,27 @@ def on_family_change(family: str):
         gr.update(visible=True),   # show step 2 (trainer)
         gr.update(visible=False),  # hide step 3 until trainer selected
         gr.update(visible=False),  # hide step 4 until monitoring selected
-        gr.update(visible=(family == "GPT-OSS")),  # advanced (scheduler) visibility
+        gr.update(visible=False),  # GPT-OSS advanced group hidden until enabled
+        gr.update(visible=False),  # SmolLM3 advanced group hidden until enabled
     )
 
 
 def on_config_change(family: str, config_choice: str):
-    """When a prebuilt configuration is selected, update dataset info and helpful details."""
+    """When a prebuilt configuration is selected, update dataset info and helpful details.
+
+    Also auto-fill advanced fields with defaults from the selected config.
+    """
     if not config_choice:
         return (
             "",
             gr.update(choices=[], value=None),
+            # Advanced fields (GPT-OSS)
+            "", "train", "openhermes_fr", "prompt", "accepted_completion", "", "", "",
+            None, 10, None, 1.0, 4, 4, 2e-4, 2e-5, 0.01, 0.03,
+            2048, 16, 32, 0.05, "bf16", 4, "mxfp4", 1.0, 10, 100, 500,
+            # Advanced fields (SmolLM3)
+            "HuggingFaceTB/SmolLM3-3B", None, "prompt", "completion", False, None, 42,
+            4096, 2, 8, 5e-6, 500, 100, 10,
         )
 
     conf_map = get_config_map(family)
@@ -896,7 +940,124 @@ def on_config_change(family: str, config_choice: str):
     # dataset selection (allow custom but prefill with the config's dataset if any)
     ds_choices = [dataset_name] if dataset_name else []
 
-    return training_md, gr.update(choices=ds_choices, value=(dataset_name or None))
+    # Defaults for Advanced (GPT-OSS)
+    adv_dataset_name = dataset_name or ("HuggingFaceH4/Multilingual-Thinking" if family == "GPT-OSS" else (dataset_name or ""))
+    adv_dataset_split = getattr(cfg_obj, "dataset_split", "train") if cfg_obj else "train"
+    # Infer dataset_format heuristically
+    if family == "GPT-OSS":
+        adv_dataset_format = getattr(cfg_obj, "dataset_format", None) or (
+            "messages" if getattr(cfg_obj, "input_field", "") == "messages" else "openhermes_fr"
+        )
+        adv_input_field = getattr(cfg_obj, "input_field", "prompt")
+        adv_target_field = getattr(cfg_obj, "target_field", "accepted_completion") or ""
+        adv_num_train_epochs = float(getattr(cfg_obj, "num_train_epochs", 1.0)) if cfg_obj and hasattr(cfg_obj, "num_train_epochs") else 1.0
+        adv_batch_size = int(getattr(cfg_obj, "batch_size", 4) or 4)
+        adv_gas = int(getattr(cfg_obj, "gradient_accumulation_steps", 4) or 4)
+        adv_lr = float(getattr(cfg_obj, "learning_rate", 2e-4) or 2e-4)
+        adv_min_lr = float(getattr(cfg_obj, "min_lr", 2e-5) or 2e-5)
+        adv_wd = float(getattr(cfg_obj, "weight_decay", 0.01) or 0.01)
+        adv_warmup = float(getattr(cfg_obj, "warmup_ratio", 0.03) or 0.03)
+        adv_msl = int(getattr(cfg_obj, "max_seq_length", 2048) or 2048)
+        lora_cfg = getattr(cfg_obj, "lora_config", {}) or {}
+        adv_lora_r = int(lora_cfg.get("r", 16))
+        adv_lora_alpha = int(lora_cfg.get("lora_alpha", 32))
+        adv_lora_dropout = float(lora_cfg.get("lora_dropout", 0.05))
+        adv_mixed_precision = "bf16" if getattr(cfg_obj, "bf16", True) else ("fp16" if getattr(cfg_obj, "fp16", False) else "fp32")
+        adv_num_workers = int(getattr(cfg_obj, "dataloader_num_workers", 4) or 4)
+        qcfg = getattr(cfg_obj, "quantization_config", {}) or {}
+        if qcfg.get("load_in_4bit", False):
+            adv_quantization_type = "bnb4"
+        elif qcfg.get("dequantize", False):
+            adv_quantization_type = "mxfp4"
+        else:
+            adv_quantization_type = "none"
+        adv_mgn = float(getattr(cfg_obj, "max_grad_norm", 1.0) or 1.0)
+        adv_log = int(getattr(cfg_obj, "logging_steps", 10) or 10)
+        adv_eval = int(getattr(cfg_obj, "eval_steps", 100) or 100)
+        adv_save = int(getattr(cfg_obj, "save_steps", 500) or 500)
+    else:
+        # SmolLM3 defaults for Advanced
+        adv_dataset_format = "openhermes_fr"
+        adv_input_field = getattr(cfg_obj, "input_field", "prompt") if cfg_obj else "prompt"
+        adv_target_field = getattr(cfg_obj, "target_field", "completion") if cfg_obj else "completion"
+        adv_num_train_epochs = 1.0
+        adv_batch_size = int(getattr(cfg_obj, "batch_size", 2) or 2)
+        adv_gas = int(getattr(cfg_obj, "gradient_accumulation_steps", 8) or 8)
+        adv_lr = float(getattr(cfg_obj, "learning_rate", 5e-6) or 5e-6)
+        adv_min_lr = float(getattr(cfg_obj, "min_lr", 1e-6) or 1e-6)
+        adv_wd = float(getattr(cfg_obj, "weight_decay", 0.01) or 0.01)
+        adv_warmup = float(getattr(cfg_obj, "warmup_steps", 100) or 100)  # Smol uses steps
+        adv_msl = int(getattr(cfg_obj, "max_seq_length", 4096) or 4096)
+        adv_lora_r = 16
+        adv_lora_alpha = 32
+        adv_lora_dropout = 0.05
+        adv_mixed_precision = "fp16" if getattr(cfg_obj, "fp16", True) else ("bf16" if getattr(cfg_obj, "bf16", False) else "fp32")
+        adv_num_workers = int(getattr(cfg_obj, "dataloader_num_workers", 4) or 4)
+        adv_quantization_type = "none"
+        adv_mgn = float(getattr(cfg_obj, "max_grad_norm", 1.0) or 1.0)
+        adv_log = int(getattr(cfg_obj, "logging_steps", 10) or 10)
+        adv_eval = int(getattr(cfg_obj, "eval_steps", 100) or 100)
+        adv_save = int(getattr(cfg_obj, "save_steps", 500) or 500)
+
+    # SmolLM3 advanced model/dataset
+    adv_sm_model_name = getattr(cfg_obj, "model_name", "HuggingFaceTB/SmolLM3-3B") if cfg_obj else "HuggingFaceTB/SmolLM3-3B"
+    adv_sm_dataset_name = dataset_name if family == "SmolLM3" else None
+    adv_sm_input_field = adv_input_field
+    adv_sm_target_field = adv_target_field
+    adv_sm_filter_bad = bool(getattr(cfg_obj, "filter_bad_entries", False)) if cfg_obj else False
+    adv_sm_sample_size = getattr(cfg_obj, "sample_size", None)
+    adv_sm_sample_seed = getattr(cfg_obj, "sample_seed", 42)
+
+    return (
+        training_md,
+        gr.update(choices=ds_choices, value=(dataset_name or None)),
+        # Advanced (GPT-OSS)
+        adv_dataset_name,
+        adv_dataset_split,
+        adv_dataset_format,
+        adv_input_field,
+        adv_target_field,
+        getattr(cfg_obj, "system_message", None) if cfg_obj else "",
+        getattr(cfg_obj, "developer_message", None) if cfg_obj else "",
+        getattr(cfg_obj, "chat_template_kwargs", {}).get("model_identity") if cfg_obj and getattr(cfg_obj, "chat_template_kwargs", None) else "",
+        getattr(cfg_obj, "max_samples", None) if cfg_obj else None,
+        int(getattr(cfg_obj, "min_length", 10) or 10) if cfg_obj else 10,
+        getattr(cfg_obj, "max_length", None) if cfg_obj else None,
+        adv_num_train_epochs,
+        adv_batch_size,
+        adv_gas,
+        adv_lr,
+        adv_min_lr,
+        adv_wd,
+        adv_warmup,
+        adv_msl,
+        adv_lora_r,
+        adv_lora_alpha,
+        adv_lora_dropout,
+        adv_mixed_precision,
+        adv_num_workers,
+        adv_quantization_type,
+        adv_mgn,
+        adv_log,
+        adv_eval,
+        adv_save,
+        # Advanced (SmolLM3)
+        adv_sm_model_name,
+        adv_sm_dataset_name,
+        adv_sm_input_field,
+        adv_sm_target_field,
+        adv_sm_filter_bad,
+        adv_sm_sample_size,
+        adv_sm_sample_seed,
+        # SmolLM3 training overrides
+        int(getattr(cfg_obj, "max_seq_length", 4096) or 4096) if family == "SmolLM3" else 4096,
+        int(getattr(cfg_obj, "batch_size", 2) or 2) if family == "SmolLM3" else 2,
+        int(getattr(cfg_obj, "gradient_accumulation_steps", 8) or 8) if family == "SmolLM3" else 8,
+        float(getattr(cfg_obj, "learning_rate", 5e-6) or 5e-6) if family == "SmolLM3" else 5e-6,
+        int(getattr(cfg_obj, "save_steps", 500) or 500) if family == "SmolLM3" else 500,
+        int(getattr(cfg_obj, "eval_steps", 100) or 100) if family == "SmolLM3" else 100,
+        int(getattr(cfg_obj, "logging_steps", 10) or 10) if family == "SmolLM3" else 10,
+    )
 
 
 def on_trainer_selected(_: str):
@@ -1070,17 +1231,108 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
 
             with gr.Tab("Advanced"):
                 # GPT-OSS specific scheduler overrides
-                advanced_scheduler_group = gr.Group(visible=False)
-                with advanced_scheduler_group:
-                    scheduler_override = gr.Dropdown(
-                        choices=[c for c in SCHEDULER_CHOICES if c is not None],
-                        value=None,
-                        allow_custom_value=True,
-                        label="Scheduler override",
+                advanced_enabled = gr.Checkbox(value=False, label="Use advanced overrides (generate config)")
+
+                # Family-specific advanced groups
+                gpt_oss_advanced_group = gr.Group(visible=False)
+                with gpt_oss_advanced_group:
+                    gr.Markdown("Advanced configuration for GPT-OSS")
+                    with gr.Accordion("Dataset", open=True):
+                        adv_dataset_name = gr.Textbox(value="", label="Dataset name")
+                        with gr.Row():
+                            adv_dataset_split = gr.Textbox(value="train", label="Dataset split")
+                            adv_dataset_format = gr.Dropdown(
+                                choices=["openhermes_fr", "messages", "text"],
+                                value="openhermes_fr",
+                                label="Dataset format",
+                            )
+                        with gr.Row():
+                            adv_input_field = gr.Textbox(value="prompt", label="Input field")
+                            adv_target_field = gr.Textbox(value="accepted_completion", label="Target field (optional)")
+                        with gr.Row():
+                            adv_system_message = gr.Textbox(value="", label="System message (optional)")
+                            adv_developer_message = gr.Textbox(value="", label="Developer message (optional)")
+                        adv_model_identity = gr.Textbox(value="", label="Model identity (optional)")
+                        with gr.Row():
+                            adv_max_samples = gr.Number(value=None, precision=0, label="Max samples (optional)")
+                            adv_min_length = gr.Number(value=10, precision=0, label="Min length")
+                            adv_max_length = gr.Number(value=None, precision=0, label="Max length (optional)")
+
+                    with gr.Accordion("Training", open=True):
+                        with gr.Row():
+                            adv_num_train_epochs = gr.Number(value=1.0, precision=2, label="Epochs")
+                            adv_batch_size = gr.Number(value=4, precision=0, label="Batch size")
+                            adv_gradient_accumulation_steps = gr.Number(value=4, precision=0, label="Grad accumulation")
+                        with gr.Row():
+                            adv_learning_rate = gr.Number(value=2e-4, precision=6, label="Learning rate")
+                            adv_min_lr_num = gr.Number(value=2e-5, precision=6, label="Min LR")
+                            adv_weight_decay = gr.Number(value=0.01, precision=6, label="Weight decay")
+                            adv_warmup_ratio = gr.Number(value=0.03, precision=3, label="Warmup ratio")
+                        adv_max_seq_length = gr.Number(value=2048, precision=0, label="Max seq length")
+
+                    with gr.Accordion("LoRA & Quantization", open=False):
+                        with gr.Row():
+                            adv_lora_r = gr.Number(value=16, precision=0, label="LoRA r")
+                            adv_lora_alpha = gr.Number(value=32, precision=0, label="LoRA alpha")
+                            adv_lora_dropout = gr.Number(value=0.05, precision=3, label="LoRA dropout")
+                        with gr.Row():
+                            adv_mixed_precision = gr.Dropdown(choices=["bf16", "fp16", "fp32"], value="bf16", label="Mixed precision")
+                            adv_num_workers = gr.Number(value=4, precision=0, label="Data workers")
+                            adv_quantization_type = gr.Dropdown(choices=["mxfp4", "bnb4", "none"], value="mxfp4", label="Quantization")
+                        adv_max_grad_norm = gr.Number(value=1.0, precision=3, label="Max grad norm")
+
+                    with gr.Accordion("Eval & Logging", open=False):
+                        with gr.Row():
+                            adv_logging_steps = gr.Number(value=10, precision=0, label="Logging steps")
+                            adv_eval_steps = gr.Number(value=100, precision=0, label="Eval steps")
+                            adv_save_steps = gr.Number(value=500, precision=0, label="Save steps")
+
+                    with gr.Accordion("Scheduler (GPT-OSS only)", open=False):
+                        scheduler_override = gr.Dropdown(
+                            choices=[c for c in SCHEDULER_CHOICES if c is not None],
+                            value=None,
+                            allow_custom_value=True,
+                            label="Scheduler override",
+                        )
+                        with gr.Row():
+                            min_lr = gr.Number(value=None, precision=6, label="min_lr (cosine_with_min_lr)")
+                            min_lr_rate = gr.Number(value=None, precision=6, label="min_lr_rate (cosine_with_min_lr)")
+
+                smollm3_advanced_group = gr.Group(visible=False)
+                with smollm3_advanced_group:
+                    gr.Markdown("Advanced configuration for SmolLM3")
+                    with gr.Accordion("Dataset", open=True):
+                        adv_sm_model_name = gr.Textbox(value="HuggingFaceTB/SmolLM3-3B", label="Model name")
+                        adv_sm_dataset_name = gr.Textbox(value="", label="Dataset name (optional)")
+                        with gr.Row():
+                            adv_sm_input_field = gr.Textbox(value="prompt", label="Input field")
+                            adv_sm_target_field = gr.Textbox(value="completion", label="Target field")
+                        with gr.Row():
+                            adv_sm_filter_bad_entries = gr.Checkbox(value=False, label="Filter bad entries")
+                            adv_sm_sample_size = gr.Number(value=None, precision=0, label="Sample size (optional)")
+                            adv_sm_sample_seed = gr.Number(value=42, precision=0, label="Sample seed")
+                    with gr.Accordion("Training", open=True):
+                        with gr.Row():
+                            adv_sm_max_seq_length = gr.Number(value=4096, precision=0, label="Max seq length")
+                            adv_sm_batch_size = gr.Number(value=2, precision=0, label="Batch size")
+                            adv_sm_gas = gr.Number(value=8, precision=0, label="Grad accumulation")
+                            adv_sm_learning_rate = gr.Number(value=5e-6, precision=6, label="Learning rate")
+                        with gr.Row():
+                            adv_sm_save_steps = gr.Number(value=500, precision=0, label="Save steps")
+                            adv_sm_eval_steps = gr.Number(value=100, precision=0, label="Eval steps")
+                            adv_sm_logging_steps = gr.Number(value=10, precision=0, label="Logging steps")
+
+                def _toggle_advanced(enable: bool, family_val: str):
+                    return (
+                        gr.update(visible=enable and family_val == "GPT-OSS"),
+                        gr.update(visible=enable and family_val == "SmolLM3"),
                     )
-                    with gr.Row():
-                        min_lr = gr.Number(value=None, precision=6, label="min_lr (cosine_with_min_lr)")
-                        min_lr_rate = gr.Number(value=None, precision=6, label="min_lr_rate (cosine_with_min_lr)")
+
+                advanced_enabled.change(
+                    _toggle_advanced,
+                    inputs=[advanced_enabled, model_family],
+                    outputs=[gpt_oss_advanced_group, smollm3_advanced_group],
+                )
 
     # Final action & logs
     start_btn = gr.Button("Run Pipeline", variant="primary")
@@ -1101,7 +1353,8 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
             step2_group,
             step3_group,
             step4_group,
-            advanced_scheduler_group,
+            gpt_oss_advanced_group,  # show advanced for GPT-OSS
+            smollm3_advanced_group,  # show advanced for SmolLM3
         ],
     )
 
@@ -1116,11 +1369,224 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
     config_choice.change(
         on_config_change,
         inputs=[model_family, config_choice],
-        outputs=[training_info, dataset_choice],
+        outputs=[
+            training_info,
+            dataset_choice,
+            # Advanced (GPT-OSS) outputs
+            adv_dataset_name,
+            adv_dataset_split,
+            adv_dataset_format,
+            adv_input_field,
+            adv_target_field,
+            adv_system_message,
+            adv_developer_message,
+            adv_model_identity,
+            adv_max_samples,
+            adv_min_length,
+            adv_max_length,
+            adv_num_train_epochs,
+            adv_batch_size,
+            adv_gradient_accumulation_steps,
+            adv_learning_rate,
+            adv_min_lr_num,
+            adv_weight_decay,
+            adv_warmup_ratio,
+            adv_max_seq_length,
+            adv_lora_r,
+            adv_lora_alpha,
+            adv_lora_dropout,
+            adv_mixed_precision,
+            adv_num_workers,
+            adv_quantization_type,
+            adv_max_grad_norm,
+            adv_logging_steps,
+            adv_eval_steps,
+            adv_save_steps,
+            # Advanced (SmolLM3)
+            adv_sm_model_name,
+            adv_sm_dataset_name,
+            adv_sm_input_field,
+            adv_sm_target_field,
+            adv_sm_filter_bad_entries,
+            adv_sm_sample_size,
+            adv_sm_sample_seed,
+            adv_sm_max_seq_length,
+            adv_sm_batch_size,
+            adv_sm_gas,
+            adv_sm_learning_rate,
+            adv_sm_save_steps,
+            adv_sm_eval_steps,
+            adv_sm_logging_steps,
+        ],
     )
 
+    # Keep Advanced dataset fields in sync when user selects a different dataset
+    def _sync_dataset_fields(ds_value: Optional[str]):
+        ds_text = ds_value or ""
+        return ds_text, ds_text
+
+    dataset_choice.change(
+        _sync_dataset_fields,
+        inputs=[dataset_choice],
+        outputs=[adv_dataset_name, adv_sm_dataset_name],
+    )
+
+    def _start_with_overrides(
+        model_family_v,
+        config_choice_v,
+        trainer_type_v,
+        monitoring_mode_v,
+        experiment_name_v,
+        repo_short_v,
+        author_name_v,
+        model_description_v,
+        trackio_space_name_v,
+        deploy_trackio_space_v,
+        create_dataset_repo_v,
+        push_to_hub_v,
+        switch_to_read_after_v,
+        scheduler_override_v,
+        min_lr_v,
+        min_lr_rate_v,
+        advanced_enabled_v,
+        # GPT-OSS advanced
+        adv_dataset_name_v,
+        adv_dataset_split_v,
+        adv_dataset_format_v,
+        adv_input_field_v,
+        adv_target_field_v,
+        adv_system_message_v,
+        adv_developer_message_v,
+        adv_model_identity_v,
+        adv_max_samples_v,
+        adv_min_length_v,
+        adv_max_length_v,
+        adv_num_train_epochs_v,
+        adv_batch_size_v,
+        adv_gas_v,
+        adv_lr_v,
+        adv_min_lr_num_v,
+        adv_wd_v,
+        adv_warmup_ratio_v,
+        adv_max_seq_length_v,
+        adv_lora_r_v,
+        adv_lora_alpha_v,
+        adv_lora_dropout_v,
+        adv_mixed_precision_v,
+        adv_num_workers_v,
+        adv_quantization_type_v,
+        adv_max_grad_norm_v,
+        adv_logging_steps_v,
+        adv_eval_steps_v,
+        adv_save_steps_v,
+        # SmolLM3 advanced
+        adv_sm_model_name_v,
+        adv_sm_dataset_name_v,
+        adv_sm_input_field_v,
+        adv_sm_target_field_v,
+        adv_sm_filter_bad_entries_v,
+        adv_sm_sample_size_v,
+        adv_sm_sample_seed_v,
+        adv_sm_max_seq_length_v,
+        adv_sm_batch_size_v,
+        adv_sm_gas_v,
+        adv_sm_learning_rate_v,
+        adv_sm_save_steps_v,
+        adv_sm_eval_steps_v,
+        adv_sm_logging_steps_v,
+    ):
+        # If advanced overrides enabled, generate a config file and pass its path
+        override_path: Optional[str] = None
+        if advanced_enabled_v:
+            try:
+                if model_family_v == "GPT-OSS":
+                    cfg_path = generate_gpt_oss_custom_config_file(
+                        dataset_name=str(adv_dataset_name_v or ""),
+                        dataset_split=str(adv_dataset_split_v or "train"),
+                        dataset_format=str(adv_dataset_format_v or "openhermes_fr"),
+                        input_field=str(adv_input_field_v or "prompt"),
+                        target_field=(str(adv_target_field_v) if adv_target_field_v else None),
+                        system_message=(str(adv_system_message_v) if adv_system_message_v else None),
+                        developer_message=(str(adv_developer_message_v) if adv_developer_message_v else None),
+                        model_identity=(str(adv_model_identity_v) if adv_model_identity_v else None),
+                        max_samples=(int(adv_max_samples_v) if adv_max_samples_v else None),
+                        min_length=int(adv_min_length_v or 10),
+                        max_length=(int(adv_max_length_v) if adv_max_length_v else None),
+                        num_train_epochs=float(adv_num_train_epochs_v or 1.0),
+                        batch_size=int(adv_batch_size_v or 4),
+                        gradient_accumulation_steps=int(adv_gas_v or 4),
+                        learning_rate=float(adv_lr_v or 2e-4),
+                        min_lr=float(adv_min_lr_num_v or 2e-5),
+                        weight_decay=float(adv_wd_v or 0.01),
+                        warmup_ratio=float(adv_warmup_ratio_v or 0.03),
+                        max_seq_length=int(adv_max_seq_length_v or 2048),
+                        lora_r=int(adv_lora_r_v or 16),
+                        lora_alpha=int(adv_lora_alpha_v or 32),
+                        lora_dropout=float(adv_lora_dropout_v or 0.05),
+                        mixed_precision=str(adv_mixed_precision_v or "bf16"),
+                        num_workers=int(adv_num_workers_v or 4),
+                        quantization_type=str(adv_quantization_type_v or "mxfp4"),
+                        max_grad_norm=float(adv_max_grad_norm_v or 1.0),
+                        logging_steps=int(adv_logging_steps_v or 10),
+                        eval_steps=int(adv_eval_steps_v or 100),
+                        save_steps=int(adv_save_steps_v or 500),
+                    )
+                else:
+                    cfg_path = generate_smollm3_custom_config_file(
+                        model_name=str(adv_sm_model_name_v or "HuggingFaceTB/SmolLM3-3B"),
+                        dataset_name=(str(adv_sm_dataset_name_v) if adv_sm_dataset_name_v else None),
+                        max_seq_length=int(adv_sm_max_seq_length_v or 4096),
+                        batch_size=int(adv_sm_batch_size_v or 2),
+                        gradient_accumulation_steps=int(adv_sm_gas_v or 8),
+                        learning_rate=float(adv_sm_learning_rate_v or 5e-6),
+                        save_steps=int(adv_sm_save_steps_v or 500),
+                        eval_steps=int(adv_sm_eval_steps_v or 100),
+                        logging_steps=int(adv_sm_logging_steps_v or 10),
+                        filter_bad_entries=bool(adv_sm_filter_bad_entries_v),
+                        input_field=str(adv_sm_input_field_v or "prompt"),
+                        target_field=str(adv_sm_target_field_v or "completion"),
+                        sample_size=(int(adv_sm_sample_size_v) if adv_sm_sample_size_v else None),
+                        sample_seed=int(adv_sm_sample_seed_v or 42),
+                        trainer_type=str(trainer_type_v).lower(),
+                    )
+                override_path = str(cfg_path)
+            except Exception as e:
+                # Surface error in logs via generator
+                def _err_gen():
+                    yield f"❌ Failed to generate advanced config: {e}"
+                return _err_gen()
+
+        def _gen():
+            params = PipelineInputs(
+                model_family=model_family_v,
+                config_choice=config_choice_v,
+                trainer_type=trainer_type_v,
+                monitoring_mode=monitoring_mode_v,
+                experiment_name=experiment_name_v,
+                repo_short=repo_short_v,
+                author_name=author_name_v,
+                model_description=model_description_v,
+                trackio_space_name=trackio_space_name_v or None,
+                deploy_trackio_space=bool(deploy_trackio_space_v),
+                create_dataset_repo=bool(create_dataset_repo_v),
+                push_to_hub=bool(push_to_hub_v),
+                switch_to_read_after=bool(switch_to_read_after_v),
+                scheduler_override=(scheduler_override_v or None),
+                min_lr=min_lr_v,
+                min_lr_rate=min_lr_rate_v,
+                override_config_path=override_path,
+            )
+            write_token = os.environ.get("HF_WRITE_TOKEN") or os.environ.get("HF_TOKEN")
+            read_token = os.environ.get("HF_READ_TOKEN")
+            yield f"HF_WRITE_TOKEN: {mask_token(write_token)}"
+            yield f"HF_READ_TOKEN:  {mask_token(read_token)}"
+            for line in run_pipeline(params):
+                yield line
+                time.sleep(0.01)
+        return _gen()
+
     start_btn.click(
-        start_pipeline,
+        _start_with_overrides,
         inputs=[
             model_family,
             config_choice,
@@ -1138,6 +1604,52 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
             scheduler_override,
             min_lr,
             min_lr_rate,
+            advanced_enabled,
+            # GPT-OSS advanced
+            adv_dataset_name,
+            adv_dataset_split,
+            adv_dataset_format,
+            adv_input_field,
+            adv_target_field,
+            adv_system_message,
+            adv_developer_message,
+            adv_model_identity,
+            adv_max_samples,
+            adv_min_length,
+            adv_max_length,
+            adv_num_train_epochs,
+            adv_batch_size,
+            adv_gradient_accumulation_steps,
+            adv_learning_rate,
+            adv_min_lr_num,
+            adv_weight_decay,
+            adv_warmup_ratio,
+            adv_max_seq_length,
+            adv_lora_r,
+            adv_lora_alpha,
+            adv_lora_dropout,
+            adv_mixed_precision,
+            adv_num_workers,
+            adv_quantization_type,
+            adv_max_grad_norm,
+            adv_logging_steps,
+            adv_eval_steps,
+            adv_save_steps,
+            # SmolLM3 advanced
+            adv_sm_model_name,
+            adv_sm_dataset_name,
+            adv_sm_input_field,
+            adv_sm_target_field,
+            adv_sm_filter_bad_entries,
+            adv_sm_sample_size,
+            adv_sm_sample_seed,
+            adv_sm_max_seq_length,
+            adv_sm_batch_size,
+            adv_sm_gas,
+            adv_sm_learning_rate,
+            adv_sm_save_steps,
+            adv_sm_eval_steps,
+            adv_sm_logging_steps,
         ],
         outputs=[logs],
     )
