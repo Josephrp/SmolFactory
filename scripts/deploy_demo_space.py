@@ -37,10 +37,38 @@ logger = logging.getLogger(__name__)
 class DemoSpaceDeployer:
     """Deploy demo space to Hugging Face Spaces"""
     
-    def __init__(self, hf_token: str, hf_username: str, model_id: str, 
-                 subfolder: str = "int4", space_name: Optional[str] = None, 
-                 demo_type: Optional[str] = None, config_file: Optional[str] = None):
+    def __init__(
+        self,
+        hf_token: str,
+        # Token used for API actions that create/update the Space (write perms)
+        hf_username: str,
+        model_id: str,
+        subfolder: str = "int4",
+        space_name: Optional[str] = None,
+        demo_type: Optional[str] = None,
+        config_file: Optional[str] = None,
+        # Optional token used as the Space's HF_TOKEN secret (read-only recommended)
+        space_secret_token: Optional[str] = None,
+        # Examples configuration
+        examples_type: Optional[str] = None,
+        disable_examples: Optional[bool] = None,
+        examples_json: Optional[str] = None,
+        # Branding overrides
+        brand_owner_name: Optional[str] = None,
+        brand_team_name: Optional[str] = None,
+        brand_discord_url: Optional[str] = None,
+        brand_hf_org: Optional[str] = None,
+        brand_hf_label: Optional[str] = None,
+        brand_hf_url: Optional[str] = None,
+        brand_gh_org: Optional[str] = None,
+        brand_gh_label: Optional[str] = None,
+        brand_gh_url: Optional[str] = None,
+        brand_project_name: Optional[str] = None,
+        brand_project_url: Optional[str] = None,
+    ):
         self.hf_token = hf_token
+        # The token we will store in the Space secrets. Defaults to hf_token if not provided
+        self.space_secret_token = space_secret_token or hf_token
         self.hf_username = hf_username
         # Allow passing just a repo name without username and auto-prefix
         self.model_id = model_id if "/" in model_id else f"{hf_username}/{model_id}"
@@ -55,6 +83,10 @@ class DemoSpaceDeployer:
         self.developer_message: Optional[str] = None
         self.model_identity: Optional[str] = None
         self.reasoning_effort: Optional[str] = None
+        # Examples context
+        self.examples_type: Optional[str] = (examples_type or None)
+        self.disable_examples: Optional[bool] = (disable_examples if disable_examples is not None else None)
+        self.examples_json: Optional[str] = (examples_json or None)
         
         # Determine demo type from model_id if not provided
         if demo_type is None:
@@ -77,6 +109,24 @@ class DemoSpaceDeployer:
             self._load_config_messages()
         except Exception as e:
             logger.warning(f"Could not load config messages: {e}")
+
+        # Branding defaults (can be overridden via CLI)
+        self.brand_owner_name = brand_owner_name or self.hf_username or "Tonic"
+        self.brand_team_name = brand_team_name or f"Team{self.brand_owner_name}"
+        self.brand_discord_url = brand_discord_url or "https://discord.gg/qdfnvSPcqP"
+        # HF org/link
+        _default_hf_org = brand_hf_org or self.hf_username or "MultiTransformer"
+        self.brand_hf_org = _default_hf_org
+        self.brand_hf_label = brand_hf_label or self.brand_hf_org
+        self.brand_hf_url = brand_hf_url or f"https://huggingface.co/{self.brand_hf_org}"
+        # GitHub org/link
+        _default_gh_org = brand_gh_org or self.hf_username or "tonic-ai"
+        self.brand_gh_org = _default_gh_org
+        self.brand_gh_label = brand_gh_label or self.brand_gh_org
+        self.brand_gh_url = brand_gh_url or f"https://github.com/{self.brand_gh_org}"
+        # Project link
+        self.brand_project_name = brand_project_name or "MultiTonic"
+        self.brand_project_url = brand_project_url or "https://github.com/MultiTonic"
 
     def _load_config_messages(self) -> None:
         """Load system/developer/model_identity from a training config file if provided."""
@@ -148,6 +198,23 @@ os.environ['MODEL_IDENTITY'] = {_json.dumps(self.model_identity or "")}
 os.environ['SYSTEM_MESSAGE'] = {_json.dumps(self.system_message or (self.model_identity or ""))}
 os.environ['DEVELOPER_MESSAGE'] = {_json.dumps(self.developer_message or "")}
 os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"))}
+{"os.environ['EXAMPLES_TYPE'] = " + _json.dumps(self.examples_type) + "\n" if self.examples_type else ''}
+{"os.environ['DISABLE_EXAMPLES'] = 'true'\n" if self.disable_examples else ("os.environ['DISABLE_EXAMPLES'] = 'false'\n" if self.disable_examples is not None else '')}
+{"os.environ['EXAMPLES_JSON'] = " + _json.dumps(self.examples_json) + "\n" if self.examples_json else ''}
+
+# Branding/owner variables
+os.environ['HF_USERNAME'] = {_json.dumps(self.hf_username)}
+os.environ['BRAND_OWNER_NAME'] = {_json.dumps(self.brand_owner_name)}
+os.environ['BRAND_TEAM_NAME'] = {_json.dumps(self.brand_team_name)}
+os.environ['BRAND_DISCORD_URL'] = {_json.dumps(self.brand_discord_url)}
+os.environ['BRAND_HF_ORG'] = {_json.dumps(self.brand_hf_org)}
+os.environ['BRAND_HF_LABEL'] = {_json.dumps(self.brand_hf_label)}
+os.environ['BRAND_HF_URL'] = {_json.dumps(self.brand_hf_url)}
+os.environ['BRAND_GH_ORG'] = {_json.dumps(self.brand_gh_org)}
+os.environ['BRAND_GH_LABEL'] = {_json.dumps(self.brand_gh_label)}
+os.environ['BRAND_GH_URL'] = {_json.dumps(self.brand_gh_url)}
+os.environ['BRAND_PROJECT_NAME'] = {_json.dumps(self.brand_project_name)}
+os.environ['BRAND_PROJECT_URL'] = {_json.dumps(self.brand_project_url)}
 
 """
         else:
@@ -163,6 +230,23 @@ os.environ['MODEL_IDENTITY'] = {_json.dumps(self.model_identity or "")}
 os.environ['SYSTEM_MESSAGE'] = {_json.dumps(self.system_message or (self.model_identity or ""))}
 os.environ['DEVELOPER_MESSAGE'] = {_json.dumps(self.developer_message or "")}
 os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"))}
+{"os.environ['EXAMPLES_TYPE'] = " + _json.dumps(self.examples_type) + "\n" if self.examples_type else ''}
+{"os.environ['DISABLE_EXAMPLES'] = 'true'\n" if self.disable_examples else ("os.environ['DISABLE_EXAMPLES'] = 'false'\n" if self.disable_examples is not None else '')}
+{"os.environ['EXAMPLES_JSON'] = " + _json.dumps(self.examples_json) + "\n" if self.examples_json else ''}
+
+# Branding/owner variables
+os.environ['HF_USERNAME'] = {_json.dumps(self.hf_username)}
+os.environ['BRAND_OWNER_NAME'] = {_json.dumps(self.brand_owner_name)}
+os.environ['BRAND_TEAM_NAME'] = {_json.dumps(self.brand_team_name)}
+os.environ['BRAND_DISCORD_URL'] = {_json.dumps(self.brand_discord_url)}
+os.environ['BRAND_HF_ORG'] = {_json.dumps(self.brand_hf_org)}
+os.environ['BRAND_HF_LABEL'] = {_json.dumps(self.brand_hf_label)}
+os.environ['BRAND_HF_URL'] = {_json.dumps(self.brand_hf_url)}
+os.environ['BRAND_GH_ORG'] = {_json.dumps(self.brand_gh_org)}
+os.environ['BRAND_GH_LABEL'] = {_json.dumps(self.brand_gh_label)}
+os.environ['BRAND_GH_URL'] = {_json.dumps(self.brand_gh_url)}
+os.environ['BRAND_PROJECT_NAME'] = {_json.dumps(self.brand_project_name)}
+os.environ['BRAND_PROJECT_URL'] = {_json.dumps(self.brand_project_url)}
 
 """
         return env_setup
@@ -251,6 +335,56 @@ os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"
                     description="Default reasoning effort (low|medium|high)"
                 )
                 logger.info("✅ Set REASONING_EFFORT variable")
+
+            # Branding variables
+            branding_vars = {
+                "HF_USERNAME": self.hf_username,
+                "BRAND_OWNER_NAME": self.brand_owner_name,
+                "BRAND_TEAM_NAME": self.brand_team_name,
+                "BRAND_DISCORD_URL": self.brand_discord_url,
+                "BRAND_HF_ORG": self.brand_hf_org,
+                "BRAND_HF_LABEL": self.brand_hf_label,
+                "BRAND_HF_URL": self.brand_hf_url,
+                "BRAND_GH_ORG": self.brand_gh_org,
+                "BRAND_GH_LABEL": self.brand_gh_label,
+                "BRAND_GH_URL": self.brand_gh_url,
+                "BRAND_PROJECT_NAME": self.brand_project_name,
+                "BRAND_PROJECT_URL": self.brand_project_url,
+            }
+            for key, value in branding_vars.items():
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key=key,
+                    value=value,
+                    description=f"Branding: {key}"
+                )
+            logger.info("✅ Set branding variables")
+
+            # Examples variables
+            if self.examples_type:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="EXAMPLES_TYPE",
+                    value=self.examples_type,
+                    description="Examples pack type (e.g., general|medical)"
+                )
+                logger.info(f"✅ Set EXAMPLES_TYPE={self.examples_type}")
+            if self.disable_examples is not None:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="DISABLE_EXAMPLES",
+                    value=("true" if self.disable_examples else "false"),
+                    description="Disable built-in examples"
+                )
+                logger.info(f"✅ Set DISABLE_EXAMPLES={self.disable_examples}")
+            if self.examples_json:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="EXAMPLES_JSON",
+                    value=self.examples_json,
+                    description="Custom examples JSON override"
+                )
+                logger.info("✅ Set EXAMPLES_JSON override")
             
         except Exception as e:
             logger.error(f"❌ Failed to set model variables: {e}")
@@ -542,7 +676,7 @@ os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"
                 self.api.add_space_secret(
                     repo_id=self.space_id,
                     key="HF_TOKEN",
-                    value=self.hf_token,
+                    value=self.space_secret_token,
                     description="Hugging Face token for model access"
                 )
                 logger.info("✅ Successfully set HF_TOKEN secret via API")
@@ -583,6 +717,27 @@ os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"
             logger.info(f"   SYSTEM_MESSAGE={self.system_message}")
         if self.developer_message:
             logger.info(f"   DEVELOPER_MESSAGE={self.developer_message}")
+        # Branding variables
+        logger.info(f"   HF_USERNAME={self.hf_username}")
+        logger.info(f"   BRAND_OWNER_NAME={self.brand_owner_name}")
+        logger.info(f"   BRAND_TEAM_NAME={self.brand_team_name}")
+        logger.info(f"   BRAND_DISCORD_URL={self.brand_discord_url}")
+        logger.info(f"   BRAND_HF_ORG={self.brand_hf_org}")
+        logger.info(f"   BRAND_HF_LABEL={self.brand_hf_label}")
+        logger.info(f"   BRAND_HF_URL={self.brand_hf_url}")
+        logger.info(f"   BRAND_GH_ORG={self.brand_gh_org}")
+        logger.info(f"   BRAND_GH_LABEL={self.brand_gh_label}")
+        logger.info(f"   BRAND_GH_URL={self.brand_gh_url}")
+        logger.info(f"   BRAND_PROJECT_NAME={self.brand_project_name}")
+        logger.info(f"   BRAND_PROJECT_URL={self.brand_project_url}")
+
+        # Examples variables
+        if self.examples_type:
+            logger.info(f"   EXAMPLES_TYPE={self.examples_type}")
+        if self.disable_examples is not None:
+            logger.info(f"   DISABLE_EXAMPLES={'true' if self.disable_examples else 'false'}")
+        if self.examples_json:
+            logger.info(f"   EXAMPLES_JSON={self.examples_json}")
         
         logger.info(f"\n🔧 To set secrets in your Space:")
         logger.info(f"1. Go to your Space settings: {self.space_url}/settings")
@@ -687,23 +842,59 @@ def main():
     
     parser = argparse.ArgumentParser(description="Deploy demo space to Hugging Face Spaces")
     parser.add_argument("--hf-token", required=True, help="Hugging Face token")
+    parser.add_argument(
+        "--space-secret-token",
+        required=False,
+        help="Token to store as Space secret HF_TOKEN (defaults to --hf-token). Use a READ token here for least privilege.",
+    )
     parser.add_argument("--hf-username", required=True, help="Hugging Face username")
     parser.add_argument("--model-id", required=True, help="Model ID to deploy demo for")
     parser.add_argument("--subfolder", default="int4", help="Model subfolder (default: int4)")
     parser.add_argument("--space-name", help="Custom space name (optional)")
     parser.add_argument("--demo-type", choices=["smol", "gpt"], help="Demo type: 'smol' for SmolLM, 'gpt' for GPT-OSS (auto-detected if not specified)")
     parser.add_argument("--config-file", help="Path to the training config file to import context (system/developer/model_identity)")
+    # Examples configuration
+    parser.add_argument("--examples-type", choices=["general", "medical"], help="Examples pack to enable in the demo UI")
+    parser.add_argument("--disable-examples", action="store_true", help="Disable rendering of example prompts in the UI")
+    parser.add_argument("--examples-json", help="Custom examples JSON (list[str]) to override built-in examples")
+    # Branding customization
+    parser.add_argument("--brand-owner-name", help="Owner name shown in the UI title (defaults to HF username)")
+    parser.add_argument("--brand-team-name", help="Team name shown in Join Us (defaults to Team<owner>)")
+    parser.add_argument("--brand-discord-url", help="Discord invite URL for Join Us section")
+    parser.add_argument("--brand-hf-org", help="Hugging Face org/username to link in Join Us")
+    parser.add_argument("--brand-hf-label", help="Label for the HF link (defaults to org)")
+    parser.add_argument("--brand-hf-url", help="Custom HF link URL (defaults to https://huggingface.co/<org>)")
+    parser.add_argument("--brand-gh-org", help="GitHub org/username to link in Join Us")
+    parser.add_argument("--brand-gh-label", help="Label for the GitHub link (defaults to org)")
+    parser.add_argument("--brand-gh-url", help="Custom GitHub link URL (defaults to https://github.com/<org>)")
+    parser.add_argument("--brand-project-name", help="Project name to link in Join Us")
+    parser.add_argument("--brand-project-url", help="Project URL to link in Join Us")
     
     args = parser.parse_args()
     
     deployer = DemoSpaceDeployer(
         hf_token=args.hf_token,
+        space_secret_token=(args.space_secret_token or None),
         hf_username=args.hf_username,
         model_id=args.model_id,
         subfolder=args.subfolder,
         space_name=args.space_name,
         demo_type=args.demo_type,
         config_file=args.config_file,
+        examples_type=args.examples_type,
+        disable_examples=(True if getattr(args, 'disable_examples', False) else None),
+        examples_json=args.examples_json,
+        brand_owner_name=args.brand_owner_name,
+        brand_team_name=args.brand_team_name,
+        brand_discord_url=args.brand_discord_url,
+        brand_hf_org=args.brand_hf_org,
+        brand_hf_label=args.brand_hf_label,
+        brand_hf_url=args.brand_hf_url,
+        brand_gh_org=args.brand_gh_org,
+        brand_gh_label=args.brand_gh_label,
+        brand_gh_url=args.brand_gh_url,
+        brand_project_name=args.brand_project_name,
+        brand_project_url=args.brand_project_url,
     )
     
     success = deployer.deploy()

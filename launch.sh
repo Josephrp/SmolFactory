@@ -1454,14 +1454,23 @@ export HF_USERNAME="$HF_USERNAME"
     
     print_info "Deploying demo space for model: $DEMO_MODEL_ID"
     print_info "Using subfolder: $DEMO_SUBFOLDER"
+
+    # Additional demo parameters
+    DEMO_EXTRA_ARGS=""
+    if [ "$MODEL_FAMILY" = "GPT-OSS" ]; then
+        # Prebuilt medical example for GPT-OSS demo
+        DEMO_EXTRA_ARGS="--examples-type medical"
+    fi
     
     python scripts/deploy_demo_space.py \
-        --hf-token "$HF_TOKEN" \
+        --hf-token "$HF_WRITE_TOKEN" \
+        --space-secret-token "$HF_READ_TOKEN" \
         --hf-username "$HF_USERNAME" \
         --model-id "$DEMO_MODEL_ID" \
         --subfolder "$DEMO_SUBFOLDER" \
         --space-name "${REPO_SHORT}-demo" \
-        --config-file "$CONFIG_FILE"
+        --config-file "$CONFIG_FILE" \
+        $DEMO_EXTRA_ARGS
     
     if [ $? -eq 0 ]; then
         DEMO_SPACE_URL="https://huggingface.co/spaces/$HF_USERNAME/${REPO_SHORT}-demo"

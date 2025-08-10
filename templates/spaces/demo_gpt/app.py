@@ -6,7 +6,9 @@ import spaces
 import re
 import logging
 import os
+import json
 from peft import PeftModel
+from typing import Any, Dict, List, Generator
 
 # ----------------------------------------------------------------------
 # Environment Variables Configuration
@@ -33,6 +35,115 @@ print(f"   Model ID: {LORA_MODEL_ID}")
 print(f"   Model Name: {MODEL_NAME}")
 print(f"   Model Subfolder: {MODEL_SUBFOLDER}")
 print(f"   Use LoRA: {USE_LORA}")
+
+# ----------------------------------------------------------------------
+# Branding/Owner customization (override via Space variables)
+# ----------------------------------------------------------------------
+
+HF_USERNAME = os.getenv("HF_USERNAME", "")
+BRAND_OWNER_NAME = os.getenv("BRAND_OWNER_NAME", HF_USERNAME or "Tonic")
+BRAND_TEAM_NAME = os.getenv("BRAND_TEAM_NAME", f"Team{BRAND_OWNER_NAME}" if BRAND_OWNER_NAME else "TeamTonic")
+
+BRAND_DISCORD_URL = os.getenv("BRAND_DISCORD_URL", "https://discord.gg/qdfnvSPcqP")
+
+# Hugging Face org/links
+_default_hf_org = os.getenv("HF_ORG", HF_USERNAME) or "MultiTransformer"
+BRAND_HF_ORG = os.getenv("BRAND_HF_ORG", _default_hf_org)
+BRAND_HF_LABEL = os.getenv("BRAND_HF_LABEL", BRAND_HF_ORG)
+BRAND_HF_URL = os.getenv("BRAND_HF_URL", f"https://huggingface.co/{BRAND_HF_ORG}")
+
+# GitHub org/links
+_default_gh_org = os.getenv("GITHUB_ORG", "tonic-ai")
+BRAND_GH_ORG = os.getenv("BRAND_GH_ORG", _default_gh_org)
+BRAND_GH_LABEL = os.getenv("BRAND_GH_LABEL", BRAND_GH_ORG)
+BRAND_GH_URL = os.getenv("BRAND_GH_URL", f"https://github.com/{BRAND_GH_ORG}")
+
+# Project link (optional)
+BRAND_PROJECT_NAME = os.getenv("BRAND_PROJECT_NAME", "MultiTonic")
+BRAND_PROJECT_URL = os.getenv("BRAND_PROJECT_URL", "https://github.com/MultiTonic")
+
+# ----------------------------------------------------------------------
+# Title/Description content (Markdown/HTML)
+# ----------------------------------------------------------------------
+
+TITLE_MD = f"# 🙋🏻‍♂️ Welcome to 🌟{BRAND_OWNER_NAME}'s ⚕️{MODEL_NAME} Demo !"
+
+DESCRIPTION_MD = f"""
+**Model**: `{LORA_MODEL_ID}`  
+**Base**: `{BASE_MODEL_ID}`
+
+✨ **Enhanced Features:**
+- 🧠 **Advanced Reasoning**: Detailed analysis and step-by-step thinking
+- 📊 **LaTeX Support**: Mathematical formulas rendered beautifully (use `$` or `$$`)
+- 🎯 **Improved Formatting**: Clear separation of reasoning and final responses
+- 📝 **Smart Logging**: Better error handling and request tracking
+
+💡 **Usage Tips:**
+- Adjust reasoning level in system prompt (e.g., "Reasoning: high")
+- Use LaTeX for math: `$E = mc^2$` or `$$\\int x^2 dx$$`
+- Wait a couple of seconds initially for model loading
+"""
+
+# ----------------------------------------------------------------------
+# Examples configuration with robust fallbacks
+# ----------------------------------------------------------------------
+
+def _normalize_examples(string_items: List[str]) -> List[List[Dict[str, str]]]:
+    """Convert a list of strings to Gradio ChatInterface examples format."""
+    return [[{"text": s}] for s in string_items]
+
+DEFAULT_EXAMPLES_GENERAL: List[str] = [
+    "Explain Newton's laws clearly and concisely with mathematical formulas",
+    "Write a Python function to calculate the Fibonacci sequence",
+    "What are the benefits of open weight AI models? Include analysis.",
+    "Solve this equation: $x^2 + 5x + 6 = 0$",
+]
+
+DEFAULT_EXAMPLES_MEDICAL: List[str] = [
+    "A 68-year-old man complains of several blisters arising over the back and trunk for the preceding 2 weeks. He takes no medications and has not noted systemic symptoms such as fever, sore throat, weight loss, or fatigue. The general physical examination is normal. The oral mucosa and the lips are normal. Several 2- to 3-cm bullae are present over the trunk and back. A few excoriations where the blisters have ruptured are present. The remainder of the skin is normal, without erythema or scale. What is the best diagnostic approach at this time?",
+    "A 28-year-old woman, gravida 2, para 1, at 40 weeks of gestation is admitted to the hospital in active labor. The patient has attended many prenatal appointments and followed her physician's advice about screening for diseases, laboratory testing, diet, and exercise. Her pregnancy has been uncomplicated. She has no history of a serious illness. Her first child was delivered via normal vaginal delivery. Her vital signs are within normal limits. Cervical examination shows 100% effacement and 10 cm dilation. A cardiotocograph is shown. Which of the following is the most appropriate initial step in management?",
+    "An 18-year-old woman has eaten homemade preserves. Eighteen hours later, she develops diplopia, dysarthria, and dysphagia. She presents to the emergency room for assessment and on examination her blood pressure is 112/74 mmHg, heart rate 110/min, and respirations 20/min. The pertinent findings are abnormal extraocular movements due to cranial nerve palsies, difficulty swallowing and a change in her voice. The strength in her arms is 4/5 and 5/5 in her legs, and the reflexes are normal. Which of the following is the most likely causative organism?",
+    "What are you & who made you?",
+]
+
+_examples_type_env = os.getenv("EXAMPLES_TYPE", "medical").strip().lower()
+_disable_examples = os.getenv("DISABLE_EXAMPLES", "false").strip().lower() in {"1", "true", "yes"}
+_examples_json_raw = os.getenv("EXAMPLES_JSON") or os.getenv("CUSTOM_EXAMPLES_JSON")
+
+EXAMPLES_FINAL: List[List[Dict[str, str]]]
+if _disable_examples:
+    EXAMPLES_FINAL = []
+else:
+    custom_items: List[str] = []
+    if _examples_json_raw:
+        try:
+            parsed = json.loads(_examples_json_raw)
+            if isinstance(parsed, list) and parsed:
+                # Accept list[str]
+                if all(isinstance(x, str) for x in parsed):
+                    custom_items = parsed  # type: ignore[assignment]
+                # Accept list[dict{"text": str}]
+                elif all(isinstance(x, dict) and "text" in x and isinstance(x["text"], str) for x in parsed):
+                    custom_items = [x["text"] for x in parsed]
+        except Exception:
+            custom_items = []
+
+    if custom_items:
+        EXAMPLES_FINAL = _normalize_examples(custom_items)
+    else:
+        if _examples_type_env in {"med", "medical", "health"}:
+            EXAMPLES_FINAL = _normalize_examples(DEFAULT_EXAMPLES_MEDICAL)
+        else:
+            EXAMPLES_FINAL = _normalize_examples(DEFAULT_EXAMPLES_GENERAL)
+
+JOIN_US_MD = f"""
+## Join us :
+🌟{BRAND_TEAM_NAME}🌟 is always making cool demos! Join our active builder's 🛠️community 👻
+[Join us on Discord]({BRAND_DISCORD_URL})
+On 🤗Hugging Face: [{BRAND_HF_LABEL}]({BRAND_HF_URL})
+On 🌐GitHub: [{BRAND_GH_LABEL}]({BRAND_GH_URL}) & contribute to 🌟 [{BRAND_PROJECT_NAME}]({BRAND_PROJECT_URL})
+🤗 Big thanks to the Hugging Face team for the community support 🤗
+"""
 
 # ----------------------------------------------------------------------
 # KaTeX delimiter config for Gradio
@@ -94,8 +205,9 @@ except Exception as e:
     print(f"❌ Error loading model: {e}")
     raise e
 
-def format_conversation_history(chat_history):
-    messages = []
+def format_conversation_history(chat_history: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Normalize Gradio chat history items into a list of role/content messages."""
+    messages: List[Dict[str, str]] = []
     for item in chat_history:
         role = item["role"]
         content = item["content"]
@@ -104,7 +216,7 @@ def format_conversation_history(chat_history):
         messages.append({"role": role, "content": content})
     return messages
 
-def format_analysis_response(text):
+def format_analysis_response(text: str) -> str:
     """Enhanced response formatting with better structure and LaTeX support."""
     # Look for analysis section followed by final response
     m = re.search(r"analysis(.*?)assistantfinal", text, re.DOTALL | re.IGNORECASE)
@@ -136,7 +248,20 @@ def format_analysis_response(text):
     return cleaned
 
 @spaces.GPU(duration=60)
-def generate_response(input_data, chat_history, max_new_tokens, model_identity, system_prompt, developer_prompt, reasoning_effort, temperature, top_p, top_k, repetition_penalty):
+def generate_response(
+    input_data: str,
+    chat_history: List[Dict[str, Any]],
+    max_new_tokens: int,
+    model_identity: str,
+    system_prompt: str,
+    developer_prompt: str,
+    reasoning_effort: str,
+    temperature: float,
+    top_p: float,
+    top_k: int,
+    repetition_penalty: float,
+) -> Generator[str, None, None]:
+    """Stream tokens as they are generated, yielding formatted partial/final outputs."""
     if not input_data.strip():
         yield "Please enter a prompt."
         return
@@ -236,74 +361,79 @@ def generate_response(input_data, chat_history, max_new_tokens, model_identity, 
         logging.exception("Generation streaming failed")
         yield f"❌ Error during generation: {e}"
 
+# ----------------------------------------------------------------------
+# UI/Styling: CSS + custom Chatbot + two-column description
+# ----------------------------------------------------------------------
+
+APP_CSS = """
+#main_chatbot {height: calc(100vh - 120px);} /* Increase chatbot viewport height */
+.gradio-container {min-height: 100vh;}
+"""
+
+description_html = f"""
+<div style=\"display:flex; gap: 16px; align-items:flex-start; flex-wrap: wrap\">
+  <div style=\"flex: 1 1 60%; min-width: 300px;\">
+  {DESCRIPTION_MD}
+  </div>
+  <div style=\"flex: 1 1 35%; min-width: 260px;\">
+  {JOIN_US_MD}
+  </div>
+  </div>
+"""
+
+custom_chatbot = gr.Chatbot(label="Chatbot", elem_id="main_chatbot", latex_delimiters=LATEX_DELIMS)
+
 demo = gr.ChatInterface(
-    fn=generate_response,
-    additional_inputs=[
-        gr.Slider(label="Max new tokens", minimum=64, maximum=4096, step=1, value=2048),
-        gr.Textbox(
-            label="Model Identity",
-            value=MODEL_IDENTITY,
-            lines=3,
-            placeholder="Optional identity/persona for the model"
+        fn=generate_response,
+        chatbot=custom_chatbot,
+        title=f"🙋🏻‍♂️ Welcome to 🌟{BRAND_OWNER_NAME}'s ⚕️{MODEL_NAME} Demo !",
+        description=description_html,
+        additional_inputs=[
+            gr.Slider(label="Max new tokens", minimum=64, maximum=4096, step=1, value=2048),
+            gr.Textbox(
+                label="🪪Model Identity",
+                value=MODEL_IDENTITY,
+                lines=1,
+                placeholder="Optional identity/persona for the model"
+            ),
+            gr.Textbox(
+                label="🤖System Prompt",
+                value=DEFAULT_SYSTEM_PROMPT,
+                lines=1,
+                placeholder="Change system prompt"
+            ),
+            gr.Textbox(
+                label="👨🏻‍💻Developer Prompt",
+                value=DEFAULT_DEVELOPER_PROMPT,
+                lines=1,
+                placeholder="Optional developer instructions"
+            ),
+            gr.Dropdown(
+                label="🧠Reasoning Effort",
+                choices=["low", "medium", "high"],
+                value=DEFAULT_REASONING_EFFORT,
+                interactive=True,
+            ),
+            gr.Slider(label="🌡️Temperature", minimum=0.1, maximum=2.0, step=0.1, value=0.7),
+            gr.Slider(label="↗️Top-p", minimum=0.05, maximum=1.0, step=0.05, value=0.9),
+            gr.Slider(label="🔝Top-k", minimum=1, maximum=100, step=1, value=50),
+            gr.Slider(label="🦜Repetition Penalty", minimum=1.0, maximum=2.0, step=0.05, value=1.0),
+            ],
+        additional_inputs_accordion=gr.Accordion(label="🔧Advanced Inputs", open=False),
+        examples=EXAMPLES_FINAL,
+        cache_examples=False,
+        type="messages",
+        fill_height=True,
+        fill_width=True,
+        textbox=gr.Textbox(
+            label="Query Input",
+            placeholder="Type your prompt (supports LaTeX: $x^2 + y^2 = z^2$)"
         ),
-        gr.Textbox(
-            label="System Prompt",
-            value=DEFAULT_SYSTEM_PROMPT,
-            lines=4,
-            placeholder="Change system prompt"
-        ),
-        gr.Textbox(
-            label="Developer Prompt",
-            value=DEFAULT_DEVELOPER_PROMPT,
-            lines=4,
-            placeholder="Optional developer instructions"
-        ),
-        gr.Dropdown(
-            label="Reasoning Effort",
-            choices=["low", "medium", "high"],
-            value=DEFAULT_REASONING_EFFORT,
-            interactive=True,
-        ),
-        gr.Slider(label="Temperature", minimum=0.1, maximum=2.0, step=0.1, value=0.7),
-        gr.Slider(label="Top-p", minimum=0.05, maximum=1.0, step=0.05, value=0.9),
-        gr.Slider(label="Top-k", minimum=1, maximum=100, step=1, value=50),
-        gr.Slider(label="Repetition Penalty", minimum=1.0, maximum=2.0, step=0.05, value=1.0)
-    ],
-    examples=[
-        [{"text": "Explain Newton's laws clearly and concisely with mathematical formulas"}],
-        [{"text": "Write a Python function to calculate the Fibonacci sequence"}],
-        [{"text": "What are the benefits of open weight AI models? Include analysis."}],
-        [{"text": "Solve this equation: $x^2 + 5x + 6 = 0$"}],
-    ],
-    cache_examples=False,
-    type="messages",
-    description=f"""
-
-# 🙋🏻‍♂️Welcome to 🌟{MODEL_NAME} Demo !
-
-**Model**: `{LORA_MODEL_ID}`  
-**Base**: `{BASE_MODEL_ID}`
-
-✨ **Enhanced Features:**
-- 🧠 **Advanced Reasoning**: Detailed analysis and step-by-step thinking
-- 📊 **LaTeX Support**: Mathematical formulas rendered beautifully (use `$` or `$$`)
-- 🎯 **Improved Formatting**: Clear separation of reasoning and final responses
-- 📝 **Smart Logging**: Better error handling and request tracking
-
-💡 **Usage Tips:**
-- Adjust reasoning level in system prompt (e.g., "Reasoning: high")
-- Use LaTeX for math: `$E = mc^2$` or `$$\\int x^2 dx$$`
-- Wait a couple of seconds initially for model loading
-    """,
-    fill_height=True,
-    textbox=gr.Textbox(
-        label="Query Input",
-        placeholder="Type your prompt (supports LaTeX: $x^2 + y^2 = z^2$)"
-    ),
-    stop_btn="Stop Generation",
-    multimodal=False,
-    theme=gr.themes.Soft()
-)
+        stop_btn="Stop Generation",
+        multimodal=False,
+        theme=gr.themes.Soft(),
+        css=APP_CSS,
+    )
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    demo.launch(mcp_server=True, share=True)
