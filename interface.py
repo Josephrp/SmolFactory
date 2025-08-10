@@ -944,10 +944,25 @@ def ui_defaults(family: str) -> Tuple[str, str, str, str]:
     return exp, repo_short, default_desc, trackio_space_name
 
 
-joinus = """
-## Join us :
+title_md = """
+# 🙋🏻‍♂️ Welcome to 🌟Tonic's 🤏🏻🏭 SmolFactory !
+"""
+
+howto_md = """
+### How to
+To get started, select a model family and a configuration.
+"""
+
+joinus_md = """
+### Join us :
 🌟TeamTonic🌟 is always making cool demos! Join our active builder's 🛠️community 👻 [![Join us on Discord](https://img.shields.io/discord/1109943800132010065?label=Discord&logo=discord&style=flat-square)](https://discord.gg/qdfnvSPcqP) On 🤗Huggingface:[MultiTransformer](https://huggingface.co/MultiTransformer) On 🌐Github: [Tonic-AI](https://github.com/tonic-ai) & contribute to🌟 [Build Tonic](https://git.tonic-ai.com/contribute)🤗Big thanks to Yuvi Sharma and all the folks at huggingface for the community grant 🤗
 """
+
+# Load inline SVG to render before the Join Us section
+try:
+    _OUTPUT_SVG_HTML = (PROJECT_ROOT / "docs" / "output.svg").read_text(encoding="utf-8")
+except Exception:
+    _OUTPUT_SVG_HTML = ""
 
 
 def on_family_change(family: str):
@@ -1250,7 +1265,11 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
             </div>
             """
         )
-        gr.Markdown(joinus)
+        gr.Markdown(title_md)
+        gr.Markdown(howto_md)
+        if _OUTPUT_SVG_HTML:
+            gr.HTML(_OUTPUT_SVG_HTML)
+        gr.Markdown(joinus_md)
     else:
         hint_html = markdown_links_to_html(duplicate_space_hint())
         gr.HTML(
@@ -1271,7 +1290,11 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
             </div>
             """
         )
-        gr.Markdown(joinus)
+        gr.Markdown(title_md)
+        gr.Markdown(howto_md)
+        if _OUTPUT_SVG_HTML:
+            gr.HTML(_OUTPUT_SVG_HTML)
+        gr.Markdown(joinus_md)
 
     # --- Progressive interface --------------------------------------------------------
     gr.Markdown("### Configure your run in simple steps")
