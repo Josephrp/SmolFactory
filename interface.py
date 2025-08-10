@@ -829,10 +829,91 @@ joinus = """
 """
 
 
-def on_family_change(family: str) -> Tuple[list[str], str, str, str, str]:
+def on_family_change(family: str):
+    """Update UI when the model family changes.
+
+    - Refresh available prebuilt configuration choices
+    - Reset defaults (experiment name, repo short, description, space name)
+    - Reveal the next step (trainer type)
+    """
     confs = list(get_config_map(family).keys())
     exp, repo_short, desc, space = ui_defaults(family)
-    return confs, confs[0] if confs else "", exp, repo_short, desc
+
+    # Initial dataset information placeholder until a specific config is chosen
+    training_md = (
+        f"Select a training configuration for {family} to see details (dataset, batch size, etc.)."
+    )
+
+    # Update objects:
+    return (
+        gr.update(choices=confs, value=(confs[0] if confs else None)),
+        exp,
+        repo_short,
+        desc,
+        space,
+        training_md,
+        gr.update(choices=[], value=None),
+        gr.update(visible=True),   # show step 2 (trainer)
+        gr.update(visible=False),  # hide step 3 until trainer selected
+        gr.update(visible=False),  # hide step 4 until monitoring selected
+        gr.update(visible=(family == "GPT-OSS")),  # advanced (scheduler) visibility
+    )
+
+
+def on_config_change(family: str, config_choice: str):
+    """When a prebuilt configuration is selected, update dataset info and helpful details."""
+    if not config_choice:
+        return (
+            "",
+            gr.update(choices=[], value=None),
+        )
+
+    conf_map = get_config_map(family)
+    cfg_path = PROJECT_ROOT / conf_map[config_choice]["config_file"]
+    cfg_obj = import_config_object(cfg_path)
+
+    dataset_name = getattr(cfg_obj, "dataset_name", None) if cfg_obj else None
+    batch_size = getattr(cfg_obj, "batch_size", None) if cfg_obj else None
+    learning_rate = getattr(cfg_obj, "learning_rate", None) if cfg_obj else None
+    max_seq_length = getattr(cfg_obj, "max_seq_length", None) if cfg_obj else None
+    base_model = conf_map[config_choice]["default_model"]
+
+    md_lines = [
+        f"**Configuration**: {config_choice}",
+        f"**Base model**: {base_model}",
+    ]
+    if dataset_name:
+        md_lines.append(f"**Dataset**: `{dataset_name}`")
+    if batch_size is not None:
+        md_lines.append(f"**Batch size**: {batch_size}")
+    if learning_rate is not None:
+        md_lines.append(f"**Learning rate**: {learning_rate}")
+    if max_seq_length is not None:
+        md_lines.append(f"**Max seq length**: {max_seq_length}")
+
+    training_md = "\n".join(md_lines)
+
+    # dataset selection (allow custom but prefill with the config's dataset if any)
+    ds_choices = [dataset_name] if dataset_name else []
+
+    return training_md, gr.update(choices=ds_choices, value=(dataset_name or None))
+
+
+def on_trainer_selected(_: str):
+    """Reveal monitoring step once trainer type is chosen."""
+    return gr.update(visible=True)
+
+
+def on_monitoring_change(mode: str):
+    """Reveal configuration/details step and adjust Trackio-related visibility by mode."""
+    show_trackio = mode in ("both", "trackio")
+    show_dataset_repo = mode != "none"
+    return (
+        gr.update(visible=True),
+        gr.update(visible=show_trackio),  # trackio space name
+        gr.update(visible=show_trackio),  # deploy trackio space
+        gr.update(visible=show_dataset_repo),  # create dataset repo
+    )
 
 
 def start_pipeline(
@@ -932,243 +1013,110 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
         )
         gr.Markdown(joinus)
 
-    with gr.Row():
-        model_family = gr.Dropdown(choices=MODEL_FAMILIES, value="SmolLM3", label="Model family")
-        trainer_type = gr.Radio(choices=TRAINER_CHOICES, value="SFT", label="Trainer type")
-        monitoring_mode = gr.Dropdown(choices=MONITORING_CHOICES, value="both", label="Monitoring mode")
+    # --- Progressive interface --------------------------------------------------------
+    gr.Markdown("### Configure your run in simple steps")
 
-    config_choice = gr.Dropdown(choices=list(get_config_map("SmolLM3").keys()), value="Basic Training", label="Training configuration")
+    # Step 1: Model family
+    with gr.Group():
+        model_family = gr.Dropdown(choices=MODEL_FAMILIES, value="SmolLM3", label="1) Model family")
 
-    exp_default, repo_default, desc_default, trackio_space_default = ui_defaults("SmolLM3")
-    with gr.Row():
-        experiment_name = gr.Textbox(value=exp_default, label="Experiment name")
-        repo_short = gr.Textbox(value=repo_default, label="Model repo (short name)")
+    # Step 2: Trainer (revealed after family)
+    step2_group = gr.Group(visible=False)
+    with step2_group:
+        trainer_type = gr.Radio(choices=TRAINER_CHOICES, value="SFT", label="2) Trainer type")
 
-    with gr.Row():
-        author_name = gr.Textbox(value=os.environ.get("HF_USERNAME", ""), label="Author name")
-        model_description = gr.Textbox(value=desc_default, label="Model description")
+    # Step 3: Monitoring (revealed after trainer)
+    step3_group = gr.Group(visible=False)
+    with step3_group:
+        monitoring_mode = gr.Dropdown(choices=MONITORING_CHOICES, value="dataset", label="3) Monitoring mode")
 
-    with gr.Row():
-        trackio_space_name = gr.Textbox(value=trackio_space_default, label="Trackio Space name (used when monitoring != none)")
-        deploy_trackio_space = gr.Checkbox(value=True, label="Deploy Trackio Space")
-        create_dataset_repo = gr.Checkbox(value=True, label="Create/ensure HF Dataset repo")
+    # Step 4: Config & details (revealed after monitoring)
+    step4_group = gr.Group(visible=False)
+    with step4_group:
+        # Defaults based on initial family selection
+        exp_default, repo_default, desc_default, trackio_space_default = ui_defaults("SmolLM3")
 
-    with gr.Row():
-        push_to_hub = gr.Checkbox(value=True, label="Push model to Hugging Face Hub")
-        switch_to_read_after = gr.Checkbox(value=True, label="Switch Space token to READ after training")
+        config_choice = gr.Dropdown(
+            choices=list(get_config_map("SmolLM3").keys()),
+            value="Basic Training",
+            label="4) Training configuration",
+        )
 
-    with gr.Tabs():
-        with gr.Tab("Run"):
-            with gr.Row():
-                model_family = gr.Dropdown(choices=MODEL_FAMILIES, value="SmolLM3", label="Model family")
-                trainer_type = gr.Radio(choices=TRAINER_CHOICES, value="SFT", label="Trainer type")
-                monitoring_mode = gr.Dropdown(choices=MONITORING_CHOICES, value="both", label="Monitoring mode")
+        with gr.Tabs():
+            with gr.Tab("Overview"):
+                training_info = gr.Markdown("Select a training configuration to see details.")
+                dataset_choice = gr.Dropdown(
+                    choices=[],
+                    value=None,
+                    allow_custom_value=True,
+                    label="Dataset (from config; optional)",
+                )
+                with gr.Row():
+                    experiment_name = gr.Textbox(value=exp_default, label="Experiment name")
+                    repo_short = gr.Textbox(value=repo_default, label="Model repo (short name)")
+                with gr.Row():
+                    author_name = gr.Textbox(value=os.environ.get("HF_USERNAME", ""), label="Author name")
+                    model_description = gr.Textbox(value=desc_default, label="Model description")
+                trackio_space_name = gr.Textbox(
+                    value=trackio_space_default,
+                    label="Trackio Space name (used when monitoring != none)",
+                    visible=False,
+                )
+                deploy_trackio_space = gr.Checkbox(value=True, label="Deploy Trackio Space", visible=False)
+                create_dataset_repo = gr.Checkbox(value=True, label="Create/ensure HF Dataset repo", visible=True)
+                with gr.Row():
+                    push_to_hub = gr.Checkbox(value=True, label="Push model to Hugging Face Hub")
+                    switch_to_read_after = gr.Checkbox(value=True, label="Switch Space token to READ after training")
 
-            config_choice = gr.Dropdown(choices=list(get_config_map("SmolLM3").keys()), value="Basic Training", label="Training configuration")
+            with gr.Tab("Advanced"):
+                # GPT-OSS specific scheduler overrides
+                advanced_scheduler_group = gr.Group(visible=False)
+                with advanced_scheduler_group:
+                    scheduler_override = gr.Dropdown(
+                        choices=[c for c in SCHEDULER_CHOICES if c is not None],
+                        value=None,
+                        allow_custom_value=True,
+                        label="Scheduler override",
+                    )
+                    with gr.Row():
+                        min_lr = gr.Number(value=None, precision=6, label="min_lr (cosine_with_min_lr)")
+                        min_lr_rate = gr.Number(value=None, precision=6, label="min_lr_rate (cosine_with_min_lr)")
 
-            exp_default, repo_default, desc_default, trackio_space_default = ui_defaults("SmolLM3")
-            with gr.Row():
-                experiment_name = gr.Textbox(value=exp_default, label="Experiment name")
-                repo_short = gr.Textbox(value=repo_default, label="Model repo (short name)")
-
-            with gr.Row():
-                author_name = gr.Textbox(value=os.environ.get("HF_USERNAME", ""), label="Author name")
-                model_description = gr.Textbox(value=desc_default, label="Model description")
-
-            with gr.Row():
-                trackio_space_name = gr.Textbox(value=trackio_space_default, label="Trackio Space name (used when monitoring != none)")
-                deploy_trackio_space = gr.Checkbox(value=True, label="Deploy Trackio Space")
-                create_dataset_repo = gr.Checkbox(value=True, label="Create/ensure HF Dataset repo")
-
-            with gr.Row():
-                push_to_hub = gr.Checkbox(value=True, label="Push model to Hugging Face Hub")
-                switch_to_read_after = gr.Checkbox(value=True, label="Switch Space token to READ after training")
-
-            gr.Markdown("### Medical SFT (GPT-OSS o1)")
-            gr.Markdown("Configure GPT-OSS Medical o1 SFT (FreedomIntelligence/medical-o1-reasoning-SFT)")
-            med_dataset_config = gr.Dropdown(choices=["en", "en_mix", "zh", "zh_mix"], value="en", label="Dataset config")
-            med_system = gr.Textbox(value="You are GPT-Tonic, a large language model trained by TonicAI.", label="System message", lines=2)
-            med_developer = gr.Textbox(value="You are are GPT-Tonic, an intelligent assistant that always answers health-related queries scientifically.", label="Developer message", lines=3)
-            with gr.Row():
-                med_epochs = gr.Number(value=2.0, precision=2, label="Epochs")
-                med_bs = gr.Number(value=4, precision=0, label="Batch size")
-                med_gas = gr.Number(value=4, precision=0, label="Grad accumulation")
-                med_lr = gr.Number(value=2e-4, precision=6, label="Learning rate")
-                med_msl = gr.Number(value=2048, precision=0, label="Max seq length")
-            med_generate = gr.Button("Generate Medical Config")
-            med_status = gr.Textbox(label="Generated config path", interactive=False)
-
-            logs = gr.Textbox(value="", label="Logs", lines=20)
-            start_btn = gr.Button("Run Pipeline")
-
-        with gr.Tab("Advanced Config"):
-            with gr.Accordion("GPT-OSS Scheduler Overrides", open=False):
-                scheduler_override = gr.Dropdown(choices=[c for c in SCHEDULER_CHOICES if c is not None], value=None, allow_custom_value=True, label="Scheduler override")
-                min_lr = gr.Number(value=None, precision=6, label="min_lr (when cosine_with_min_lr)")
-                min_lr_rate = gr.Number(value=None, precision=6, label="min_lr_rate (when cosine_with_min_lr)")
-
-            gr.Markdown("### GPT-OSS Custom Dataset")
-            with gr.Row():
-                cds_dataset = gr.Textbox(value="legmlai/openhermes-fr", label="Dataset name")
-                cds_split = gr.Textbox(value="train", label="Split")
-                cds_format = gr.Dropdown(choices=["openhermes_fr", "messages", "text", "medical_o1_sft", "custom", "preference"], value="openhermes_fr", label="Format")
-            with gr.Row():
-                cds_input = gr.Textbox(value="prompt", label="Input field")
-                cds_target = gr.Textbox(value="accepted_completion", label="Target field (optional, blank for None)")
-            with gr.Row():
-                cds_sys = gr.Textbox(value="", label="System message (optional)")
-                cds_dev = gr.Textbox(value="", label="Developer message (optional)")
-            with gr.Row():
-                cds_identity = gr.Textbox(value="You are GPT-Tonic, a large language model trained by TonicAI.", label="Model identity (chat_template_kwargs.model_identity)")
-            with gr.Row():
-                cds_max_samples = gr.Number(value=None, precision=0, label="Max samples (optional)")
-                cds_min_len = gr.Number(value=10, precision=0, label="Min length")
-                cds_max_len = gr.Number(value=None, precision=0, label="Max length (optional)")
-            gr.Markdown("#### Training Hyperparameters")
-            with gr.Row():
-                cds_epochs = gr.Number(value=1.0, precision=2, label="Epochs")
-                cds_bs = gr.Number(value=4, precision=0, label="Batch size")
-                cds_gas = gr.Number(value=4, precision=0, label="Grad accumulation")
-                cds_lr = gr.Number(value=2e-4, precision=6, label="Learning rate")
-                cds_minlr = gr.Number(value=2e-5, precision=6, label="Min LR")
-            with gr.Row():
-                cds_wd = gr.Number(value=0.01, precision=6, label="Weight decay")
-                cds_warm = gr.Number(value=0.03, precision=6, label="Warmup ratio")
-                cds_msl = gr.Number(value=2048, precision=0, label="Max seq length")
-            gr.Markdown("#### LoRA / Precision / Quantization / Perf")
-            with gr.Row():
-                cds_lora_r = gr.Number(value=16, precision=0, label="LoRA r")
-                cds_lora_alpha = gr.Number(value=32, precision=0, label="LoRA alpha")
-                cds_lora_dropout = gr.Number(value=0.05, precision=4, label="LoRA dropout")
-            with gr.Row():
-                cds_precision = gr.Dropdown(choices=["bf16", "fp16", "fp32"], value="bf16", label="Mixed precision")
-                cds_workers = gr.Number(value=4, precision=0, label="Data workers")
-                cds_quant = gr.Dropdown(choices=["mxfp4", "bnb4", "none"], value="mxfp4", label="Quantization")
-            with gr.Row():
-                cds_mgn = gr.Number(value=1.0, precision=4, label="Max grad norm")
-                cds_log_steps = gr.Number(value=10, precision=0, label="Logging steps")
-                cds_eval_steps = gr.Number(value=100, precision=0, label="Eval steps")
-                cds_save_steps = gr.Number(value=500, precision=0, label="Save steps")
-            cds_generate = gr.Button("Generate GPT-OSS Custom Config")
-            cds_status = gr.Textbox(label="Generated config path", interactive=False)
-
-            gr.Markdown("### SmolLM3 Custom Configuration")
-            with gr.Row():
-                sm_model = gr.Textbox(value="HuggingFaceTB/SmolLM3-3B", label="Model name")
-                sm_dataset = gr.Textbox(value="legmlai/openhermes-fr", label="Dataset (optional; leave blank for local)")
-            with gr.Row():
-                sm_msl = gr.Number(value=4096, precision=0, label="Max seq length")
-                sm_bs = gr.Number(value=2, precision=0, label="Batch size")
-                sm_gas = gr.Number(value=8, precision=0, label="Grad accumulation")
-                sm_lr = gr.Number(value=5e-6, precision=8, label="Learning rate")
-            with gr.Row():
-                sm_save = gr.Number(value=500, precision=0, label="Save steps")
-                sm_eval = gr.Number(value=100, precision=0, label="Eval steps")
-                sm_log = gr.Number(value=10, precision=0, label="Logging steps")
-            with gr.Row():
-                sm_filter = gr.Checkbox(value=False, label="Filter bad entries")
-                sm_in = gr.Textbox(value="prompt", label="Input field")
-                sm_out = gr.Textbox(value="accepted_completion", label="Target field")
-            with gr.Row():
-                sm_sample = gr.Number(value=None, precision=0, label="Sample size (optional)")
-                sm_seed = gr.Number(value=42, precision=0, label="Sample seed")
-                sm_trainer = gr.Dropdown(choices=["SFT", "DPO"], value="SFT", label="Trainer type")
-            sm_generate = gr.Button("Generate SmolLM3 Custom Config")
-            sm_status = gr.Textbox(label="Generated config path", interactive=False)
-
+    # Final action & logs
+    start_btn = gr.Button("Run Pipeline", variant="primary")
     logs = gr.Textbox(value="", label="Logs", lines=20)
 
-    start_btn = gr.Button("Run Pipeline")
-
-    # Events
-    model_family.change(on_family_change, inputs=model_family, outputs=[config_choice, config_choice, experiment_name, repo_short, model_description])
-
-    # Generate config handlers
-    med_generate.click(
-        lambda dc, sysm, devm, ep, bs, gas, lr, msl: str(
-            generate_medical_o1_config_file(
-                dataset_config=dc,
-                system_message=sysm,
-                developer_message=devm,
-                num_train_epochs=float(ep or 2.0),
-                batch_size=int(bs or 4),
-                gradient_accumulation_steps=int(gas or 4),
-                learning_rate=float(lr or 2e-4),
-                max_seq_length=int(msl or 2048),
-            )
-        ),
-        inputs=[med_dataset_config, med_system, med_developer, med_epochs, med_bs, med_gas, med_lr, med_msl],
-        outputs=[med_status],
+    # --- Events ---------------------------------------------------------------------
+    model_family.change(
+        on_family_change,
+        inputs=model_family,
+        outputs=[
+            config_choice,
+            experiment_name,
+            repo_short,
+            model_description,
+            trackio_space_name,
+            training_info,
+            dataset_choice,
+            step2_group,
+            step3_group,
+            step4_group,
+            advanced_scheduler_group,
+        ],
     )
 
-    cds_generate.click(
-        lambda dname, dsplit, dformat, ifld, tfld, sm, dm, ident, ms, minl, maxl, ep, bs, gas, lr, minlr, wd, warm, msl, lr_, la, ld, prec, nw, q, mgn, logst, evst, savst: str(
-            generate_gpt_oss_custom_config_file(
-                dataset_name=dname,
-                dataset_split=dsplit,
-                dataset_format=dformat,
-                input_field=ifld,
-                target_field=(tfld or None),
-                system_message=sm,
-                developer_message=dm,
-                model_identity=ident,
-                max_samples=(int(ms) if ms is not None else None),
-                min_length=int(minl or 10),
-                max_length=(int(maxl) if maxl is not None else None),
-                num_train_epochs=float(ep or 1.0),
-                batch_size=int(bs or 4),
-                gradient_accumulation_steps=int(gas or 4),
-                learning_rate=float(lr or 2e-4),
-                min_lr=float(minlr or 2e-5),
-                weight_decay=float(wd or 0.01),
-                warmup_ratio=float(warm or 0.03),
-                max_seq_length=int(msl or 2048),
-                lora_r=int(lr_),
-                lora_alpha=int(la),
-                lora_dropout=float(ld),
-                mixed_precision=prec,
-                num_workers=int(nw or 4),
-                quantization_type=q,
-                max_grad_norm=float(mgn or 1.0),
-                logging_steps=int(logst or 10),
-                eval_steps=int(evst or 100),
-                save_steps=int(savst or 500),
-            )
-        ),
-        inputs=[
-            cds_dataset, cds_split, cds_format, cds_input, cds_target, cds_sys, cds_dev, cds_identity,
-            cds_max_samples, cds_min_len, cds_max_len, cds_epochs, cds_bs, cds_gas, cds_lr, cds_minlr, cds_wd,
-            cds_warm, cds_msl, cds_lora_r, cds_lora_alpha, cds_lora_dropout, cds_precision, cds_workers, cds_quant,
-            cds_mgn, cds_log_steps, cds_eval_steps, cds_save_steps
-        ],
-        outputs=[cds_status],
+    trainer_type.change(on_trainer_selected, inputs=trainer_type, outputs=step3_group)
+
+    monitoring_mode.change(
+        on_monitoring_change,
+        inputs=monitoring_mode,
+        outputs=[step4_group, trackio_space_name, deploy_trackio_space, create_dataset_repo],
     )
 
-    sm_generate.click(
-        lambda mn, dn, msl, bs, gas, lr, sst, est, lst, fbe, ifld, tfld, ss, seed, tt: str(
-            generate_smollm3_custom_config_file(
-                model_name=mn,
-                dataset_name=(dn or None),
-                max_seq_length=int(msl or 4096),
-                batch_size=int(bs or 2),
-                gradient_accumulation_steps=int(gas or 8),
-                learning_rate=float(lr or 5e-6),
-                save_steps=int(sst or 500),
-                eval_steps=int(est or 100),
-                logging_steps=int(lst or 10),
-                filter_bad_entries=bool(fbe),
-                input_field=ifld,
-                target_field=tfld,
-                sample_size=(int(ss) if ss is not None else None),
-                sample_seed=int(seed or 42),
-                trainer_type=tt,
-            )
-        ),
-        inputs=[
-            sm_model, sm_dataset, sm_msl, sm_bs, sm_gas, sm_lr, sm_save, sm_eval, sm_log,
-            sm_filter, sm_in, sm_out, sm_sample, sm_seed, sm_trainer,
-        ],
-        outputs=[sm_status],
+    config_choice.change(
+        on_config_change,
+        inputs=[model_family, config_choice],
+        outputs=[training_info, dataset_choice],
     )
 
     start_btn.click(
@@ -1199,6 +1147,6 @@ if __name__ == "__main__":
     # Optional: allow setting server parameters via env
     server_port = int(os.environ.get("INTERFACE_PORT", "7860"))
     server_name = os.environ.get("INTERFACE_HOST", "0.0.0.0")
-    demo.queue().launch(server_name=server_name, server_port=server_port)
+    demo.queue().launch(server_name=server_name, server_port=server_port, mcp_server=True)
 
 
