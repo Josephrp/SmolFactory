@@ -1,3 +1,15 @@
+---
+title: SmolFactory
+emoji: 🏭
+colorFrom: blue
+colorTo: pink
+sdk: gradio
+sdk_version: 5.40.0
+app_file: interface.py
+pinned: false
+short_description: SmolFactory is an e2e fine-tuning, monitoring, and deployment
+---
+
 <p align="center">
         🤗 <a href="https://hf.co/Tonic">Hugging Face</a>&nbsp&nbsp | &nbsp&nbsp🤖 <a href="https://huggingface.co/spaces/Tonic/Petite-LLM-3">demo</a>&nbsp&nbsp | &nbsp&nbsp 📑 <a href="https://huggingface.co/blog/Tonic/SmolFactory">Blog</a> &nbsp&nbsp ｜ &nbsp&nbsp🖥️ <a href="https://huggingface.co/Tonic/petite-elle-L-aime-3-sft">Model</a>
 <br>
