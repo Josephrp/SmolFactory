@@ -7,7 +7,7 @@ sdk: gradio
 sdk_version: 5.40.0
 app_file: interface.py
 pinned: false
-short_description: SmolFactory is an e2e fine-tuning, monitoring, and deployment
+short_description: SmolFactory is a e2e model maker
 ---
 
 <p align="center">
