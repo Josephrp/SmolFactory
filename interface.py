@@ -887,8 +887,8 @@ def on_family_change(family: str):
         training_md,
         gr.update(choices=[], value=None),
         gr.update(visible=True),   # show step 2 (trainer)
-        gr.update(visible=False),  # hide step 3 until trainer selected
-        gr.update(visible=False),  # hide step 4 until monitoring selected
+        gr.update(visible=True),   # show step 3 immediately (default monitoring 'dataset')
+        gr.update(visible=True),   # show step 4 immediately so users see configs
         gr.update(visible=False),  # GPT-OSS advanced group hidden until enabled
         gr.update(visible=False),  # SmolLM3 advanced group hidden until enabled
     )
