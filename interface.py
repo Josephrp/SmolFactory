@@ -949,8 +949,8 @@ title_md = """
 """
 
 howto_md = """
-### How to
-To get started, select a model family and a configuration.
+### How to use
+To get started: duplicate the space, select a model family and a configuration, click run.
 """
 
 joinus_md = """
