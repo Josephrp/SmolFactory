@@ -154,21 +154,25 @@ def main():
     
     logger.info(f"Output path: {output_path}")
     
-    # Initialize monitoring
+    # Initialize monitoring (supports local-only mode)
     monitor = None
-    if config.enable_tracking:
-        try:
+    try:
+        monitoring_mode = getattr(config, 'monitoring_mode', os.environ.get('MONITORING_MODE', 'both')).lower()
+        should_create_monitor = (
+            monitoring_mode in ('both', 'dataset', 'trackio', 'none')
+            and (getattr(config, 'enable_tracking', True) or monitoring_mode in ('dataset', 'none'))
+        )
+        if should_create_monitor:
             monitor = create_monitor_from_config(config, args.experiment_name)
             logger.info(f"✅ Monitoring initialized for experiment: {monitor.experiment_name}")
+            logger.info(f"📊 Monitoring mode: {monitor.monitoring_mode}")
             logger.info(f"📊 Dataset repository: {monitor.dataset_repo}")
-            
             # Log configuration
             config_dict = {k: v for k, v in vars(config).items() if not k.startswith('_')}
             monitor.log_configuration(config_dict)
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize monitoring: {e}")
-            logger.warning("Continuing without monitoring...")
+    except Exception as e:
+        logger.error(f"Failed to initialize monitoring: {e}")
+        logger.warning("Continuing without monitoring...")
     
     # Initialize model
     model = SmolLM3Model(

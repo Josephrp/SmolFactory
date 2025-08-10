@@ -49,6 +49,11 @@ def init(
         trackio_token = kwargs.get('trackio_token') or os.environ.get('TRACKIO_TOKEN')
         hf_token = kwargs.get('hf_token') or os.environ.get('HF_TOKEN')
         dataset_repo = kwargs.get('dataset_repo') or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        monitoring_mode = (
+            kwargs.get('monitoring_mode')
+            or os.environ.get('MONITORING_MODE')
+            or 'both'
+        )
         
         # Use experiment_name if provided, otherwise use project_name
         exp_name = experiment_name or project_name
@@ -63,7 +68,8 @@ def init(
             log_metrics=True,
             log_config=True,
             hf_token=hf_token,
-            dataset_repo=dataset_repo
+            dataset_repo=dataset_repo,
+            monitoring_mode=monitoring_mode,
         )
         # The monitor constructor creates the experiment remotely and sets
         # `experiment_id`. Do NOT overwrite it with a locally generated ID.
@@ -229,6 +235,7 @@ class TrackioConfig:
         self.trackio_token = os.environ.get('TRACKIO_TOKEN')
         self.hf_token = os.environ.get('HF_TOKEN')
         self.dataset_repo = os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
+        self.monitoring_mode = os.environ.get('MONITORING_MODE', 'both')
     
     def update(self, config_dict: Dict[str, Any] = None, **kwargs):
         """

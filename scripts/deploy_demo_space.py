@@ -39,7 +39,7 @@ class DemoSpaceDeployer:
     
     def __init__(self, hf_token: str, hf_username: str, model_id: str, 
                  subfolder: str = "int4", space_name: Optional[str] = None, 
-                 demo_type: Optional[str] = None):
+                 demo_type: Optional[str] = None, config_file: Optional[str] = None):
         self.hf_token = hf_token
         self.hf_username = hf_username
         # Allow passing just a repo name without username and auto-prefix
@@ -48,6 +48,13 @@ class DemoSpaceDeployer:
         self.space_name = space_name or f"{self.model_id.split('/')[-1]}-demo"
         self.space_id = f"{hf_username}/{self.space_name}"
         self.space_url = f"https://huggingface.co/spaces/{self.space_id}"
+        self.config_file = config_file
+
+        # Config-derived context
+        self.system_message: Optional[str] = None
+        self.developer_message: Optional[str] = None
+        self.model_identity: Optional[str] = None
+        self.reasoning_effort: Optional[str] = None
         
         # Determine demo type from model_id if not provided
         if demo_type is None:
@@ -64,6 +71,45 @@ class DemoSpaceDeployer:
         else:
             self.api = None
             logger.warning("huggingface_hub not available, using CLI fallback")
+
+        # Load optional config-specified messages
+        try:
+            self._load_config_messages()
+        except Exception as e:
+            logger.warning(f"Could not load config messages: {e}")
+
+    def _load_config_messages(self) -> None:
+        """Load system/developer/model_identity from a training config file if provided."""
+        if not self.config_file:
+            return
+        cfg_path = Path(self.config_file)
+        if not cfg_path.exists():
+            logger.warning(f"Config file not found: {cfg_path}")
+            return
+
+        # Ensure project root and config dir are importable for relative imports inside config
+        project_root = Path(__file__).parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        cfg_dir = project_root / "config"
+        if str(cfg_dir) not in sys.path:
+            sys.path.insert(0, str(cfg_dir))
+
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("config_module", str(cfg_path))
+        if not spec or not spec.loader:
+            return
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # type: ignore
+        cfg = getattr(module, "config", None)
+        if cfg is None:
+            return
+        self.system_message = getattr(cfg, "system_message", None)
+        self.developer_message = getattr(cfg, "developer_message", None)
+        chat_kwargs = getattr(cfg, "chat_template_kwargs", None)
+        if isinstance(chat_kwargs, dict):
+            self.model_identity = chat_kwargs.get("model_identity")
+            self.reasoning_effort = chat_kwargs.get("reasoning_effort")
     
     def _detect_demo_type(self, model_id: str) -> str:
         """Detect the appropriate demo type based on model ID"""
@@ -89,25 +135,34 @@ class DemoSpaceDeployer:
         if self.demo_type == "gpt":
             # For GPT-OSS models, we need more sophisticated environment setup
             model_name = self.model_id.split("/")[-1] if "/" in self.model_id else self.model_id
-            
+            import json as _json
             env_setup = f"""
 # Environment variables for GPT-OSS model configuration
 import os
-os.environ['HF_MODEL_ID'] = '{self.model_id}'
-os.environ['LORA_MODEL_ID'] = '{self.model_id}'
+os.environ['HF_MODEL_ID'] = {_json.dumps(self.model_id)}
+os.environ['LORA_MODEL_ID'] = {_json.dumps(self.model_id)}
 os.environ['BASE_MODEL_ID'] = 'openai/gpt-oss-20b'
-os.environ['MODEL_SUBFOLDER'] = '{self.subfolder if self.subfolder else ""}'
-os.environ['MODEL_NAME'] = '{model_name}'
+os.environ['MODEL_SUBFOLDER'] = {_json.dumps(self.subfolder if self.subfolder else "")}
+os.environ['MODEL_NAME'] = {_json.dumps(model_name)}
+os.environ['MODEL_IDENTITY'] = {_json.dumps(self.model_identity or "")}
+os.environ['SYSTEM_MESSAGE'] = {_json.dumps(self.system_message or (self.model_identity or ""))}
+os.environ['DEVELOPER_MESSAGE'] = {_json.dumps(self.developer_message or "")}
+os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"))}
 
 """
         else:
             # For SmolLM models, use simpler setup
+            import json as _json
             env_setup = f"""
 # Environment variables for model configuration
 import os
-os.environ['HF_MODEL_ID'] = '{self.model_id}'
-os.environ['MODEL_SUBFOLDER'] = '{self.subfolder if self.subfolder else ""}'
-os.environ['MODEL_NAME'] = '{self.model_id.split("/")[-1]}'
+os.environ['HF_MODEL_ID'] = {_json.dumps(self.model_id)}
+os.environ['MODEL_SUBFOLDER'] = {_json.dumps(self.subfolder if self.subfolder else "")}
+os.environ['MODEL_NAME'] = {_json.dumps(self.model_id.split("/")[-1])}
+os.environ['MODEL_IDENTITY'] = {_json.dumps(self.model_identity or "")}
+os.environ['SYSTEM_MESSAGE'] = {_json.dumps(self.system_message or (self.model_identity or ""))}
+os.environ['DEVELOPER_MESSAGE'] = {_json.dumps(self.developer_message or "")}
+os.environ['REASONING_EFFORT'] = {_json.dumps((self.reasoning_effort or "medium"))}
 
 """
         return env_setup
@@ -162,6 +217,40 @@ os.environ['MODEL_NAME'] = '{self.model_id.split("/")[-1]}'
                     description="Display name for the model"
                 )
                 logger.info(f"✅ Successfully set MODEL_NAME variable: {model_name}")
+
+            # Optional context variables
+            if self.model_identity:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="MODEL_IDENTITY",
+                    value=self.model_identity,
+                    description="Default model identity/system persona"
+                )
+                logger.info("✅ Set MODEL_IDENTITY variable")
+            if self.system_message or self.model_identity:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="SYSTEM_MESSAGE",
+                    value=self.system_message or self.model_identity or "",
+                    description="Default system message"
+                )
+                logger.info("✅ Set SYSTEM_MESSAGE variable")
+            if self.developer_message:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="DEVELOPER_MESSAGE",
+                    value=self.developer_message,
+                    description="Default developer message"
+                )
+                logger.info("✅ Set DEVELOPER_MESSAGE variable")
+            if self.reasoning_effort:
+                self.api.add_space_variable(
+                    repo_id=self.space_id,
+                    key="REASONING_EFFORT",
+                    value=self.reasoning_effort,
+                    description="Default reasoning effort (low|medium|high)"
+                )
+                logger.info("✅ Set REASONING_EFFORT variable")
             
         except Exception as e:
             logger.error(f"❌ Failed to set model variables: {e}")
@@ -314,28 +403,51 @@ os.environ['MODEL_NAME'] = '{self.model_id.split("/")[-1]}'
                 
                 logger.info("✅ Updated app.py with model configuration")
             
-            # Create README.md for the space
-            readme_content = f"""# Demo: {self.model_id}
+            # YAML front matter required by Hugging Face Spaces
+            yaml_front_matter = (
+                f"---\n"
+                f"title: {'GPT-OSS Demo' if self.demo_type == 'gpt' else 'SmolLM3 Demo'}\n"
+                f"emoji: {'🌟' if self.demo_type == 'gpt' else '💃🏻'}\n"
+                f"colorFrom: {'blue' if self.demo_type == 'gpt' else 'green'}\n"
+                f"colorTo: {'pink' if self.demo_type == 'gpt' else 'purple'}\n"
+                f"sdk: gradio\n"
+                f"sdk_version: 5.40.0\n"
+                f"app_file: app.py\n"
+                f"pinned: false\n"
+                f"short_description: Interactive demo for {self.model_id}\n"
+                + ("license: mit\n" if self.demo_type != 'gpt' else "") +
+                f"---\n\n"
+            )
 
-This is an interactive demo for the fine-tuned model {self.model_id}.
-
-## Features
-- Interactive chat interface
-- Customizable system prompts
-- Advanced generation parameters
-- Thinking mode support
-
-## Model Information
-- **Model ID**: {self.model_id}
-- **Subfolder**: {self.subfolder if self.subfolder and self.subfolder.strip() else "main"}
-- **Deployed by**: {self.hf_username}
-
-## Usage
-Simply start chatting with the model using the interface below!
-
----
-*This demo was automatically deployed by the SmolLM3 Fine-tuning Pipeline*
-"""
+            # Create README.md for the space (include configuration details)
+            readme_content = (
+                yaml_front_matter
+                + f"# Demo: {self.model_id}\n\n"
+                + f"This is an interactive demo for the fine-tuned model {self.model_id}.\n\n"
+                + "## Features\n"
+                  "- Interactive chat interface\n"
+                  "- Customizable system & developer prompts\n"
+                  "- Advanced generation parameters\n"
+                  "- Thinking mode support\n\n"
+                + "## Model Information\n"
+                  f"- **Model ID**: {self.model_id}\n"
+                  f"- **Subfolder**: {self.subfolder if self.subfolder and self.subfolder.strip() else 'main'}\n"
+                  f"- **Deployed by**: {self.hf_username}\n"
+                  + ("- **Base Model**: openai/gpt-oss-20b\n" if self.demo_type == 'gpt' else "")
+                  + "\n"
+                + "## Configuration\n"
+                  "- **Model Identity**:\n\n"
+                  f"```\n{self.model_identity or 'Not set'}\n```\n\n"
+                  "- **System Message** (default):\n\n"
+                  f"```\n{(self.system_message or self.model_identity) or 'Not set'}\n```\n\n"
+                  "- **Developer Message** (default):\n\n"
+                  f"```\n{self.developer_message or 'Not set'}\n```\n\n"
+                  "These defaults come from the selected training configuration and can be adjusted in the UI when you run the demo.\n\n"
+                + "## Usage\n"
+                  "Simply start chatting with the model using the interface below!\n\n"
+                + "---\n"
+                  "*This demo was automatically deployed by the SmolFactory Fine-tuning Pipeline*\n"
+            )
             
             with open(Path(temp_dir) / "README.md", 'w', encoding='utf-8') as f:
                 f.write(readme_content)
@@ -465,6 +577,12 @@ Simply start chatting with the model using the interface below!
             logger.info(f"   LORA_MODEL_ID={self.model_id}")
             logger.info(f"   BASE_MODEL_ID=openai/gpt-oss-20b")
             logger.info(f"   MODEL_NAME={model_name}")
+        if self.model_identity:
+            logger.info(f"   MODEL_IDENTITY={self.model_identity}")
+        if self.system_message:
+            logger.info(f"   SYSTEM_MESSAGE={self.system_message}")
+        if self.developer_message:
+            logger.info(f"   DEVELOPER_MESSAGE={self.developer_message}")
         
         logger.info(f"\n🔧 To set secrets in your Space:")
         logger.info(f"1. Go to your Space settings: {self.space_url}/settings")
@@ -574,6 +692,7 @@ def main():
     parser.add_argument("--subfolder", default="int4", help="Model subfolder (default: int4)")
     parser.add_argument("--space-name", help="Custom space name (optional)")
     parser.add_argument("--demo-type", choices=["smol", "gpt"], help="Demo type: 'smol' for SmolLM, 'gpt' for GPT-OSS (auto-detected if not specified)")
+    parser.add_argument("--config-file", help="Path to the training config file to import context (system/developer/model_identity)")
     
     args = parser.parse_args()
     
@@ -583,7 +702,8 @@ def main():
         model_id=args.model_id,
         subfolder=args.subfolder,
         space_name=args.space_name,
-        demo_type=args.demo_type
+        demo_type=args.demo_type,
+        config_file=args.config_file,
     )
     
     success = deployer.deploy()

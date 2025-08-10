@@ -478,6 +478,7 @@ get_custom_dataset_config() {
     print_info "💬 Harmony Context (optional)"
     get_input "System message" "You are GPT-Tonic, a large language model trained by TonicAI." SYSTEM_MESSAGE
     get_input "Developer message" "You are an intelligent assistant that can answer customer service queries" DEVELOPER_MESSAGE
+    get_input "Model identity/persona (used in chat_template_kwargs.model_identity)" "You are GPT-Tonic, a large language model trained by TonicAI." MODEL_IDENTITY
     
     # Dataset Filtering Options
     echo ""
@@ -601,6 +602,27 @@ update_enhanced_gpt_oss_config() {
             ;;
     esac
     
+    # Safely serialize free-text fields to valid Python literals
+    SYSTEM_MESSAGE_LITERAL=$(SYSTEM_MESSAGE="$SYSTEM_MESSAGE" python - <<'PY'
+import json, os
+v = os.environ.get('SYSTEM_MESSAGE', '')
+print('None' if not v else json.dumps(v))
+PY
+)
+    DEVELOPER_MESSAGE_LITERAL=$(DEVELOPER_MESSAGE="$DEVELOPER_MESSAGE" python - <<'PY'
+import json, os
+v = os.environ.get('DEVELOPER_MESSAGE', '')
+print('None' if not v else json.dumps(v))
+PY
+)
+    MODEL_IDENTITY_DEFAULT="You are GPT-Tonic, a large language model trained by TonicAI."
+    MODEL_IDENTITY_LITERAL=$(MODEL_IDENTITY="${MODEL_IDENTITY:-$MODEL_IDENTITY_DEFAULT}" python - <<'PY'
+import json, os
+v = os.environ.get('MODEL_IDENTITY', '')
+print(json.dumps(v))
+PY
+)
+
     # Create enhanced config file with all user choices
     cat > "$CONFIG_FILE" << EOF
 """
@@ -626,10 +648,21 @@ config = GPTOSSEnhancedCustomConfig(
     min_length=$MIN_LENGTH,
     max_length=$(if [ -n "$MAX_LENGTH" ]; then echo "$MAX_LENGTH"; else echo "None"; fi),
     
-    # Harmony context
-    system_message=$(if [ -n "$SYSTEM_MESSAGE" ]; then printf '%s' "\"$SYSTEM_MESSAGE\""; else echo "None"; fi),
-    developer_message=$(if [ -n "$DEVELOPER_MESSAGE" ]; then printf '%s' "\"$DEVELOPER_MESSAGE\""; else echo "None"; fi),
+    # ============================================================================
+    # HARMONY CONFIGURATION
+    # ============================================================================
+    system_message=$SYSTEM_MESSAGE_LITERAL,
+    developer_message=$DEVELOPER_MESSAGE_LITERAL,
     use_harmony_format=True,
+
+    chat_template_kwargs={
+        "add_generation_prompt": True,
+        "tokenize": False,
+        "auto_insert_role": True,
+        "reasoning_effort": "medium",
+        "model_identity": $MODEL_IDENTITY_LITERAL,
+        "builtin_tools": [],
+    },
 
     # Medical o1 SFT mapping (ignored unless dataset_format == 'medical_o1_sft')
     question_field=$(if [ -n "$MED_Q_FIELD" ]; then echo "\"$MED_Q_FIELD\""; else echo "\"Question\""; fi),
@@ -792,7 +825,8 @@ config = SmolLM3Config(
     experiment_name="$EXPERIMENT_NAME",
     
     # HF Datasets configuration
-    dataset_repo="$TRACKIO_DATASET_REPO"
+    dataset_repo="$TRACKIO_DATASET_REPO",
+    monitoring_mode="$MONITORING_MODE",
 )
 EOF
 }
@@ -880,6 +914,35 @@ else
 fi
 
 get_training_config "$TRAINING_CONFIG_TYPE"
+
+# Step 2.4: Monitoring mode selection
+print_step "Step 2.4: Monitoring Mode"
+echo "=============================="
+echo "Choose how to log your experiment:"
+select_option "Select monitoring mode:" \
+    "Both (Trackio + Dataset)" \
+    "Trackio only" \
+    "Dataset only" \
+    "None (local only)" \
+    MONITORING_MODE_OPTION
+
+case "$MONITORING_MODE_OPTION" in
+    "Both (Trackio + Dataset)") MONITORING_MODE="both" ;;
+    "Trackio only") MONITORING_MODE="trackio" ;;
+    "Dataset only") MONITORING_MODE="dataset" ;;
+    "None (local only)") MONITORING_MODE="none" ;;
+    *) MONITORING_MODE="both" ;;
+esac
+
+# Decide which token to use for the Trackio Space secret
+# - dataset: read-only token (Space only needs to read datasets)
+# - trackio/both: write token until end of training (Space writes to datasets)
+# - none: Space is skipped
+if [ "$MONITORING_MODE" = "dataset" ]; then
+    SPACE_DEPLOY_TOKEN="$HF_READ_TOKEN"
+else
+    SPACE_DEPLOY_TOKEN="$HF_WRITE_TOKEN"
+fi
 
 # 2.3 Set a family-specific default model description for the model card
 if [ "$MODEL_FAMILY" = "GPT-OSS" ]; then
@@ -999,12 +1062,16 @@ get_input "Save steps" "500" SAVE_STEPS
 get_input "Evaluation steps" "100" EVAL_STEPS
 get_input "Logging steps" "10" LOGGING_STEPS
 
-# Step 5: Trackio Space configuration
-print_step "Step 5: Trackio Space Configuration"
-echo "======================================"
-
-get_input "Trackio Space name" "trackio-monitoring-$(date +%Y%m%d)" TRACKIO_SPACE_NAME
-TRACKIO_URL="https://huggingface.co/spaces/$HF_USERNAME/$TRACKIO_SPACE_NAME"
+# Step 5: Trackio Space configuration (skip when local-only)
+if [ "$MONITORING_MODE" != "none" ]; then
+    print_step "Step 5: Trackio Space Configuration"
+    echo "======================================"
+    get_input "Trackio Space name" "trackio-monitoring-$(date +%Y%m%d)" TRACKIO_SPACE_NAME
+    TRACKIO_URL="https://huggingface.co/spaces/$HF_USERNAME/$TRACKIO_SPACE_NAME"
+else
+    TRACKIO_SPACE_NAME=""
+    TRACKIO_URL=""
+fi
 
 # Step 6: Confirm configuration
 print_step "Step 6: Configuration Summary"
@@ -1029,6 +1096,7 @@ echo "  Model Repo: $REPO_NAME (auto-generated)"
 echo "  Author: $AUTHOR_NAME"
 echo "  Trackio Space: $TRACKIO_URL"
 echo "  HF Dataset: $TRACKIO_DATASET_REPO"
+echo "  Monitoring Mode: $MONITORING_MODE"
 echo ""
 
 read -p "Proceed with this configuration? (y/N): " confirm
@@ -1153,57 +1221,62 @@ get_input "Author name for model card" "$HF_USERNAME" AUTHOR_NAME
 print_info "Model description will be used in the model card and repository."
 get_input "Model description" "$DEFAULT_MODEL_DESCRIPTION" MODEL_DESCRIPTION
 
-# Step 9: Deploy Trackio Space (automated)
-print_step "Step 9: Deploying Trackio Space"
-echo "==================================="
+# Step 9: Deploy Trackio Space (automated, skipped for local-only)
+if [ "$MONITORING_MODE" != "none" ]; then
+    print_step "Step 9: Deploying Trackio Space"
+    echo "==================================="
+    cd scripts/trackio_tonic
+    print_info "Deploying Trackio Space ..."
+    print_info "Space name: $TRACKIO_SPACE_NAME"
+    print_info "Username will be auto-detected from token"
+    if [ "$MONITORING_MODE" = "dataset" ]; then
+        print_info "Deploying with READ token (Space will NOT write to datasets)"
+    else
+        print_info "Deploying with WRITE token (Space will write to datasets during training)"
+    fi
+    # Ensure environment variables are available for the script
+    export HF_TOKEN="$SPACE_DEPLOY_TOKEN"
+    export HUGGING_FACE_HUB_TOKEN="$SPACE_DEPLOY_TOKEN"
+    export HF_USERNAME="$HF_USERNAME"
+    # Run deployment script with automated features (pass deploy token)
+    python deploy_trackio_space.py "$TRACKIO_SPACE_NAME" "$SPACE_DEPLOY_TOKEN" "$GIT_EMAIL" "$HF_USERNAME" "$TRACKIO_DATASET_REPO"
+    print_status "Trackio Space deployed: $TRACKIO_URL"
+else
+    print_info "Skipping Trackio Space deployment (monitoring_mode=$MONITORING_MODE)"
+fi
 
-cd scripts/trackio_tonic
+if [ "$MONITORING_MODE" != "none" ]; then
+    # Step 10: Setup HF Dataset (automated) — required unless local-only
+    print_step "Step 10: Setting up HF Dataset"
+    echo "=================================="
+    cd ../dataset_tonic
+    print_info "Setting up HF Dataset with automated features..."
+    print_info "Username will be auto-detected from token"
+    print_info "Dataset repository: $TRACKIO_DATASET_REPO"
+    # Ensure environment variables are available for the script
+    export HF_TOKEN="$HF_WRITE_TOKEN"
+    export HUGGING_FACE_HUB_TOKEN="$HF_WRITE_TOKEN"
+    export HF_USERNAME="$HF_USERNAME"
+    python setup_hf_dataset.py "$HF_TOKEN"
+else
+    print_info "Skipping HF Dataset setup (monitoring_mode=$MONITORING_MODE)"
+fi
 
-print_info "Deploying Trackio Space ..."
-print_info "Space name: $TRACKIO_SPACE_NAME"
-print_info "Username will be auto-detected from token"
-print_info "Secrets will be set automatically via API"
-
-# Ensure environment variables are available for the script
-export HF_TOKEN="$HF_TOKEN"
-export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-export HF_USERNAME="$HF_USERNAME"
-
-# Run deployment script with automated features
-python deploy_trackio_space.py "$TRACKIO_SPACE_NAME" "$HF_TOKEN" "$GIT_EMAIL" "$HF_USERNAME" "$TRACKIO_DATASET_REPO"
-
-print_status "Trackio Space deployed: $TRACKIO_URL"
-
-# Step 10: Setup HF Dataset (automated)
-print_step "Step 10: Setting up HF Dataset"
-echo "=================================="
-
-cd ../dataset_tonic
-print_info "Setting up HF Dataset with automated features..."
-print_info "Username will be auto-detected from token"
-print_info "Dataset repository: $TRACKIO_DATASET_REPO"
-
-# Ensure environment variables are available for the script
-export HF_TOKEN="$HF_TOKEN"
-export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-export HF_USERNAME="$HF_USERNAME"
-
-python setup_hf_dataset.py "$HF_TOKEN"
-
-# Step 11: Configure Trackio (automated)
-print_step "Step 11: Configuring Trackio"
-echo "================================="
-
-cd ../trackio_tonic
-print_info "Configuring Trackio ..."
-print_info "Username will be auto-detected from token"
-
-# Ensure environment variables are available for the script
-export HF_TOKEN="$HF_TOKEN"
-export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-export HF_USERNAME="$HF_USERNAME"
-
-python configure_trackio.py
+# Step 11: Configure Trackio (automated) — skipped for local-only
+if [ "$MONITORING_MODE" != "none" ]; then
+    print_step "Step 11: Configuring Trackio"
+    echo "================================="
+    cd ../trackio_tonic
+    print_info "Configuring Trackio ..."
+    print_info "Username will be auto-detected from token"
+    # Ensure environment variables are available for the script
+    export HF_TOKEN="$SPACE_DEPLOY_TOKEN"
+    export HUGGING_FACE_HUB_TOKEN="$SPACE_DEPLOY_TOKEN"
+    export HF_USERNAME="$HF_USERNAME"
+    python configure_trackio.py
+else
+    print_info "Skipping Trackio configuration (monitoring_mode=$MONITORING_MODE)"
+fi
 
 # Step 12: Training Configuration
 print_step "Step 12: Training Configuration"
@@ -1256,11 +1329,12 @@ print_info "Trackio: $TRACKIO_URL"
 # Ensure environment variables are available for training
 export HF_WRITE_TOKEN="$HF_WRITE_TOKEN"
 export HF_READ_TOKEN="$HF_READ_TOKEN"
-export HF_TOKEN="$HF_TOKEN"
-export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+export HF_TOKEN="$HF_WRITE_TOKEN"
+export HUGGING_FACE_HUB_TOKEN="$HF_WRITE_TOKEN"
 export HF_USERNAME="$HF_USERNAME"
 export TRACKIO_DATASET_REPO="$TRACKIO_DATASET_REPO"
 export OUTPUT_DIR="$OUTPUT_DIR"
+export MONITORING_MODE="$MONITORING_MODE"
 
 # Run the appropriate training script based on model type
 if [[ "$MODEL_NAME" == *"gpt-oss"* ]]; then
@@ -1334,31 +1408,30 @@ else
         --trainer-type "$TRAINER_TYPE"
 fi
 
-# Step 16.5: Switch Trackio Space to Read Token (Security)
-print_step "Step 16.5: Switching to Read Token for Security"
-echo "===================================================="
-
-print_info "Switching Trackio Space HF_TOKEN from write token to read token for security..."
-print_info "This ensures the space can only read datasets, not write to repositories"
-
-# Ensure environment variables are available for token switch
-export HF_TOKEN="$HF_WRITE_TOKEN"  # Use write token to update space
-export HUGGING_FACE_HUB_TOKEN="$HF_WRITE_TOKEN"
-export HF_USERNAME="$HF_USERNAME"
-
-# Switch HF_TOKEN in Trackio Space from write to read token
-cd scripts/trackio_tonic
-python switch_to_read_token.py "$HF_USERNAME/$TRACKIO_SPACE_NAME" "$HF_READ_TOKEN" "$HF_WRITE_TOKEN"
-
-if [ $? -eq 0 ]; then
-    print_status "✅ Successfully switched Trackio Space HF_TOKEN to read token"
-    print_info "🔒 Space now uses read-only permissions for security"
+# Step 16.5: Switch Trackio Space to Read Token (Security) — only for trackio/both
+if [ "$MONITORING_MODE" = "trackio" ] || [ "$MONITORING_MODE" = "both" ]; then
+    print_step "Step 16.5: Switching to Read Token for Security"
+    echo "===================================================="
+    print_info "Switching Trackio Space HF_TOKEN from write token to read token for security..."
+    print_info "This ensures the space can only read datasets, not write to repositories"
+    # Ensure environment variables are available for token switch
+    export HF_TOKEN="$HF_WRITE_TOKEN"  # Use write token to update space
+    export HUGGING_FACE_HUB_TOKEN="$HF_WRITE_TOKEN"
+    export HF_USERNAME="$HF_USERNAME"
+    # Switch HF_TOKEN in Trackio Space from write to read token
+    cd scripts/trackio_tonic
+    python switch_to_read_token.py "$HF_USERNAME/$TRACKIO_SPACE_NAME" "$HF_READ_TOKEN" "$HF_WRITE_TOKEN"
+    if [ $? -eq 0 ]; then
+        print_status "✅ Successfully switched Trackio Space HF_TOKEN to read token"
+        print_info "🔒 Space now uses read-only permissions for security"
+    else
+        print_warning "⚠️ Failed to switch to read token, but continuing with pipeline"
+        print_info "You can manually switch the token in your Space settings later"
+    fi
+    cd ../..
 else
-    print_warning "⚠️ Failed to switch to read token, but continuing with pipeline"
-    print_info "You can manually switch the token in your Space settings later"
+    print_info "Skipping token switch (monitoring_mode=$MONITORING_MODE)"
 fi
-
-cd ../..
 
 # Step 17: Deploy Demo Space
 print_step "Step 17: Deploying Demo Space"
@@ -1387,7 +1460,8 @@ export HF_USERNAME="$HF_USERNAME"
         --hf-username "$HF_USERNAME" \
         --model-id "$DEMO_MODEL_ID" \
         --subfolder "$DEMO_SUBFOLDER" \
-        --space-name "${REPO_SHORT}-demo"
+        --space-name "${REPO_SHORT}-demo" \
+        --config-file "$CONFIG_FILE"
     
     if [ $? -eq 0 ]; then
         DEMO_SPACE_URL="https://huggingface.co/spaces/$HF_USERNAME/${REPO_SHORT}-demo"

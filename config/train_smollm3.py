@@ -82,6 +82,8 @@ class SmolLM3Config:
     # HF Datasets configuration
     hf_token: Optional[str] = None
     dataset_repo: Optional[str] = None
+    # Monitoring mode: 'both' | 'dataset' | 'trackio' | 'none'
+    monitoring_mode: str = 'both'
 
     
     def __post_init__(self):

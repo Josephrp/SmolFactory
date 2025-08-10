@@ -980,7 +980,8 @@ def train_gpt_oss(config_path, experiment_name, output_dir, trackio_url, trainer
             log_metrics=True,
             log_config=True,
             hf_token=os.environ.get('HF_TOKEN'),
-            dataset_repo=os.environ.get('TRACKIO_DATASET_REPO')
+            dataset_repo=os.environ.get('TRACKIO_DATASET_REPO'),
+            monitoring_mode=os.environ.get('MONITORING_MODE', 'both'),
         )
         # Log configuration once
         try:

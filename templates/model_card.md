@@ -11,7 +11,7 @@ tags:
 - text-generation
 - tonic
 - legml
-- {{#if quantized_models}}quantized{{/if}}
+{{#if quantized_models}}- quantized{{/if}}
 pipeline_tag: text-generation
 base_model: {{base_model}}
 {{#if dataset_name}}

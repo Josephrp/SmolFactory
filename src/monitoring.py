@@ -31,7 +31,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class SmolLM3Monitor:
-    """Monitoring and tracking for SmolLM3 fine-tuning experiments with HF Datasets support"""
+    """Monitoring and tracking for SmolLM3 fine-tuning experiments with HF Datasets support
+
+    Monitoring modes:
+    - "both": Log to Trackio Space and HF Datasets (plus local JSON files)
+    - "dataset": Log only to HF Datasets (plus local JSON files). Trackio Space is not written to
+    - "trackio": Log only to Trackio Space (plus local JSON files). HF Datasets writes are disabled
+    - "none": Local-only logging; no remote writes
+    """
     
     def __init__(
         self,
@@ -43,10 +50,25 @@ class SmolLM3Monitor:
         log_metrics: bool = True,
         log_config: bool = True,
         hf_token: Optional[str] = None,
-        dataset_repo: Optional[str] = None
+            dataset_repo: Optional[str] = None,
+            monitoring_mode: Optional[str] = None,
     ):
         self.experiment_name = experiment_name
-        self.enable_tracking = enable_tracking and TRACKIO_AVAILABLE
+        # Determine monitoring mode (env override supported)
+        mode_env = os.environ.get('MONITORING_MODE')
+        selected_mode = (monitoring_mode or mode_env or 'both').strip().lower()
+        if selected_mode not in ('both', 'dataset', 'trackio', 'none'):
+            selected_mode = 'both'
+        self.monitoring_mode = selected_mode
+
+        # Track which backends are active
+        self.use_trackio = (selected_mode in ('both', 'trackio')) and enable_tracking and TRACKIO_AVAILABLE
+        # HF dataset only if mode requires it and token is available (repo validated later)
+        self.hf_token = hf_token or os.environ.get('HF_TOKEN')
+        self.use_dataset = (selected_mode in ('both', 'dataset')) and bool(self.hf_token)
+
+        # For TRL compatibility, "enable_tracking" reflects Trackio availability
+        self.enable_tracking = self.use_trackio
         self.log_artifacts = log_artifacts
         self.log_metrics_enabled = log_metrics  # Rename to avoid conflict
         self.log_config_enabled = log_config  # Rename to avoid conflict
@@ -57,7 +79,6 @@ class SmolLM3Monitor:
             self.flush_interval = 10
         
         # HF Datasets configuration
-        self.hf_token = hf_token or os.environ.get('HF_TOKEN')
         self.dataset_repo = dataset_repo or os.environ.get('TRACKIO_DATASET_REPO', 'tonic/trackio-experiments')
         
         # Ensure dataset repository is properly set
@@ -73,19 +94,20 @@ class SmolLM3Monitor:
         
         # Initialize Trackio API client
         self.trackio_client = None
-        if self.enable_tracking:
+        if self.use_trackio:
             self._setup_trackio(trackio_url, trackio_token)
         
         # Initialize HF Datasets client
         self.hf_dataset_client = None
-        if self.hf_token:
+        self.dataset_manager = None
+        if self.use_dataset:
             self._setup_hf_datasets()
         
         logger.info("Initialized monitoring for experiment: %s", experiment_name)
         logger.info("Dataset repository: %s", self.dataset_repo)
         
         # Create experiment in Trackio if tracking is enabled
-        if self.enable_tracking and self.trackio_client:
+        if self.use_trackio and self.trackio_client:
             self._create_experiment()
     
     def _setup_hf_datasets(self):
@@ -136,6 +158,7 @@ class SmolLM3Monitor:
             if not space_id:
                 logger.warning("No Trackio Space configured via param or env (TRACKIO_URL/TRACKIO_SPACE_ID). Disabling Trackio tracking.")
                 self.enable_tracking = False
+                self.use_trackio = False
                 return
             
             # Get HF token for Space resolution
@@ -151,6 +174,7 @@ class SmolLM3Monitor:
                     logger.warning(f"Trackio Space not accessible: {connection_test['error']}")
                     logger.info("Continuing with HF Datasets only")
                     self.enable_tracking = False
+                    self.use_trackio = False
                     return
                 logger.info("✅ Trackio Space connection successful")
                 
@@ -158,11 +182,13 @@ class SmolLM3Monitor:
                 logger.warning(f"Trackio Space not accessible: {e}")
                 logger.info("Continuing with HF Datasets only")
                 self.enable_tracking = False
+                self.use_trackio = False
                 return
                 
         except Exception as e:
             logger.error(f"Failed to setup Trackio: {e}")
             self.enable_tracking = False
+            self.use_trackio = False
     
     def _create_experiment(self):
         """Create experiment in Trackio and set experiment_id"""
@@ -218,6 +244,11 @@ class SmolLM3Monitor:
         - Artifacts/logs: union with de-dup, preserve order
         - Top-level scalar fields (e.g., status, name, description, created_at) update only when provided
         """
+        # Respect monitoring mode
+        if not self.use_dataset:
+            logger.debug("Dataset persistence disabled by monitoring_mode=%s", self.monitoring_mode)
+            return False
+
         if not self.dataset_manager:
             logger.warning("⚠️ Dataset manager not available")
             return False
@@ -401,7 +432,7 @@ class SmolLM3Monitor:
         
         try:
             # Log configuration as parameters
-            if self.enable_tracking and self.trackio_client:
+            if self.use_trackio and self.trackio_client:
                 try:
                     result = self.trackio_client.log_parameters(
                         experiment_id=self.experiment_id,
@@ -416,7 +447,8 @@ class SmolLM3Monitor:
                     logger.warning("Trackio configuration logging failed: %s", e)
             
             # Save to HF Dataset
-            self._save_to_hf_dataset(config)
+            if self.use_dataset:
+                self._save_to_hf_dataset(config)
             
             # Also save config locally
             config_path = "config_{}_{}.json".format(
@@ -467,7 +499,7 @@ class SmolLM3Monitor:
                 metrics['step'] = step
             
             # Log to Trackio (if available)
-            if self.enable_tracking and self.trackio_client:
+            if self.use_trackio and self.trackio_client:
                 try:
                     result = self.trackio_client.log_metrics(
                         experiment_id=self.experiment_id,
@@ -486,18 +518,19 @@ class SmolLM3Monitor:
             self.metrics_history.append(metrics)
             
             # Save to HF Dataset periodically (configurable)
-            flush_every = max(1, int(getattr(self, 'flush_interval', 10)))
-            # Only append the delta since last flush to minimize risk
-            try:
-                if not hasattr(self, '_last_flushed_index'):
-                    self._last_flushed_index = 0
-                if len(self.metrics_history) - self._last_flushed_index >= flush_every:
-                    new_slice = self.metrics_history[self._last_flushed_index:]
-                    # Persist only the tail slice; merge code will union-append
-                    self._save_to_hf_dataset({'metrics': new_slice})
-                    self._last_flushed_index = len(self.metrics_history)
-            except Exception:
-                pass
+            if self.use_dataset:
+                flush_every = max(1, int(getattr(self, 'flush_interval', 10)))
+                # Only append the delta since last flush to minimize risk
+                try:
+                    if not hasattr(self, '_last_flushed_index'):
+                        self._last_flushed_index = 0
+                    if len(self.metrics_history) - self._last_flushed_index >= flush_every:
+                        new_slice = self.metrics_history[self._last_flushed_index:]
+                        # Persist only the tail slice; merge code will union-append
+                        self._save_to_hf_dataset({'metrics': new_slice})
+                        self._last_flushed_index = len(self.metrics_history)
+                except Exception:
+                    pass
             
             logger.debug("Metrics logged: %s", metrics)
             
@@ -518,7 +551,7 @@ class SmolLM3Monitor:
                 "checkpoint_size": os.path.getsize(checkpoint_path) if os.path.exists(checkpoint_path) else 0
             }
             
-            if self.enable_tracking and self.trackio_client:
+            if self.use_trackio and self.trackio_client:
                 result = self.trackio_client.log_parameters(
                     experiment_id=self.experiment_id,
                     parameters=checkpoint_info
@@ -531,10 +564,11 @@ class SmolLM3Monitor:
             
             self.artifacts.append(checkpoint_path)
             # Also preserve checkpoint info in HF dataset
-            try:
-                self._save_to_hf_dataset({'artifacts': [checkpoint_path], **checkpoint_info})
-            except Exception:
-                pass
+            if self.use_dataset:
+                try:
+                    self._save_to_hf_dataset({'artifacts': [checkpoint_path], **checkpoint_info})
+                except Exception:
+                    pass
             logger.info("Checkpoint logged: %s", checkpoint_path)
             
         except Exception as e:
@@ -597,7 +631,7 @@ class SmolLM3Monitor:
             summary['experiment_duration_hours'] = duration / 3600
             
             # Log final summary to Trackio
-            if self.enable_tracking and self.trackio_client:
+            if self.use_trackio and self.trackio_client:
                 result = self.trackio_client.log_parameters(
                     experiment_id=self.experiment_id,
                     parameters=summary
@@ -609,7 +643,8 @@ class SmolLM3Monitor:
                     logger.error("Failed to log training summary to Trackio: %s", result)
             
             # Save to HF Dataset
-            self._save_to_hf_dataset(summary)
+            if self.use_dataset:
+                self._save_to_hf_dataset(summary)
             
             # Save summary locally
             summary_path = "training_summary_{}_{}.json".format(
@@ -731,7 +766,7 @@ class SmolLM3Monitor:
     
     def get_experiment_url(self) -> Optional[str]:
         """Get the URL to view the experiment in Trackio"""
-        if self.trackio_client and self.experiment_id:
+        if self.use_trackio and self.trackio_client and self.experiment_id:
             return "{}?tab=view_experiments".format(self.trackio_client.space_url)
         return None
     
@@ -744,7 +779,7 @@ class SmolLM3Monitor:
         """
         logger.info(f"🔚 Closing monitoring session with status: {final_status}")
         
-        if self.enable_tracking and self.trackio_client:
+        if self.use_trackio and self.trackio_client:
             try:
                 # Mark experiment as completed in Trackio
                 result = self.trackio_client.update_experiment_status(
@@ -759,7 +794,7 @@ class SmolLM3Monitor:
                 logger.error("❌ Failed to close Trackio monitoring session: %s", e)
         
         # Final save to HF Dataset with proper status update
-        if self.dataset_manager:
+        if self.use_dataset and self.dataset_manager:
             try:
                 # Update experiment with final status without clobbering metrics
                 final_experiment_data = {
@@ -798,5 +833,6 @@ def create_monitor_from_config(config, experiment_name: Optional[str] = None) ->
         log_metrics=getattr(config, 'log_metrics', True),
         log_config=getattr(config, 'log_config', True),
         hf_token=getattr(config, 'hf_token', None),
-        dataset_repo=getattr(config, 'dataset_repo', None)
+        dataset_repo=getattr(config, 'dataset_repo', None),
+        monitoring_mode=getattr(config, 'monitoring_mode', os.environ.get('MONITORING_MODE', 'both'))
     ) 

@@ -18,6 +18,12 @@ LORA_MODEL_ID = os.getenv('LORA_MODEL_ID', os.getenv('HF_MODEL_ID', 'Tonic/gpt-o
 MODEL_NAME = os.getenv('MODEL_NAME', 'GPT-OSS Multilingual Reasoner')
 MODEL_SUBFOLDER = os.getenv('MODEL_SUBFOLDER', '')
 
+# Optional persona and prompts derived from training config
+MODEL_IDENTITY = os.getenv('MODEL_IDENTITY', '')
+DEFAULT_SYSTEM_PROMPT = os.getenv('SYSTEM_MESSAGE', MODEL_IDENTITY or 'You are a helpful assistant. Reasoning: medium')
+DEFAULT_DEVELOPER_PROMPT = os.getenv('DEVELOPER_MESSAGE', '')
+DEFAULT_REASONING_EFFORT = os.getenv('REASONING_EFFORT', 'medium')
+
 # If the LORA_MODEL_ID is the same as BASE_MODEL_ID, this is a merged model, not LoRA
 USE_LORA = LORA_MODEL_ID != BASE_MODEL_ID and not LORA_MODEL_ID.startswith(BASE_MODEL_ID)
 
@@ -130,7 +136,7 @@ def format_analysis_response(text):
     return cleaned
 
 @spaces.GPU(duration=60)
-def generate_response(input_data, chat_history, max_new_tokens, system_prompt, temperature, top_p, top_k, repetition_penalty):
+def generate_response(input_data, chat_history, max_new_tokens, model_identity, system_prompt, developer_prompt, reasoning_effort, temperature, top_p, top_k, repetition_penalty):
     if not input_data.strip():
         yield "Please enter a prompt."
         return
@@ -140,14 +146,37 @@ def generate_response(input_data, chat_history, max_new_tokens, system_prompt, t
     logging.info(f"[System] {system_prompt} | Temp={temperature} | Max tokens={max_new_tokens}")
     
     new_message = {"role": "user", "content": input_data}
-    system_message = [{"role": "system", "content": system_prompt}] if system_prompt else []
+    # Combine model identity with system prompt for a single system message
+    combined_parts = []
+    if model_identity and model_identity.strip():
+        combined_parts.append(model_identity.strip())
+    if system_prompt and system_prompt.strip():
+        combined_parts.append(system_prompt.strip())
+    if reasoning_effort and isinstance(reasoning_effort, str) and reasoning_effort.strip():
+        # Append explicit reasoning directive
+        combined_parts.append(f"Reasoning: {reasoning_effort.strip()}")
+    combined_system = "\n\n".join(combined_parts).strip()
+    system_message = ([{"role": "system", "content": combined_system}] if combined_system else [])
+    developer_message = [{"role": "developer", "content": developer_prompt}] if developer_prompt else []
     processed_history = format_conversation_history(chat_history)
-    messages = system_message + processed_history + [new_message]
-    prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
+    messages = system_message + developer_message + processed_history + [new_message]
+    try:
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+    except Exception:
+        # Fallback: merge developer prompt into system prompt if template doesn't support 'developer' role
+        fallback_sys = combined_system
+        if developer_prompt:
+            fallback_sys = (fallback_sys + ("\n\n[Developer]\n" if fallback_sys else "[Developer]\n") + developer_prompt).strip()
+        fallback_messages = ([{"role": "system", "content": fallback_sys}] if fallback_sys else []) + processed_history + [new_message]
+        prompt = tokenizer.apply_chat_template(
+            fallback_messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
     
     # Create streamer for proper streaming
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
@@ -212,10 +241,28 @@ demo = gr.ChatInterface(
     additional_inputs=[
         gr.Slider(label="Max new tokens", minimum=64, maximum=4096, step=1, value=2048),
         gr.Textbox(
+            label="Model Identity",
+            value=MODEL_IDENTITY,
+            lines=3,
+            placeholder="Optional identity/persona for the model"
+        ),
+        gr.Textbox(
             label="System Prompt",
-            value="You are a helpful assistant. Reasoning: medium",
+            value=DEFAULT_SYSTEM_PROMPT,
             lines=4,
             placeholder="Change system prompt"
+        ),
+        gr.Textbox(
+            label="Developer Prompt",
+            value=DEFAULT_DEVELOPER_PROMPT,
+            lines=4,
+            placeholder="Optional developer instructions"
+        ),
+        gr.Dropdown(
+            label="Reasoning Effort",
+            choices=["low", "medium", "high"],
+            value=DEFAULT_REASONING_EFFORT,
+            interactive=True,
         ),
         gr.Slider(label="Temperature", minimum=0.1, maximum=2.0, step=0.1, value=0.7),
         gr.Slider(label="Top-p", minimum=0.05, maximum=1.0, step=0.05, value=0.9),

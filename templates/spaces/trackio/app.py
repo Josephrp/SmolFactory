@@ -1143,33 +1143,63 @@ def create_metrics_plot(experiment_id: str, metric_name: str = "loss") -> go.Fig
             )
             return fig
         
+        # Helper predicates
+        def _is_eval_metric(name: str) -> bool:
+            return name.startswith('eval_') or name.startswith('eval/')
+
+        def _is_system_metric(name: str) -> bool:
+            import re
+            if name in ("cpu_percent", "memory_percent"):
+                return True
+            return re.match(r"^gpu_\d+_(memory_allocated|memory_reserved|utilization)$", name) is not None
+
         # Ensure steps are numeric and monotonically increasing to avoid zig-zag lines
         try:
             df = df.copy()
-            # If step looks constant or missing, try to derive it from a common field
-            if 'step' not in df or df['step'].nunique() <= 1:
-                for alt in ['train/global_step', 'global_step', 'train/step']:
-                    if alt in df.columns and df[alt].notna().any():
-                        df['step'] = pd.to_numeric(df[alt], errors='coerce')
-                        break
-            # If still missing or constant, fallback to an inferred counter by order of arrival
-            if 'step' not in df.columns or df['step'].isna().all() or df['step'].nunique() <= 1:
-                df['step'] = range(1, len(df) + 1)
+            # Choose x-axis: time for system metrics, step otherwise
+            use_time_axis = _is_system_metric(metric_name)
+
+            if use_time_axis:
+                # Convert timestamp to datetime for nicer axis rendering
+                df['time'] = pd.to_datetime(df.get('timestamp', ''), errors='coerce')
+                # Fallback order if timestamps are missing
+                if df['time'].isna().all():
+                    df['time'] = range(1, len(df) + 1)
+                df.sort_values('time', inplace=True)
+                x_field = 'time'
             else:
-                df['step'] = pd.to_numeric(df.get('step', -1), errors='coerce').fillna(-1)
-            df.sort_values('step', inplace=True)
+                # If step looks constant or missing, try to derive it from a common field
+                if 'step' not in df or df['step'].nunique() <= 1:
+                    for alt in ['train/global_step', 'global_step', 'train/step']:
+                        if alt in df.columns and df[alt].notna().any():
+                            df['step'] = pd.to_numeric(df[alt], errors='coerce')
+                            break
+                # If still missing or constant, fallback to an inferred counter by order of arrival
+                if 'step' not in df.columns or df['step'].isna().all() or df['step'].nunique() <= 1:
+                    df['step'] = range(1, len(df) + 1)
+                else:
+                    df['step'] = pd.to_numeric(df.get('step', -1), errors='coerce').fillna(-1)
+                df.sort_values('step', inplace=True)
+                x_field = 'step'
         except Exception:
-            pass
-        fig = px.line(df, x='step', y=metric_name, title=f'{metric_name} over time')
+            x_field = 'step'
+        # Filter rows where the metric is present to ensure connected lines
+        try:
+            plot_df = df[[x_field, metric_name]].dropna(subset=[metric_name]).copy()
+        except Exception:
+            plot_df = df
+        fig = px.line(plot_df, x=x_field, y=metric_name, title=f'{metric_name} over time')
         fig.update_layout(
-            xaxis_title="Training Step",
+            xaxis_title="Time" if (metric_name in ("cpu_percent", "memory_percent") or metric_name.startswith('gpu_')) else "Training Step",
             yaxis_title=metric_name.title(),
             hovermode='x unified'
         )
-        # Avoid interpolating across missing steps which can create odd visuals
+        # Connect points for evaluation metrics, avoid connecting gaps for others
         try:
             for trace in fig.data:
-                trace.connectgaps = False
+                trace.connectgaps = True if _is_eval_metric(metric_name) else False
+                # Force line+markers to visually connect points
+                trace.mode = 'lines+markers'
         except Exception:
             pass
         return fig
@@ -1547,6 +1577,16 @@ def create_combined_metrics_plot(experiment_id: str) -> go.Figure:
         # Define colors for different metrics
         colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta']
         
+        # Helper predicates
+        def _is_eval_metric(name: str) -> bool:
+            return name.startswith('eval_') or name.startswith('eval/')
+
+        def _is_system_metric(name: str) -> bool:
+            import re
+            if name in ("cpu_percent", "memory_percent"):
+                return True
+            return re.match(r"^gpu_\d+_(memory_allocated|memory_reserved|utilization)$", name) is not None
+
         for i, metric in enumerate(numeric_cols):
             if metric in df.columns and not df[metric].isna().all():
                 row = (i // n_cols) + 1
@@ -1556,31 +1596,54 @@ def create_combined_metrics_plot(experiment_id: str) -> go.Figure:
                 # Clean steps for each subplot too
                 try:
                     df_sub = df.copy()
-                    if 'step' not in df_sub or df_sub['step'].nunique() <= 1:
-                        for alt in ['train/global_step', 'global_step', 'train/step']:
-                            if alt in df_sub.columns and df_sub[alt].notna().any():
-                                df_sub['step'] = pd.to_numeric(df_sub[alt], errors='coerce')
-                                break
-                    if 'step' not in df_sub.columns or df_sub['step'].isna().all() or df_sub['step'].nunique() <= 1:
-                        df_sub['step'] = range(1, len(df_sub) + 1)
+                    use_time_axis = _is_system_metric(metric)
+                    if use_time_axis:
+                        df_sub['time'] = pd.to_datetime(df_sub.get('timestamp', ''), errors='coerce')
+                        if df_sub['time'].isna().all():
+                            df_sub['time'] = range(1, len(df_sub) + 1)
+                        df_sub.sort_values('time', inplace=True)
+                        # Filter to available metric points only to ensure connected lines
+                        metric_mask = df_sub[metric].notna()
+                        x_vals = df_sub.loc[metric_mask, 'time'].tolist()
+                        y_vals = df_sub.loc[metric_mask, metric].tolist()
                     else:
-                        df_sub['step'] = pd.to_numeric(df_sub.get('step', -1), errors='coerce').fillna(-1)
-                    df_sub.sort_values('step', inplace=True)
+                        if 'step' not in df_sub or df_sub['step'].nunique() <= 1:
+                            for alt in ['train/global_step', 'global_step', 'train/step']:
+                                if alt in df_sub.columns and df_sub[alt].notna().any():
+                                    df_sub['step'] = pd.to_numeric(df_sub[alt], errors='coerce')
+                                    break
+                        if 'step' not in df_sub.columns or df_sub['step'].isna().all() or df_sub['step'].nunique() <= 1:
+                            df_sub['step'] = range(1, len(df_sub) + 1)
+                        else:
+                            df_sub['step'] = pd.to_numeric(df_sub.get('step', -1), errors='coerce').fillna(-1)
+                        df_sub.sort_values('step', inplace=True)
+                        # Filter to available metric points only to ensure connected lines
+                        metric_mask = df_sub[metric].notna()
+                        x_vals = df_sub.loc[metric_mask, 'step'].tolist()
+                        y_vals = df_sub.loc[metric_mask, metric].tolist()
                 except Exception:
                     df_sub = df
+                    metric_mask = df_sub[metric].notna() if metric in df_sub else []
+                    x_vals = df_sub.get('step', list(range(1, len(df_sub) + 1))).tolist()
+                    y_vals = df_sub.get(metric, []).tolist()
                 fig.add_trace(
                     go.Scatter(
-                        x=df_sub['step'].tolist(),
-                        y=df_sub[metric].tolist(),
+                        x=x_vals,
+                        y=y_vals,
                         mode='lines+markers',
                         name=metric,
                         line=dict(width=2, color=color),
                         marker=dict(size=4, color=color),
                         showlegend=False,
-                        connectgaps=False
+                        connectgaps=True if _is_eval_metric(metric) else False
                     ),
                     row=row, col=col
                 )
+                # Set axis titles per subplot for clarity
+                try:
+                    fig.update_xaxes(title_text=("Time" if use_time_axis else "Training Step"), row=row, col=col)
+                except Exception:
+                    pass
         
         fig.update_layout(
             title=f"All Metrics for Experiment {experiment_id}",
@@ -1677,7 +1740,7 @@ def create_experiment_comparison_from_selection(selected_experiments: list, sele
                 plot_bgcolor='white', paper_bgcolor='white'
             )
             return fig
-        
+
         if not selected_metrics:
             fig = go.Figure()
             fig.add_annotation(
@@ -1691,10 +1754,180 @@ def create_experiment_comparison_from_selection(selected_experiments: list, sele
                 plot_bgcolor='white', paper_bgcolor='white'
             )
             return fig
-        
-        # Use the existing comparison function with comma-separated IDs
-        experiment_ids_str = ",".join(selected_experiments)
-        return create_experiment_comparison(experiment_ids_str)
+
+        # Prepare dataframes for each selected experiment once
+        experiment_to_dataframe = {}
+        for experiment_id in selected_experiments:
+            try:
+                experiment_to_dataframe[experiment_id] = get_metrics_dataframe(experiment_id)
+            except Exception:
+                experiment_to_dataframe[experiment_id] = pd.DataFrame()
+
+        # Setup subplots: one subplot per selected metric
+        from plotly.subplots import make_subplots
+
+        num_metrics = len(selected_metrics)
+        num_columns = min(3, num_metrics)
+        num_rows = (num_metrics + num_columns - 1) // num_columns
+
+        fig = make_subplots(
+            rows=num_rows,
+            cols=num_columns,
+            subplot_titles=selected_metrics,
+            vertical_spacing=0.05,
+            horizontal_spacing=0.1
+        )
+
+        # Color palette for experiments (consistent colors across subplots)
+        try:
+            palette = px.colors.qualitative.Plotly
+        except Exception:
+            palette = [
+                'blue', 'red', 'green', 'orange', 'purple', 'brown',
+                'pink', 'gray', 'cyan', 'magenta'
+            ]
+        experiment_to_color = {
+            exp_id: palette[idx % len(palette)] for idx, exp_id in enumerate(selected_experiments)
+        }
+
+        # Helper predicates (match logic used elsewhere in this file)
+        def _is_eval_metric(name: str) -> bool:
+            return name.startswith('eval_') or name.startswith('eval/')
+
+        def _is_system_metric(name: str) -> bool:
+            import re
+            if name in ("cpu_percent", "memory_percent"):
+                return True
+            return re.match(r"^gpu_\d+_(memory_allocated|memory_reserved|utilization)$", name) is not None
+
+        any_trace_added = False
+
+        for metric_index, metric_name in enumerate(selected_metrics):
+            row = (metric_index // num_columns) + 1
+            col = (metric_index % num_columns) + 1
+
+            subplot_has_data = False
+
+            for experiment_id, df in experiment_to_dataframe.items():
+                if df is None or df.empty or metric_name not in df.columns:
+                    continue
+
+                # Build x/y based on metric type
+                try:
+                    df_local = df.copy()
+                    use_time_axis = _is_system_metric(metric_name)
+
+                    if use_time_axis:
+                        # Time axis: use timestamp → datetime
+                        df_local['time'] = pd.to_datetime(df_local.get('timestamp', ''), errors='coerce')
+                        if df_local['time'].isna().all():
+                            df_local['time'] = range(1, len(df_local) + 1)
+                        df_local.sort_values('time', inplace=True)
+                        valid_mask = df_local[metric_name].notna()
+                        x_values = df_local.loc[valid_mask, 'time'].tolist()
+                        y_values = df_local.loc[valid_mask, metric_name].tolist()
+                    else:
+                        # Step axis: ensure a reasonable step column exists
+                        if 'step' not in df_local or df_local['step'].nunique() <= 1:
+                            for alternative in ['train/global_step', 'global_step', 'train/step']:
+                                if alternative in df_local.columns and df_local[alternative].notna().any():
+                                    df_local['step'] = pd.to_numeric(df_local[alternative], errors='coerce')
+                                    break
+                        if 'step' not in df_local.columns or df_local['step'].isna().all() or df_local['step'].nunique() <= 1:
+                            df_local['step'] = range(1, len(df_local) + 1)
+                        else:
+                            df_local['step'] = pd.to_numeric(df_local.get('step', -1), errors='coerce').fillna(-1)
+                        df_local.sort_values('step', inplace=True)
+                        valid_mask = df_local[metric_name].notna()
+                        x_values = df_local.loc[valid_mask, 'step'].tolist()
+                        y_values = df_local.loc[valid_mask, metric_name].tolist()
+                except Exception:
+                    # Fallback to naive arrays
+                    valid_mask = df[metric_name].notna()
+                    x_values = df.loc[valid_mask, 'step'].tolist() if 'step' in df.columns else list(range(1, len(df) + 1))
+                    y_values = df.loc[valid_mask, metric_name].tolist() if metric_name in df.columns else []
+
+                if not x_values or not y_values:
+                    continue
+
+                subplot_has_data = True
+                any_trace_added = True
+                color = experiment_to_color.get(experiment_id, 'blue')
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_values,
+                        y=y_values,
+                        mode='lines+markers',
+                        name=experiment_id,
+                        line=dict(width=2, color=color),
+                        marker=dict(size=4, color=color),
+                        showlegend=True,
+                        connectgaps=True if _is_eval_metric(metric_name) else False
+                    ),
+                    row=row,
+                    col=col
+                )
+
+                # Axis titles per subplot
+                try:
+                    fig.update_xaxes(
+                        title_text=("Time" if _is_system_metric(metric_name) else "Training Step"),
+                        row=row,
+                        col=col
+                    )
+                    fig.update_yaxes(title_text=metric_name, row=row, col=col)
+                except Exception:
+                    pass
+
+            # If no experiment had data for this metric, annotate the subplot
+            if not subplot_has_data:
+                try:
+                    fig.add_annotation(
+                        text=f"No data for metric: {metric_name}",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=12, color="gray"),
+                        row=row, col=col
+                    )
+                except Exception:
+                    fig.add_annotation(
+                        text=f"No data for metric: {metric_name}",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=12, color="gray")
+                    )
+
+        fig.update_layout(
+            title="Experiment Comparison",
+            height=max(350, 320 * num_rows),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            hovermode='x unified',
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+        )
+
+        # Grid lines for all subplots
+        for r in range(1, num_rows + 1):
+            for c in range(1, num_columns + 1):
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', row=r, col=c)
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', row=r, col=c)
+
+        if not any_trace_added:
+            # Overall annotation if literally nothing to plot
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No comparable data available for the selected experiments/metrics",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color="orange")
+            )
+            fig.update_layout(
+                title="No Data",
+                plot_bgcolor='white', paper_bgcolor='white'
+            )
+
+        return fig
         
     except Exception as e:
         logger.error(f"Error creating comparison from selection: {str(e)}")
