@@ -26,6 +26,7 @@ import json
 import shlex
 import traceback
 import importlib.util
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -136,6 +137,14 @@ def duplicate_space_hint() -> str:
         "ℹ️ No NVIDIA driver detected. To enable training, run on a machine with an NVIDIA GPU/driver "
         "or duplicate this Space on Hugging Face with GPU hardware."
     )
+
+
+def markdown_links_to_html(text: str) -> str:
+    """Convert simple Markdown links [text](url) to HTML anchors for UI rendering."""
+    try:
+        return re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>', text)
+    except Exception:
+        return text
 
 
 def _write_generated_config(filename: str, content: str) -> Path:
@@ -814,6 +823,12 @@ def ui_defaults(family: str) -> Tuple[str, str, str, str]:
     return exp, repo_short, default_desc, trackio_space_name
 
 
+joinus = """
+## Join us :
+🌟TeamTonic🌟 is always making cool demos! Join our active builder's 🛠️community 👻 [![Join us on Discord](https://img.shields.io/discord/1109943800132010065?label=Discord&logo=discord&style=flat-square)](https://discord.gg/qdfnvSPcqP) On 🤗Huggingface:[MultiTransformer](https://huggingface.co/MultiTransformer) On 🌐Github: [Tonic-AI](https://github.com/tonic-ai) & contribute to🌟 [Build Tonic](https://git.tonic-ai.com/contribute)🤗Big thanks to Yuvi Sharma and all the folks at huggingface for the community grant 🤗
+"""
+
+
 def on_family_change(family: str) -> Tuple[list[str], str, str, str, str]:
     confs = list(get_config_map(family).keys())
     exp, repo_short, desc, space = ui_defaults(family)
@@ -879,19 +894,43 @@ with gr.Blocks(title="SmolLM3 / GPT-OSS Fine-tuning Pipeline") as demo:
     # GPU/driver detection banner
     has_gpu, gpu_msg = detect_nvidia_driver()
     if has_gpu:
-        gr.Markdown(f"""
-        **SmolLM3 / GPT-OSS Fine-tuning Pipeline**
-        - {gpu_msg} — training is available on this runtime.
-        - Reads tokens from environment: `HF_WRITE_TOKEN` (required), `HF_READ_TOKEN` (optional)
-        - Select a config and run training; optionally deploy Trackio and push to Hub
-        """)
+        gr.HTML(
+            f"""
+            <div style="background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px; text-align: center;">
+                <p style="color: rgb(59, 130, 246); margin: 0; font-size: 14px; font-weight: 600;">
+                    ✅ NVIDIA GPU ready — {gpu_msg}
+                </p>
+                <p style="color: rgb(59, 130, 246); margin: 6px 0 0; font-size: 12px;">
+                    Reads tokens from environment: <code>HF_WRITE_TOKEN</code> (required), <code>HF_READ_TOKEN</code> (optional)
+                </p>
+                <p style="color: rgb(59, 130, 246); margin: 4px 0 0; font-size: 12px;">
+                    Select a config and run training; optionally deploy Trackio and push to Hub
+                </p>
+            </div>
+            """
+        )
+        gr.Markdown(joinus)
     else:
-        gr.Markdown(f"""
-        **SmolLM3 / GPT-OSS Fine-tuning Pipeline**
-        - {duplicate_space_hint()}
-        - Reads tokens from environment: `HF_WRITE_TOKEN` (required), `HF_READ_TOKEN` (optional)
-        - You can still configure and push, but training requires a GPU runtime.
-        """)
+        hint_html = markdown_links_to_html(duplicate_space_hint())
+        gr.HTML(
+            f"""
+            <div style="background-color: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px; text-align: center;">
+                <p style="color: rgb(234, 88, 12); margin: 0; font-size: 14px; font-weight: 600;">
+                    ⚠️ No NVIDIA GPU/driver detected — training requires a GPU runtime
+                </p>
+                <p style="color: rgb(234, 88, 12); margin: 6px 0 0; font-size: 12px;">
+                    {hint_html}
+                </p>
+                <p style="color: rgb(234, 88, 12); margin: 4px 0 0; font-size: 12px;">
+                    Reads tokens from environment: <code>HF_WRITE_TOKEN</code> (required), <code>HF_READ_TOKEN</code> (optional)
+                </p>
+                <p style="color: rgb(234, 88, 12); margin: 4px 0 0; font-size: 12px;">
+                    You can still configure and push, but training requires a GPU runtime.
+                </p>
+            </div>
+            """
+        )
+        gr.Markdown(joinus)
 
     with gr.Row():
         model_family = gr.Dropdown(choices=MODEL_FAMILIES, value="SmolLM3", label="Model family")
