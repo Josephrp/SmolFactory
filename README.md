@@ -4,7 +4,7 @@ emoji: 🏭
 colorFrom: blue
 colorTo: pink
 sdk: gradio
-sdk_version: 5.40.0
+sdk_version: 5.42.0
 app_file: interface.py
 pinned: false
 short_description: SmolFactory is a e2e model maker
