@@ -11,7 +11,7 @@ short_description: SmolFactory is a e2e model maker
 ---
 
 <p align="center">
-        🤗 <a href="https://hf.co/Tonic">Hugging Face</a>&nbsp&nbsp | &nbsp&nbsp🤖 <a href="https://huggingface.co/spaces/Tonic/Petite-LLM-3">demo</a>&nbsp&nbsp | &nbsp&nbsp 📑 <a href="https://huggingface.co/blog/Tonic/SmolFactory">Blog</a> &nbsp&nbsp ｜ &nbsp&nbsp🖥️ <a href="https://huggingface.co/Tonic/petite-elle-L-aime-3-sft">Model</a>
+        🤗 <a href="https://hf.co/spaces/Tonic/smolfactory">Hugging Face</a>&nbsp&nbsp | &nbsp&nbsp🤖 <a href="https://huggingface.co/spaces/Tonic/Petite-LLM-3">demo</a>&nbsp&nbsp | &nbsp&nbsp 📑 <a href="https://huggingface.co/blog/Tonic/SmolFactory">Blog</a> &nbsp&nbsp ｜ &nbsp&nbsp🖥️ <a href="https://huggingface.co/Tonic/petite-elle-L-aime-3-sft">Model</a>
 <br>
 <a href="https://huggingface.co/spaces/Tonic/Track-Tonic">Monitoring</a>&nbsp&nbsp | &nbsp&nbsp
 <a href="https://discord.gg/qdfnvSPcqP">
