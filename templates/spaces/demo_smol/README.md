@@ -4,7 +4,7 @@ emoji: 💃🏻
 colorFrom: green
 colorTo: purple
 sdk: gradio
-sdk_version: 5.38.2
+sdk_version: 5.42.0
 app_file: app.py
 pinned: false
 license: mit
