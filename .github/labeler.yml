@@ -1,0 +1,105 @@
+# Automatically label PRs based on changed paths
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: [".github/**"]
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "README.md", "templates/model_card.md", "templates/datasets/readme.md"]
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ["tests/**"]
+
+config:
+  - changed-files:
+      - any-glob-to-any-file: ["config/**", "src/config.py", "tests/test_config.py", "tests/test_update_kwargs.py"]
+
+interface:
+  - changed-files:
+      - any-glob-to-any-file: ["interface.py", "templates/spaces/demo_gpt/**", "templates/spaces/demo_smol/**"]
+
+monitoring:
+  - changed-files:
+      - any-glob-to-any-file: ["src/monitoring.py", "scripts/trackio_tonic/**", "templates/spaces/trackio/**", "tests/test_monitoring*.py"]
+
+trackio:
+  - changed-files:
+      - any-glob-to-any-file: ["src/trackio.py", "scripts/trackio_tonic/**", "templates/spaces/trackio/**", "tests/test_trackio_*.py", "tests/test_trackio_interface.py", "tests/test_trackio_space_diagnostics.py"]
+
+trainer:
+  - changed-files:
+      - any-glob-to-any-file: [
+          "src/trainer.py",
+          "src/train.py",
+          "scripts/training/train.py",
+          "scripts/training/train_gpt_oss.py",
+          "config/train_smollm3*.py",
+          "tests/test_trainer_selection.py",
+          "tests/test_pipeline.py",
+          "tests/test_simple_pipeline.py",
+          "tests/test_mixed_precision.py",
+          "tests/test_trl_comprehensive_compatibility.py",
+          "tests/test_no_think.py"
+        ]
+
+quantization:
+  - changed-files:
+      - any-glob-to-any-file: [
+          "scripts/model_tonic/quantize_*.py",
+          "scripts/model_tonic/quantize_model.py",
+          "scripts/model_tonic/quantize_standalone.py",
+          "scripts/rescue/quantize_and_push.py",
+          "requirements/requirements_quantization.txt",
+          "tests/test_quantization.py"
+        ]
+
+model:
+  - changed-files:
+      - any-glob-to-any-file: [
+          "src/model.py",
+          "scripts/model_tonic/**",
+          "tests/test_push_script.py",
+          "tests/test_model_repo_automation.py",
+          "tests/test_unified_model_card.py"
+        ]
+
+datasets:
+  - changed-files:
+      - any-glob-to-any-file: [
+          "templates/datasets/**",
+          "scripts/dataset_tonic/**",
+          "tests/create_sample_dataset.py",
+          "tests/test_readme_template.py"
+        ]
+
+deployment:
+  - changed-files:
+      - any-glob-to-any-file: [
+          "scripts/deploy_*.py",
+          "scripts/check_dependencies.py",
+          "scripts/validate_hf_token.py",
+          "scripts/deploy_demo_space.py",
+          "scripts/rescue/**",
+          "launch.sh",
+          "tests/test_deployment.py",
+          "tests/test_deployment_components.py",
+          "tests/test_demo_deployment.py",
+          "tests/test_latest_deployment.py",
+          "tests/test_environment_setup.py"
+        ]
+
+dataloader:
+  - changed-files:
+      - any-glob-to-any-file: [
+          "src/data.py",
+          "src/dataset_utils.py",
+          "scripts/dataset_tonic/**",
+          "templates/datasets/**",
+          "tests/test_dataset*.py",
+          "tests/test_dataset_loading.py",
+          "tests/test_hf_datasets.py",
+          "tests/test_real_dataset_access.py",
+          "tests/test_real_data.py"
+        ]

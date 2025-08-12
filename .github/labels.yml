@@ -1,0 +1,162 @@
+# Label definitions for this repository
+# Sync with the GitHub action in .github/workflows/sync-labels.yml
+
+# --- Type ---
+- name: bug
+  color: d73a4a
+  description: Something isn't working
+
+- name: enhancement
+  color: a2eeef
+  description: New feature or request
+
+- name: question
+  color: d876e3
+  description: Further information is requested
+
+- name: documentation
+  color: 0075ca
+  description: Improvements or additions to documentation
+
+- name: refactor
+  color: fbca04
+  description: Code refactoring without behavior change
+
+- name: chore
+  color: fef2c0
+  description: Maintenance tasks and housekeeping
+
+- name: ci
+  color: 0e8a16
+  description: Continuous integration / workflow changes
+
+# --- Difficulty ---
+- name: good first issue
+  color: 7057ff
+  description: Good for newcomers
+
+- name: good second issue
+  color: bfd4f2
+  description: Next step after a first contribution
+
+- name: easy
+  color: 0e8a16
+  description: Low complexity change
+
+- name: medium
+  color: fbca04
+  description: Moderate complexity change
+
+- name: expert
+  color: d93f0b
+  description: Complex change requiring deep expertise
+
+# --- Area ---
+- name: dataloader
+  color: 5319e7
+  description: Dataset processing and data loading (`src/data.py`, `src/dataset_utils.py`)
+
+- name: quantization
+  color: c2e0c6
+  description: Quantization scripts and configs (`scripts/model_tonic/quantize_*`)
+
+- name: trainer
+  color: c5def5
+  description: Training loop and optimization (`src/trainer.py`)
+
+- name: interface
+  color: 0052cc
+  description: CLI, interfaces, or `interface.py`
+
+- name: monitoring
+  color: 795548
+  description: Trackio integration and metrics (`src/monitoring.py`, `scripts/trackio_tonic/`)
+
+- name: config
+  color: fef2c0
+  description: Training configurations under `config/`
+
+- name: deployment
+  color: 0366d6
+  description: Deployment automation and setup scripts (`scripts/`, `launch.sh`)
+
+- name: datasets
+  color: e4e669
+  description: Dataset templates or HF dataset setup (`templates/datasets/`, `scripts/dataset_tonic/`)
+
+- name: model
+  color: 1d76db
+  description: Model loading and configuration (`src/model.py`)
+
+- name: trackio
+  color: 7fdbff
+  description: Trackio Space, API client, and integration
+
+- name: templates
+  color: bfdadc
+  description: Space templates and model card templates (`templates/`)
+
+- name: tests
+  color: e99695
+  description: Unit and integration tests (`tests/`)
+
+- name: performance
+  color: c2e0c6
+  description: Throughput, latency, and resource usage improvements
+
+- name: memory
+  color: d4c5f9
+  description: Memory optimization, checkpointing, and mixed precision
+
+# --- Priority ---
+- name: 'priority: low'
+  color: c2e0c6
+  description: Nice to have
+
+- name: 'priority: medium'
+  color: fbca04
+  description: Should have
+
+- name: 'priority: high'
+  color: d93f0b
+  description: Must have soon
+
+- name: 'priority: critical'
+  color: b60205
+  description: Immediate attention required
+
+# --- Status ---
+- name: 'status: needs triage'
+  color: d4c5f9
+  description: Awaiting maintainer review
+
+- name: 'status: needs info'
+  color: c5def5
+  description: More information required from reporter
+
+- name: 'status: blocked'
+  color: d93f0b
+  description: Blocked by external dependency or prerequisite
+
+- name: 'status: in progress'
+  color: 0e8a16
+  description: Work has started
+
+- name: 'status: help wanted'
+  color: 008672
+  description: PRs welcome and guidance available
+
+# --- Platform ---
+- name: windows
+  color: cfd3d7
+  description: Windows-specific issue
+
+- name: linux
+  color: 006b75
+  description: Linux-specific issue
+
+- name: macos
+  color: 5319e7
+  description: macOS-specific issue
+
+

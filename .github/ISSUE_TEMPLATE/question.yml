@@ -1,0 +1,44 @@
+name: "Question"
+description: "Ask a question about usage, design, or troubleshooting"
+title: "[Question]: <short summary>"
+labels: ["question", "status: needs triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please include as much context as possible so the community can help quickly.
+
+  - type: input
+    id: topic
+    attributes:
+      label: Topic
+      placeholder: e.g. dataset loading, quantization, trainer config, Trackio
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to achieve? Any constraints?
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Relevant code/config
+      render: yaml
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment (OS, Python, torch, CUDA, GPU)
+      placeholder: e.g. Ubuntu 22.04, py 3.10, torch 2.3.1 + CUDA 12.1, A100 80GB
+
+

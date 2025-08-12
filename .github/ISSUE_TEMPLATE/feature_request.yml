@@ -1,0 +1,78 @@
+name: "Feature request"
+description: "Propose an enhancement or new capability"
+title: "[Feature]: <short summary>"
+labels: ["enhancement", "status: needs triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement! Please provide context to help us evaluate and scope the work.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - config
+        - data / dataloader
+        - datasets
+        - model
+        - trainer
+        - training orchestrator (`src/train.py`)
+        - monitoring / trackio
+        - deployment / scripts
+        - templates / spaces
+        - interface
+        - quantization
+        - performance / memory
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What pain point or limitation does this address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the change and how it works. Include rough API, config, or UX where relevant.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Estimated difficulty
+      options:
+        - good first issue
+        - good second issue
+        - easy
+        - medium
+        - expert
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority / impact
+      options:
+        - priority: low
+        - priority: medium
+        - priority: high
+        - priority: critical
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, references, or related issues
+
+

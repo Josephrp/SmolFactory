@@ -1,0 +1,123 @@
+name: "Bug report"
+description: "Report a bug in the SmolLM3 fine-tuning pipeline"
+title: "[Bug]: <short summary>"
+labels: ["bug", "status: needs triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! Please fill out the form to help us reproduce and fix the issue quickly.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-flight checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I have read the `README.md` and relevant docs under `docs/`
+          required: true
+        - label: This is a bug report (not a question or feature request)
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component(s)
+      description: Select one or more components impacted
+      multiple: true
+      options:
+        - config
+        - data / dataloader
+        - datasets
+        - model
+        - trainer
+        - training orchestrator (`src/train.py`)
+        - monitoring / trackio
+        - deployment / scripts
+        - templates / spaces
+        - interface
+        - quantization
+        - tests
+
+  - type: input
+    id: version
+    attributes:
+      label: Project version / commit
+      description: Commit hash or tag if known
+      placeholder: e.g. main @ a1b2c3d
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: e.g. Ubuntu 22.04 / Windows 11 / macOS 14
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.10.14
+
+  - type: input
+    id: torch
+    attributes:
+      label: PyTorch version + CUDA
+      placeholder: e.g. torch 2.3.1 + CUDA 12.1
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU model(s) and VRAM
+      placeholder: e.g. A100 80GB x1
+
+  - type: input
+    id: hf_token
+    attributes:
+      label: HF token configured?
+      placeholder: yes/no (and scope if relevant)
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration used
+      description: Specify the training config or custom parameters (paste relevant snippet)
+      render: yaml
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal, reproducible example
+      placeholder: |
+        1. Command you ran
+        2. Dataset(s) used
+        3. Config selected
+        4. What happened
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What did you expect to happen?
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Paste stack traces and relevant logs
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Links, screenshots, or anything else helpful
+
+
